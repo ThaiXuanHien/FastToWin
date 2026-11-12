@@ -14,6 +14,7 @@ import com.hienthai.fastowin.protocol.clanLogoRequiredLevel
 import com.hienthai.fastowin.localization.protocolTextKeyForCode
 import com.hienthai.fastowin.localization.TextKey
 import com.hienthai.fastowin.localization.LocalizationService
+import com.hienthai.fastowin.localization.missionTitle
 import com.hienthai.fastowin.protocol.CosmeticType
 import com.hienthai.fastowin.protocol.DAILY_CHECK_IN_AVATAR_ID
 import com.hienthai.fastowin.protocol.MAX_PROFILE_DISPLAY_NAME_LENGTH
@@ -34,6 +35,8 @@ import com.hienthai.fastowin.protocol.PublicTournamentSummary
 import com.hienthai.fastowin.protocol.TournamentFeeFilter
 import com.hienthai.fastowin.protocol.TournamentVisibility
 import com.hienthai.fastowin.protocol.MatchType
+import com.hienthai.fastowin.protocol.MatchForfeitReason
+import com.hienthai.fastowin.protocol.MatchForfeitSnapshot
 import com.hienthai.fastowin.protocol.MatchRewardEventSnapshot
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.delay
@@ -2595,18 +2598,15 @@ class GameEngine(
                     PushNotificationCategory.MISSION_REWARDS
                 )
             }.getOrNull() ?: return@forEach
+            val localization = LocalizationService(target.language)
             newlyCompleted.forEach { mission ->
-                val missionTitle = mission.titleKey
-                    ?.let { keyName -> TextKey.entries.firstOrNull { it.name == keyName } }
-                    ?.let { key -> LocalizationService(target.language).text(key) }
-                    ?: mission.title
                 sendPushNotification(
                     playerId = player.playerId,
                     target = target,
                     content = LocalizedPushContent(
                         titleKey = TextKey.PushMissionCompletedTitle,
                         bodyKey = TextKey.PushMissionCompletedMessage,
-                        bodyArguments = mapOf("mission" to missionTitle)
+                        bodyArguments = mapOf("mission" to localization.missionTitle(mission))
                     ),
                     destinationPath = "/account/missions"
                 )
@@ -3088,7 +3088,7 @@ class GameEngine(
                         room.sequence++
                         room.takeCompletedMatch()?.let(completedMatches::add)
                         deliveries += Delivery(
-                            ServerMessage.GameFinished(room.snapshot()),
+                            ServerMessage.GameFinished(room.snapshot(disconnectedForfeitPlayerId = playerId)),
                             room.activePlayerIds()
                         )
                     } else if (room.phase == RoomPhase.PLAYING) {
@@ -3101,7 +3101,7 @@ class GameEngine(
                             room.phase = RoomPhase.FINISHED
                             room.finishedAtEpochMillis = now
                             room.sequence++
-                            val snapshot = room.snapshot()
+                            val snapshot = room.snapshot(disconnectedForfeitPlayerId = playerId)
                             pendingReconnectResultsByPlayerId[playerId] = PendingReconnectResult(snapshot, now)
                             sessionsByPlayerId[playerId]?.accountResumeToken?.let {
                                 pendingAccountTokensByPlayerId[playerId] = PendingAccountToken(it, now)
@@ -4125,7 +4125,7 @@ class GameEngine(
         .sortedBy { it.name.lowercase() }
         .toList()
 
-    private fun Room.snapshot(): GameSnapshot {
+    private fun Room.snapshot(disconnectedForfeitPlayerId: String? = null): GameSnapshot {
         val metricsByPlayer = selectionMetrics()
         if (!maintenanceAborted && phase == RoomPhase.FINISHED && tournamentId != null && winnerId() == null) {
             forcedWinnerId = playerIds().sortedWith(
@@ -4214,7 +4214,11 @@ class GameEngine(
             rematchExpiresAtEpochMillis = rematchExpiresAtEpochMillis,
             tournamentId = tournamentId,
             tournamentMatchId = tournamentMatchId,
-            tournamentRound = tournamentRound
+            tournamentRound = tournamentRound,
+            forfeit = if (phase == RoomPhase.FINISHED) {
+                disconnectedForfeitPlayerId?.let { MatchForfeitSnapshot(it, MatchForfeitReason.DISCONNECT_TIMEOUT) }
+                    ?: intentionalLeavePlayerIds.singleOrNull()?.let { MatchForfeitSnapshot(it, MatchForfeitReason.VOLUNTARY_LEAVE) }
+            } else null
         )
     }
 

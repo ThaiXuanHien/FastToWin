@@ -22,6 +22,8 @@ import com.hienthai.fastowin.protocol.MissionSnapshot
 import com.hienthai.fastowin.protocol.NotificationDestination
 import com.hienthai.fastowin.protocol.NotificationKind
 import com.hienthai.fastowin.protocol.NotificationSnapshot
+import com.hienthai.fastowin.protocol.MatchForfeitReason
+import com.hienthai.fastowin.protocol.MatchForfeitSnapshot
 import com.hienthai.fastowin.protocol.MatchType
 import com.hienthai.fastowin.protocol.PlayQuotaSnapshot
 import com.hienthai.fastowin.protocol.PlayerProgressionSnapshot
@@ -3847,14 +3849,17 @@ class GameEngineTest {
         val resumed = engine.connectOnlineTestPlayer("Host", host.playerId, host.resumeToken)
 
         assertEquals(guest.playerId, finished.winnerPlayerId)
+        assertEquals(MatchForfeitSnapshot(host.playerId, MatchForfeitReason.DISCONNECT_TIMEOUT), finished.forfeit)
         val persistedHost = persisted.players.single { it.playerId == host.playerId }
         val persistedGuest = persisted.players.single { it.playerId == guest.playerId }
         assertEquals(MatchOutcome.LOSS, persistedHost.outcome)
         assertFalse(persistedHost.intentionalLeave)
         assertEquals(MatchOutcome.WIN, persistedGuest.outcome)
         assertFalse(persistedGuest.intentionalLeave)
-        assertEquals(com.hienthai.fastowin.protocol.RoomPhase.FINISHED, assertNotNull(resumed.currentGame).phase)
-        assertEquals(guest.playerId, resumed.currentGame?.winnerPlayerId)
+        val resumedGame = assertNotNull(resumed.currentGame)
+        assertEquals(com.hienthai.fastowin.protocol.RoomPhase.FINISHED, resumedGame.phase)
+        assertEquals(guest.playerId, resumedGame.winnerPlayerId)
+        assertEquals(finished.forfeit, resumedGame.forfeit)
         assertEquals(null, engine.connectOnlineTestPlayer("Host", host.playerId, host.resumeToken).currentGame)
     }
 

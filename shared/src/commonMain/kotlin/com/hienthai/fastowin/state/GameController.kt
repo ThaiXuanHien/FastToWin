@@ -18,6 +18,7 @@ import com.hienthai.fastowin.protocol.ClanDonationCurrency
 import com.hienthai.fastowin.protocol.ClanDonationStatus
 import com.hienthai.fastowin.protocol.CosmeticType
 import com.hienthai.fastowin.protocol.GameSnapshot
+import com.hienthai.fastowin.protocol.MatchForfeitReason
 import com.hienthai.fastowin.protocol.GoldExchangeStatus
 import com.hienthai.fastowin.protocol.MAX_PROFILE_DISPLAY_NAME_LENGTH
 import com.hienthai.fastowin.protocol.PROFILE_AVATAR_IDS
@@ -1259,11 +1260,6 @@ class GameController private constructor(
                     val game = currentGame
                     if (game.phase == RoomPhase.PLAYING || game.phase == RoomPhase.FINISHED) {
                         startGameWithSnapshot(game)
-                        if (wasRecoveringRoom && game.phase == RoomPhase.FINISHED) {
-                            _uiState.update {
-                                it.copy(message = messageMapper.text(TextKey.MatchExpiredOfficialLoss))
-                            }
-                        }
                     } else {
                         applyWaitingSnapshot(game)
                     }
@@ -1901,7 +1897,14 @@ class GameController private constructor(
         val currentState = _uiState.value
         if (!currentState.canApplyGameSnapshot(game.roomId, game.sequence)) return false
         val finished = game.phase == RoomPhase.FINISHED
-        _uiState.update { it.applyAuthoritativeSnapshot(game, requireNotNull(playerId)) }
+        val localPlayerId = requireNotNull(playerId)
+        val disconnectLoss = finished && game.forfeit?.let {
+            it.playerId == localPlayerId && it.reason == MatchForfeitReason.DISCONNECT_TIMEOUT
+        } == true
+        _uiState.update { state ->
+            val result = state.applyAuthoritativeSnapshot(game, localPlayerId)
+            if (disconnectLoss) result.copy(message = messageMapper.text(TextKey.MatchExpiredOfficialLoss)) else result
+        }
         if (game.phase == RoomPhase.PLAYING && game.gameMode.isTimed()) {
             startTimer(_uiState.value.timeLeftMillis)
         } else if (!finished) {
