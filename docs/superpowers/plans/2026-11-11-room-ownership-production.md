@@ -33,6 +33,14 @@ See the [closure checkpoint](2026-11-11-room-ownership-rollout-closure.md)
 for exact runs, latency, pool saturation, regression scope and remaining
 Staging gates. Full server verification recorded 1,301 passing tests with
 two expected opt-in capacity skips after correcting two fixture settings.
+## Railway Staging checkpoint on 13 November 2026
+
+The first approved scope, `0bbace01615fe77b28c70ba3411ee4bd6ca6b26feac9b5230752707a0e684ad5`, seeded successfully but stopped at the seed receipt gate. Railway added `level=info` metadata to structured application fields; the strict application proof rejected that envelope field. The controller cleaned its six journaled services and verified the original nine services and one volume.
+
+The reviewed R2 scope, `eec6ac158fb8422eebc2e051b9294d9669b5de06c647f58b1484778efd4dd9af`, separated known provider metadata from exact application proof fields. Its offline suite passed 54 cases. The separately approved execution began at 14:20:22 UTC. It retained valid seed and occupied-database replay-refusal receipts, including unchanged database hash. When work resumed, its tool session and controller process were absent. The last provider startup logs for A/B contained only `Starting Container`; no application failure or completed workload is established by that evidence.
+
+Recovery removed the six exact service IDs in the R2 journal. Independent read-only preflight at 14:29:14 UTC verified zero owned services, the original nine services and one volume, stopped prior compute, and HOBBY plan. See `.artifacts/room-cloud-production-rehearsal-20261113-r2/execution/interrupted.json`, `fault/interruption-observation.json`, `fault/cleanup.json`, and `post-cleanup-preflight.json`. R2 earned no Fault, Load, Topology, or production acceptance. Both executed scopes and their pinned inputs remain immutable. A fresh attempt requires a separately reviewed scope because each approved scope allowed one attempt per phase.
+
 ## Global Constraints
 
 - The current `pilot` mode remains restricted to `dev` and fixture accounts.

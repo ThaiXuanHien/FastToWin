@@ -101,6 +101,14 @@ Its focused real-database suite passed 53 tests.
 Remaining rollout work includes the concrete Railway Staging controller,
 reviewed execution scope, cloud capability/fault/load/topology/drain and
 cleanup receipts, followed by the release package and production QA.
+## Railway Staging checkpoint on 13 November 2026
+
+The first approved scope, `0bbace01615fe77b28c70ba3411ee4bd6ca6b26feac9b5230752707a0e684ad5`, seeded successfully but stopped at the seed receipt gate. Railway added `level=info` metadata to structured application fields; the strict application proof rejected that envelope field. The controller cleaned its six journaled services and verified the original nine services and one volume.
+
+The reviewed R2 scope, `eec6ac158fb8422eebc2e051b9294d9669b5de06c647f58b1484778efd4dd9af`, separated known provider metadata from exact application proof fields. Its offline suite passed 54 cases. The separately approved execution began at 14:20:22 UTC. It retained valid seed and occupied-database replay-refusal receipts, including unchanged database hash. When work resumed, its tool session and controller process were absent. The last provider startup logs for A/B contained only `Starting Container`; no application failure or completed workload is established by that evidence.
+
+Recovery removed the six exact service IDs in the R2 journal. Independent read-only preflight at 14:29:14 UTC verified zero owned services, the original nine services and one volume, stopped prior compute, and HOBBY plan. See `.artifacts/room-cloud-production-rehearsal-20261113-r2/execution/interrupted.json`, `fault/interruption-observation.json`, `fault/cleanup.json`, and `post-cleanup-preflight.json`. R2 earned no Fault, Load, Topology, or production acceptance. Both executed scopes and their pinned inputs remain immutable. A fresh attempt requires a separately reviewed scope because each approved scope allowed one attempt per phase.
+
 ## Current names and proposed boundaries
 
 At this plan's initial review, `Main.main` always constructed a `GameEngine`, restored legacy state and installed `Application.gameModule`. Task 1 replaced that unconditional startup with an explicit private worker branch; Tasks 1A/2 added real admission authority and a separate replay-safe create seam. The ingress branch still runs legacy/application jobs plus ownership delivery/worker. `OwnerPeerTransport`, command/create wire transport and `OwnerOperation` live in **`ownership/OwnerCommandRoutes.kt`**; there is no separate `OwnerPeerTransport.kt`. Existing command operations remain `COMMAND`, `RECONNECT`, `DISCONNECT` for an existing room/epoch. The ordinary public create path is still local until Task 3 integrates the new descriptor API.
