@@ -1,7 +1,8 @@
 #Requires -Version 7.0
 [CmdletBinding()]
-param([ValidateSet('Seed', 'Fault', 'Load')][string]$Profile = 'Seed')
+param([ValidateSet('Seed', 'Fault', 'Load')][string]$Profile = 'Seed', [switch]$CapabilityOnly)
 $ErrorActionPreference = 'Stop'
+if ($CapabilityOnly -and $Profile -ceq 'Seed') { throw 'Capability requires Fault or Load profile' }
 Set-StrictMode -Version Latest
 $repo = [IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..'))
 $runId = [guid]::NewGuid().ToString()
@@ -65,10 +66,11 @@ try {
     }
     Set-RunVariable 'JAVA_HOME' 'C:/Program Files/Android/Android Studio/jbr'
     Set-RunVariable 'GRADLE_USER_HOME' 'C:/Users/Hien Hue/.gradle'
-    $tempDirectory = Join-Path $repo '.artifacts/java-tmp'
+    $tempDirectory = Join-Path $repo '.artifacts/t'
     New-Item -ItemType Directory -Path $tempDirectory -Force | Out-Null
     Set-RunVariable 'TEMP' $tempDirectory
     Set-RunVariable 'TMP' $tempDirectory
+    Set-RunVariable 'JAVA_TOOL_OPTIONS' "-Djava.io.tmpdir=""$tempDirectory"""
     & ./gradlew.bat :server:roomOwnershipAcceptanceClasspath :server:installDist --offline --no-daemon --no-configuration-cache --max-workers=1 --console=plain *> "$output/compile.log"
     if ($LASTEXITCODE -ne 0) { throw 'Runner compile failed. See compile.log' }
 
@@ -125,7 +127,9 @@ ENTRYPOINT ["timeout","1800","java","-Xmx384m","-cp","classes:lib/*","com.hienth
         throw 'Runner image configuration differs'
     }
     if ($Profile -cne 'Seed') {
-        & node (Join-Path $sourceRoot 'scripts/room-production-rehearsal-local.mjs') $output $Profile $runId $tag $script:endpoint $repo
+        $controllerArgs = @($output, $Profile, $runId, $tag, $script:endpoint, $repo)
+        if ($CapabilityOnly) { $controllerArgs += '--capability-only' }
+        & node (Join-Path $sourceRoot 'scripts/room-production-rehearsal-local.mjs') @controllerArgs
         if ($LASTEXITCODE -ne 0) { throw 'Production workload failed. See its classified receipt' }
     } else {
     Docker @('network', 'create', '--internal', '--label', $label, $name) | Out-Null

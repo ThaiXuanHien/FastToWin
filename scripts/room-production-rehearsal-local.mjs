@@ -8,7 +8,9 @@ import { readProductionReceipt } from './read-room-rehearsal-receipt.mjs'
 import { buildRehearsalSupervisor } from './lib/room-production-supervisor.mjs'
 import { candidateIdentity, pairedRouteAccounts } from './lib/room-production-manifest.mjs'
 
-const [output,selected,runId,runnerImage,endpoint,repo]=process.argv.slice(2)
+const [output,selected,runId,runnerImage,endpoint,repo,...options]=process.argv.slice(2)
+assert(options.length===0 || (options.length===1 && options[0]==='--capability-only'))
+const capabilityOnly=options.length===1
 const root=path.resolve(repo)
 const sourceRoot=path.resolve(import.meta.dirname,'..')
 assert(['Fault','Load'].includes(selected) && /^[a-f0-9-]{36}$/.test(runId))
@@ -192,6 +194,11 @@ const proof=JSON.parse(capability)
 assert(proof.productionCapabilityVerified===true && proof.jarSha256===jar && proof.manifestSha256===manifest)
 put('capability.json',proof)
 docker(['rm','-v',containers.runner])
+if(capabilityOnly) {
+    put('local-receipt.json',{productionCapabilityVerified:true,profile,manifestSha256:manifest,jarSha256:jar})
+    console.log(profile+' production capability verified')
+    process.exit(0)
+}
 console.log(profile+' production capability passed; starting full workload')
 launch('runner',images.runner,runnerEnv,['--workload-production'])
 const end=Date.now()+1_050_000
