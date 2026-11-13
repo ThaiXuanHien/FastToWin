@@ -4,7 +4,7 @@ import { join } from 'node:path'
 import { pathToFileURL } from 'node:url'
 
 const jar = '8fff8ae123902032d98a92190b0bff3df87e234f213b25a298f4768c7e40e818'
-const kinds = ['load','fault','failure','latency']
+const kinds = ['load','fault','failure','latency','topology-preflight']
 const poolLabel = 'fasttowin_room_ownership_pool_max_connections'
 const metrics = new Set([
     'fasttowin_uptime_seconds','fasttowin_websocket_connections','fasttowin_websocket_connections_total',
@@ -120,6 +120,21 @@ function validateFault(p) {
     }
 }
 
+const workerPublicPaths = ['/game','/auth/login','/auth/register','/api/content-terms',
+    '/api/announcements','/admin','/admin/api/maintenance','/gifts','/status']
+function validateTopologyPreflight(p) {
+    keys(p,['admissionGeneration','publicIngress','privateWorker','signedProcessesVerified',
+        'publicSocketsByBackend','goldenOwners','workerRoutes'])
+    check(integer(p.admissionGeneration,1) && p.publicIngress==='a' && p.privateWorker==='b' &&
+        p.signedProcessesVerified===2 && list(p.publicSocketsByBackend,2) &&
+        integer(p.publicSocketsByBackend[0],4) && p.publicSocketsByBackend[1]===0 &&
+        list(p.goldenOwners,2) && p.goldenOwners[0]===0 && p.goldenOwners[1]===1 &&
+        list(p.workerRoutes,workerPublicPaths.length))
+    for (const [index,route] of p.workerRoutes.entries()) {
+        keys(route,['path','get','post'])
+        check(route.path===workerPublicPaths[index] && route.get===404 && route.post===404)
+    }
+}
 function validateLatency(p) {
     keys(p,['nodes']); check(list(p.nodes,2))
     const stages = ['poolAcquire','selectRoundTrip','markerUpdateRoundTrip','commitRoundTrip','readinessRoundTrip']
@@ -140,7 +155,7 @@ function validateLatency(p) {
 }
 function validateFailure(p) {
     keys(p,['phase','category','completedCases','progress'])
-    check(['private-dns','fixture-marker-and-readiness','latency','load','fault','receipt'].includes(p.phase) &&
+    check(['private-dns','fixture-marker-and-readiness','topology-preflight','latency','load','fault','receipt'].includes(p.phase) &&
         ['timeout','database-connection','database-error','network','protocol-rejected','configuration','assertion','other'].includes(p.category) &&
         integer(p.completedCases,0,8))
     if (p.progress!==null) {
@@ -199,6 +214,7 @@ function readExpectedReceipt(lines, kind, profile, manifest, expectedJar) {
     if (kind==='load') { check(profile==='two-backend'); validateLoad(receipt.payload) }
     if (kind==='fault') { check(profile==='fault'); validateFault(receipt.payload) }
     if (kind==='latency') validateLatency(receipt.payload)
+    if (kind==='topology-preflight') validateTopologyPreflight(receipt.payload)
     if (kind==='failure') validateFailure(receipt.payload)
     return bytes
 }

@@ -192,6 +192,10 @@ internal fun runRehearsal(
                     control.verifyHealthy()
                     val pools = observedRehearsalPools(fixture.metrics())
                     fixture.fundQuota()
+                    if (fixture.settings.soleIngress) {
+                        phase = "topology-preflight"
+                        export("topology-preflight", runProductionTopologyPreflight(fixture))
+                    }
                     phase = "latency"
                     withTimeout(60000) {
                         for (node in 0..1) fixture.measureBaselineLatency(latency[node], node)

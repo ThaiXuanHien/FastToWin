@@ -188,6 +188,8 @@ internal class RoomAcceptanceFixture(val settings: RoomAcceptanceSettings, contr
     }
     private var cachedAccounts: List<AcceptanceAccount>? = null
     private val ownerNodes = ConcurrentHashMap<UUID, Int>()
+    private val publicSockets = List(2) { AtomicInteger() }
+    fun publicSocketCounts(): List<Int> = publicSockets.map { it.get() }
     private val creationOrdinals = ConcurrentHashMap<Int, AtomicInteger>()
     @Volatile var intentionallyUnavailableBackend: Int? = null
 
@@ -368,7 +370,7 @@ internal class RoomAcceptanceFixture(val settings: RoomAcceptanceSettings, contr
                     try {
                         socket.send(ClientMessage.ConnectAccount(account.accessToken))
                         socket.ready = socket.await(25_000, "SessionReady") { it is ServerMessage.SessionReady } as ServerMessage.SessionReady
-                        return socket
+                        publicSockets[node].incrementAndGet()
                     } catch (failure: Throwable) { socket.closeGracefully(); throw failure }
                 } catch (failure: Exception) {
                     currentCoroutineContext().ensureActive()

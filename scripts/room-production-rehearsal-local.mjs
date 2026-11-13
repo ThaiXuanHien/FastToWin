@@ -165,9 +165,10 @@ Object.assign(runnerEnv,{
 })
 docker(['rm','-v',containers.runner])
 const redisUrl='redis://:'+redisPassword+'@'+host('redis')+':6379'
+const backendEnvironments={}
 for(const role of ['a','b']) {
     const peer=role==='a'?'b':'a'
-    launch(role,images.backend,{
+    backendEnvironments[role]={
         ...control,ROOM_FAULT_ROLE:role,FASTTOWIN_ENV:'prod',SERVER_HOST:'::',PORT:'8080',
         FASTTOWIN_PUBLIC_URL:'https://fasttowin.up.railway.app',FASTTOWIN_WEB_ORIGINS:'https://fasttowin.up.railway.app',
         FASTTOWIN_SMTP_HOST:'mail.rehearsal.invalid',FASTTOWIN_SMTP_USERNAME:'rehearsal',
@@ -181,7 +182,8 @@ for(const role of ['a','b']) {
         FASTTOWIN_ROOM_OWNERSHIP_PEER_URL:'http://'+host(peer)+':8080',FASTTOWIN_ROOM_OWNERSHIP_PEER_SECRET:peerSecret,
         FASTTOWIN_RATE_LIMIT_STORE:'redis',FASTTOWIN_RATE_LIMIT_REDIS_URL:redisUrl,FASTTOWIN_RATE_LIMIT_NAMESPACE:name+'-limits',
         FASTTOWIN_PRESENCE_STORE:'redis',FASTTOWIN_PRESENCE_REDIS_URL:redisUrl,FASTTOWIN_PRESENCE_NAMESPACE:name+'-presence'
-    })
+    }
+    launch(role,images.backend,backendEnvironments[role])
 }
 await sleep(12_000)
 let capability
@@ -199,6 +201,21 @@ if(capabilityOnly) {
     console.log(profile+' production capability verified')
     process.exit(0)
 }
+// Retain the stopped old container on the network so its address cannot be reused.
+// A remains the same running process, with its initially pinned old B address.
+const privateAddress=role=>JSON.parse(docker(['inspect','--format','{{json .NetworkSettings.Networks}}',containers[role]]))[name].IPAddress
+const previousBAddress=privateAddress('b')
+assert(previousBAddress,'Missing original worker address')
+docker(['stop','--time','2',containers.b])
+docker(['rename',containers.b,name+'-b-retired'])
+launch('b',images.backend,backendEnvironments.b)
+const replacementBAddress=privateAddress('b')
+assert(replacementBAddress && replacementBAddress!==previousBAddress,'Worker address was not replaced')
+put('worker-address-replacement.json',{addressChanged:true,previous:previousBAddress,replacement:replacementBAddress,
+    sameIngressContainer:containers.a,verification:'requires-subsequent-signed-golden-B-create'})
+// Allow the unchanged JRE positive DNS cache (normally 30s) and periodic private-peer refresh.
+// The earned preflight must still create/select a B-owned room through the original A process.
+await sleep(35_000)
 console.log(profile+' production capability passed; starting full workload')
 launch('runner',images.runner,runnerEnv,['--workload-production'])
 const end=Date.now()+1_050_000
@@ -217,7 +234,7 @@ if(docker(['inspect','--format','{{.State.ExitCode}}',containers.runner])!=='0')
 }
 assert.equal(docker(['inspect','--format','{{.State.ExitCode}}',containers.runner]),'0','Production runner failed')
 const kind=profile==='fault'?'fault':'load'
-for(const selectedKind of [kind,'latency']) {
+for(const selectedKind of [kind,'latency','topology-preflight']) {
     const bytes=readProductionReceipt(lines,selectedKind,profile,manifest,jar)
     fs.writeFileSync(path.join(directory,selectedKind+'.json'),bytes)
 }

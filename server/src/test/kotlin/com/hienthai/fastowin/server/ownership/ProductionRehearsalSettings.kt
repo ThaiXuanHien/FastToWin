@@ -141,6 +141,7 @@ internal class RehearsalStatusConfig(
     private val config: RoomOwnershipProductionPolicy,
     private val addresses: Map<String, String>
 ) {
+    val generation get() = identity.generation
     fun targetPair(accounts: List<java.util.UUID>, slot: Int, node: Int) = targetedRehearsalPair(accounts, slot, config, node)
 
     suspend fun process(node: Int): java.util.UUID {

@@ -97,7 +97,7 @@ internal fun emitRehearsalReceipt(
     jarSha256: String = REHEARSAL_JAR_SHA
 ): List<String> {
     require(manifest.matches(Regex("[0-9a-f]{64}")) && profile in setOf("two-backend","fault") &&
-        kind in setOf("load","fault","latency","failure") && jarSha256.matches(Regex("[0-9a-f]{64}")))
+        kind in setOf("load","fault","latency","failure","topology-preflight") && jarSha256.matches(Regex("[0-9a-f]{64}")))
     val bytes = buildJsonObject {
         put("schema",1); put("manifestSha256",manifest); put("jarSha256",jarSha256)
         put("kind",kind); put("profile",profile); put("payload",payload)

@@ -139,3 +139,20 @@ test('unambiguous escaped provider message and nested metadata preserve exact by
             .replace('"message":"FTW_','"mess\\u0061ge":"\\u0046TW_'))
     assert.deepEqual(readReceipt(lines,'load','two-backend',manifest),Buffer.from(JSON.stringify(load)))
 })
+
+const topologyPreflight = envelope('topology-preflight','fault',{
+    admissionGeneration:2, publicIngress:'a', privateWorker:'b', signedProcessesVerified:2,
+    publicSocketsByBackend:[4,0], goldenOwners:[0,1],
+    workerRoutes:['/game','/auth/login','/auth/register','/api/content-terms','/api/announcements',
+        '/admin','/admin/api/maintenance','/gifts','/status'].map(path=>({path,get:404,post:404}))
+})
+test('topology preflight accepts measured golden owners and rejects public worker or missing proof',()=>{
+    assert.equal(read(topologyPreflight).toString(),JSON.stringify(topologyPreflight))
+    for(const patch of [
+        {admissionGeneration:0},{publicIngress:'b'},{privateWorker:'a'},{signedProcessesVerified:1},
+        {publicSocketsByBackend:[3,1]},{publicSocketsByBackend:[0,0]},{goldenOwners:[0,0]},
+        {workerRoutes:topologyPreflight.payload.workerRoutes.slice(1)},
+        {workerRoutes:topologyPreflight.payload.workerRoutes.map((r,i)=>i===0?{...r,get:200}:r)},
+        {workerRoutes:topologyPreflight.payload.workerRoutes.map((r,i)=>i===0?{...r,rawToken:'secret'}:r)}
+    ]) assert.throws(()=>read({...topologyPreflight,payload:{...topologyPreflight.payload,...patch}}))
+})
