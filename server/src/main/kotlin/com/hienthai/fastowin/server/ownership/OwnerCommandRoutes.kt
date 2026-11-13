@@ -131,7 +131,7 @@ internal class OwnerPeerTransport(
     peerUri: URI,
     secret: ByteArray,
     private val clock: Clock = Clock.systemUTC()
-) {
+) : AutoCloseable {
     init {
         require(instanceId != peerId) { "Room ownership peer must be a different instance" }
         require(secret.size >= 32) { "Room ownership peer secret must be at least 32 bytes" }
@@ -159,6 +159,12 @@ internal class OwnerPeerTransport(
         .retryOnConnectionFailure(false)
         .callTimeout(PEER_TIMEOUT_MILLIS, TimeUnit.MILLISECONDS)
         .build()
+
+    override fun close() {
+        client.dispatcher.executorService.shutdownNow()
+        client.connectionPool.evictAll()
+        client.cache?.close()
+    }
 
     suspend fun forwardControl(request: OwnedControlRequest): OwnedControlResponse? = withTimeoutOrNull(CONTROL_TIMEOUT_MILLIS) {
         if (!request.valid()) return@withTimeoutOrNull null

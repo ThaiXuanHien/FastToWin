@@ -63,7 +63,7 @@ internal class RoomOwnershipPilot private constructor(
 
     private val clusterControl by lazy {
         OwnedClusterControl(config, instanceId, checkNotNull(admissionAuthority), checkNotNull(admissionBinding),
-            rooms, transport, candidateIdentity, engine::closeWaitingForDrain, ::beginDrain, { drained }, ::isAccepting)
+            rooms, transport, candidateIdentity, engine::closeWaitingForDrain, { admission.beginDrain(); Unit }, ::beginDrain, { drained }, ::isAccepting)
     }
 
     fun allows(account: AuthenticatedAccount): Boolean = account.emailVerified && account.userId in config.allowedAccounts
@@ -417,6 +417,7 @@ internal class RoomOwnershipPilot private constructor(
             val instanceId = UUID.randomUUID()
             val metrics = RoomOwnershipMetrics()
             val binding = if (config.fixtureId == null) OwnedAdmissionBinding.from(config) else null
+            val processCandidate = if (binding != null) candidateIdentity() else null
             val authority = binding?.let { PostgresOwnedAdmissionRepository(dataSource) }
             val repository = PostgresRoomOwnershipRepository(dataSource, metrics, binding)
             config.fixtureId?.let { fixtureId ->
@@ -432,7 +433,7 @@ internal class RoomOwnershipPilot private constructor(
             return RoomOwnershipPilot(
                 config, instanceId, repository, engine, settlementWakeups,
                 OwnerPeerTransport(config.nodeId, config.peerId, config.peerUri, config.peerSecret),
-                newIntentAllowed, authority, binding, metrics, dataSource as? HikariDataSource, candidateIdentity, wakeups ?: postgresRoomEventWakeups(dataSource)
+                newIntentAllowed, authority, binding, metrics, dataSource as? HikariDataSource, { checkNotNull(processCandidate) }, wakeups ?: postgresRoomEventWakeups(dataSource)
             )
         }
 

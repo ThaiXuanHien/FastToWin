@@ -124,7 +124,7 @@ internal class OwnedAdmissionTestFixture(val source: HikariDataSource, private v
     suspend fun activate(): OwnedAdmissionPolicy = authority.bootstrap(assertNotNull(authority.observe()).generation, binding)
 
     suspend fun pilot(selectedConfig: RoomOwnershipRuntimeConfig = config) = RoomOwnershipPilot.open(
-        selectedConfig, source, { players[it] }, wakeups = emptyFlow()
+        selectedConfig, source, { players[it] }, wakeups = emptyFlow(), candidateIdentity = { OwnedCandidateIdentity("a".repeat(64), "b".repeat(64), "c".repeat(64)) }
     )
 
     fun snapshot() = StoredActiveRoom(

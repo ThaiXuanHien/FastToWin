@@ -47,6 +47,7 @@ dependencies {
 }
 
 tasks.test {
+    dependsOn(tasks.named("installDist"))
     useJUnitPlatform()
 }
 

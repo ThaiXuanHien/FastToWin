@@ -12,9 +12,10 @@ import java.util.UUID
 
 /** Owned recovery/economy storage, without public repositories or legacy startup maintenance. */
 internal class OwnedWorkerDatabaseRuntime private constructor(private val source: HikariDataSource) : AutoCloseable {
-    internal suspend fun openRoomOwnershipPilot(config: RoomOwnershipRuntimeConfig): RoomOwnershipPilot {
+    internal suspend fun openRoomOwnershipPilot(config: RoomOwnershipRuntimeConfig,
+        candidateIdentity: () -> OwnedCandidateIdentity = OwnedCandidateIdentity::running): RoomOwnershipPilot {
         require(config.fixtureId == null) { "An owned worker requires production room ownership" }
-        return RoomOwnershipPilot.open(config, source, ::accountPlayer, PostgresRewardEventRepository(source))
+        return RoomOwnershipPilot.open(config, source, ::accountPlayer, PostgresRewardEventRepository(source), candidateIdentity = candidateIdentity)
     }
 
     private suspend fun accountPlayer(id: UUID): StoredActivePlayer? = withContext(Dispatchers.IO) {

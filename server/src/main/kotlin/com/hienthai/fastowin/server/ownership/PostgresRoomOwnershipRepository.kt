@@ -554,6 +554,7 @@ internal class PostgresRoomOwnershipRepository(
                 DELETE FROM room_ownership_pilot_rooms WHERE room_id IN (
                     SELECT room_id FROM room_ownership_pilot_rooms
                     WHERE closed_at <= statement_timestamp() - interval '2 minutes'
+                        AND (snapshot->'pendingCompletedMatch' IS NULL OR snapshot->'pendingCompletedMatch' = 'null'::jsonb)
                     ORDER BY closed_at, room_id LIMIT ? FOR UPDATE SKIP LOCKED
                 )
                 """,

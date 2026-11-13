@@ -12,12 +12,13 @@ internal data class OwnedAwaitReceipt(val operationId: String, val outcome: Stri
 /** Client-side bounded progress. A timeout is ambiguous and must be reconciled through new status. */
 internal suspend fun awaitClusterDrain(operationId: UUID, generation: Long, timeoutMillis: Long,
     coordinator: UUID, identity: OwnedCandidateIdentity, binding: OwnedAdmissionBinding, pollMillis: Long = 500,
-    send: suspend (OwnedControlRequest) -> OwnedControlResponse?): OwnedAwaitReceipt {
+    onStatus: (OwnedControlResponse) -> Unit = {}, send: suspend (OwnedControlRequest) -> OwnedControlResponse?): OwnedAwaitReceipt {
     require(generation > 0 && timeoutMillis in 1..3_600_000 && pollMillis > 0)
     var currentGeneration = generation
     var lastStatus: OwnedControlResponse? = null
     var lastFingerprint: Triple<String, Long, UUID>? = null
     var stepId = UUID.randomUUID()
+    var coordinatorProcess: UUID? = null
     fun receipt(outcome: String, completion: OwnedControlResponse? = null) =
         OwnedAwaitReceipt(operationId.toString(), outcome, lastStatus, completion)
     return withTimeoutOrNull(timeoutMillis) {
@@ -28,18 +29,17 @@ internal suspend fun awaitClusterDrain(operationId: UUID, generation: Long, time
             val policy = status.policy ?: return@withTimeoutOrNull receipt("unavailable")
             if (policy.topologySha256 != binding.topologySha256 || policy.policySha256 != binding.policySha256)
                 return@withTimeoutOrNull receipt("unavailable")
-            if (status.outcome == "stale") {
-                currentGeneration = policy.generation
-                delay(pollMillis)
-                continue
-            }
+            if (status.outcome == "stale") return@withTimeoutOrNull receipt("conflict")
             val process = status.processId?.let(::parsePilotUuid)
             if (status.outcome != "ok" || status.nodeId != coordinator.toString() || process == null ||
                 status.candidateSha256 != identity.candidateSha256 || status.topologySha256 != binding.topologySha256 ||
                 status.generation != policy.generation || status.openRooms == null || status.pendingSettlements == null ||
                 status.liveLeases == null || status.openRooms < 0 || status.pendingSettlements < 0 || status.liveLeases < 0)
                 return@withTimeoutOrNull receipt("unavailable")
+            if (coordinatorProcess != null && coordinatorProcess != process) return@withTimeoutOrNull receipt("conflict")
+            coordinatorProcess = process
             lastStatus = status
+            onStatus(status)
             currentGeneration = policy.generation
             val operation = if (policy.state == OwnedAdmissionState.ACTIVE) "stop_new" else "step"
             val fingerprint = Triple(operation, currentGeneration, process)
@@ -53,7 +53,19 @@ internal suspend fun awaitClusterDrain(operationId: UUID, generation: Long, time
                         return@withTimeoutOrNull receipt("unavailable")
                     return@withTimeoutOrNull receipt("completed", response)
                 }
-                "ok", "pending", "stale" -> { currentGeneration = response.policy?.generation ?: currentGeneration; delay(pollMillis) }
+                "stale", "mismatch" -> return@withTimeoutOrNull receipt("conflict")
+                "ok", "pending" -> {
+                    val next = response.policy ?: return@withTimeoutOrNull receipt("unavailable")
+                    val same = next == policy
+                    val ownStop = operation == "stop_new" && response.outcome == "ok" &&
+                        policy.state == OwnedAdmissionState.ACTIVE && next.state == OwnedAdmissionState.STOP_NEW && next.generation > policy.generation
+                    val ownQuiesce = operation == "step" && response.outcome == "pending" &&
+                        policy.state == OwnedAdmissionState.STOP_NEW && next.state == OwnedAdmissionState.QUIESCING && next.generation > policy.generation
+                    if (next.topologySha256 != binding.topologySha256 || next.policySha256 != binding.policySha256 ||
+                        !(same || ownStop || ownQuiesce)) return@withTimeoutOrNull receipt("conflict")
+                    currentGeneration = next.generation
+                    delay(pollMillis)
+                }
                 else -> return@withTimeoutOrNull receipt("unavailable")
             }
         }

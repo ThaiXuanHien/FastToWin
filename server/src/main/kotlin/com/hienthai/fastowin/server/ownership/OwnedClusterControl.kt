@@ -18,6 +18,7 @@ internal class OwnedClusterControl(
     private val transport: OwnerPeerTransport,
     private val identity: () -> OwnedCandidateIdentity,
     private val closeWaiting: suspend (Long) -> Unit,
+    private val closeGate: () -> Unit,
     private val beginDrain: suspend () -> Boolean,
     private val isDrained: () -> Boolean,
     private val isAccepting: () -> Boolean
@@ -33,11 +34,26 @@ internal class OwnedClusterControl(
         try {
             val candidate = identity()
             if (request.candidateSha256 != candidate.candidateSha256 || request.topologySha256 != binding.topologySha256 ||
+                (request.operation != "status" && request.expectedProcessId != process.toString()) ||
                 (request.expectedProcessId != null && request.expectedProcessId != process.toString())) return@withLock reply("mismatch")
             val policy = authority.observe() ?: return@withLock reply("unavailable")
             if (policy.topologySha256 != binding.topologySha256 || policy.policySha256 != binding.policySha256)
                 return@withLock reply("mismatch", policy)
             if (request.operation in setOf("stop_new", "step", "resume")) {
+                // Retain the current generation plus successful transition replay into it.
+                fingerprints.entries.removeIf { (_, recorded) ->
+                    recorded.generation != policy.generation && cache[recorded]?.policy != policy
+                }
+                cache.entries.removeIf { (recorded, response) ->
+                    recorded.generation != policy.generation && response.policy != policy
+                }
+                if (request.generation != policy.generation && cache[request]?.policy != policy)
+                    return@withLock reply("stale", policy)
+                if (cache[request]?.policy != policy &&
+                    ((request.operation == "step" && policy.state == OwnedAdmissionState.ACTIVE) ||
+                     (request.operation == "resume" && policy.state == OwnedAdmissionState.ACTIVE) ||
+                     (request.operation == "stop_new" && policy.state !in setOf(OwnedAdmissionState.ACTIVE, OwnedAdmissionState.STOP_NEW))))
+                    return@withLock reply("stale", policy)
                 val key = request.operationId to request.operation
                 val prior = fingerprints[key]
                 if (prior != null && prior != request) return@withLock reply("mismatch", policy)
@@ -62,6 +78,7 @@ internal class OwnedClusterControl(
                 "quiesce" -> {
                     if (policy.generation != request.generation || policy.state !in setOf(OwnedAdmissionState.QUIESCING, OwnedAdmissionState.DISABLED) ||
                         request.expectedProcessId != process.toString()) return@withLock reply("stale", policy)
+                    authority.fenceQuiesce(policy, binding, closeGate)
                     if (!beginDrain()) return@withLock reply("pending", policy)
                     quiescedGeneration = request.generation
                     status(request, candidate, authority.observe() ?: return@withLock reply("unavailable"))
@@ -76,18 +93,18 @@ internal class OwnedClusterControl(
                     if (!ingress) return@withLock reply("forbidden", policy)
                     if (policy.generation != request.generation || policy.state !in setOf(OwnedAdmissionState.STOP_NEW,
                             OwnedAdmissionState.QUIESCING, OwnedAdmissionState.DISABLED)) return@withLock reply("stale", policy)
+                    val prepared = if (policy.state == OwnedAdmissionState.STOP_NEW) policy else authority.prepareResume(policy, binding)
                     suspend fun peerStatus(): OwnedControlResponse? = transport.forwardControl(OwnedControlRequest(
-                        request.operationId, "status", policy.generation, candidateSha256 = candidate.candidateSha256,
+                        request.operationId, "status", prepared.generation, candidateSha256 = candidate.candidateSha256,
                         topologySha256 = binding.topologySha256))
                     val first = peerStatus()
-                    val firstAck = first?.ack(config.peerId, policy.generation, candidate.candidateSha256, binding.topologySha256)
-                    if (!isAccepting() || firstAck == null || first.accepting != true) return@withLock reply("pending", policy)
+                    val firstAck = first?.ack(config.peerId, prepared.generation, candidate.candidateSha256, binding.topologySha256)
+                    if (!isAccepting() || firstAck == null || first.accepting != true) return@withLock reply("pending", prepared)
                     val second = peerStatus()
-                    val secondAck = second?.ack(config.peerId, policy.generation, candidate.candidateSha256, binding.topologySha256)
+                    val secondAck = second?.ack(config.peerId, prepared.generation, candidate.candidateSha256, binding.topologySha256)
                     if (!isAccepting() || secondAck?.processId != firstAck.processId || second?.accepting != true)
-                        return@withLock reply("pending", policy)
-                    val resumed = if (policy.state == OwnedAdmissionState.STOP_NEW) authority.resume(request.generation, binding)
-                        else authority.resumeDrained(policy, binding)
+                        return@withLock reply("pending", prepared)
+                    val resumed = authority.resume(prepared.generation, binding)
                     reply("ok", resumed).also { cache[request] = it }
                 }
                 "step" -> {
@@ -154,7 +171,9 @@ internal class OwnedClusterControl(
         override suspend fun closeWaiting(generation: Long): Boolean { closeWaiting.invoke(generation); return true }
         override suspend fun quiesce(generation: Long): OwnedNodeDrainAck? {
             val policy = authority.observe() ?: return null
-            if (policy.generation != generation || policy.state !in setOf(OwnedAdmissionState.QUIESCING, OwnedAdmissionState.DISABLED) || !beginDrain()) return null
+            if (policy.generation != generation || policy.state !in setOf(OwnedAdmissionState.QUIESCING, OwnedAdmissionState.DISABLED)) return null
+            authority.fenceQuiesce(policy, binding, closeGate)
+            if (!beginDrain()) return null
             quiescedGeneration = generation
             return status(generation)
         }

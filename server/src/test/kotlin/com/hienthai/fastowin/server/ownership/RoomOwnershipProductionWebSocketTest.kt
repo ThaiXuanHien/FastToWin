@@ -645,8 +645,13 @@ class RoomOwnershipProductionWebSocketTest {
                                 block(Fixture(client, aPort, sessions.map { it.accessToken }, ids,
                                     PostgresRoomOwnershipRepository(a), a, bId, engine, pa, clan.id, ::stopWorker, maintenanceRuntime,
                                     { request -> OwnerPeerTransport(ca.nodeId, ca.peerId, ca.peerUri, ca.peerSecret).forward(request) },
-                                    { operation, generation -> OwnerPeerTransport(cb.nodeId, cb.peerId, cb.peerUri, cb.peerSecret).forwardControl(
-                                        OwnedControlRequest(UUID.randomUUID().toString(), operation, generation, candidateSha256 = testIdentity.candidateSha256, topologySha256 = OwnedAdmissionBinding.from(ca).topologySha256)) }))
+                                    { operation, generation ->
+                                        val transport = OwnerPeerTransport(cb.nodeId, cb.peerId, cb.peerUri, cb.peerSecret)
+                                        val topology = OwnedAdmissionBinding.from(ca).topologySha256
+                                        val status = transport.forwardControl(OwnedControlRequest(UUID.randomUUID().toString(), "status", generation,
+                                            candidateSha256 = testIdentity.candidateSha256, topologySha256 = topology))
+                                        transport.forwardControl(OwnedControlRequest(UUID.randomUUID().toString(), operation, generation,
+                                            expectedProcessId = assertNotNull(status?.processId), candidateSha256 = testIdentity.candidateSha256, topologySha256 = topology)) }))
                             }
                         } finally { stopWorker(); sa.stop(0, 2000) }
                     } }

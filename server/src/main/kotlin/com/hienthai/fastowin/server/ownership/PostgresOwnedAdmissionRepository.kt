@@ -69,20 +69,29 @@ internal class PostgresOwnedAdmissionRepository(private val source: DataSource) 
         if (!empty) throw OwnedAdmissionRejected("Owned drain still has durable work")
         replace(this, next, binding)
     }
-    /** Explicit recovery only: retain the phase lock while checking zero and allocating ACTIVE. */
-    suspend fun resumeDrained(expected: OwnedAdmissionPolicy, binding: OwnedAdmissionBinding): OwnedAdmissionPolicy = transaction {
+    /** Hold the exact policy SHARE fence only through the synchronous gate close. */
+    suspend fun fenceQuiesce(expected: OwnedAdmissionPolicy, binding: OwnedAdmissionBinding, closeGate: () -> Unit) = transaction {
+        val actual = lock(this, update = false)
+        if (actual != expected || actual.state !in setOf(OwnedAdmissionState.QUIESCING, OwnedAdmissionState.DISABLED) ||
+            actual.topologySha256 != binding.topologySha256 || actual.policySha256 != binding.policySha256
+        ) throw OwnedAdmissionRejected("Quiesce policy changed")
+        closeGate()
+    }
+
+    /** Explicit recovery prepares a fresh non-admitting generation before gate inspection. */
+    suspend fun prepareResume(expected: OwnedAdmissionPolicy, binding: OwnedAdmissionBinding): OwnedAdmissionPolicy = transaction {
         val actual = lock(this, update = true)
         if (actual != expected || actual.state !in setOf(OwnedAdmissionState.QUIESCING, OwnedAdmissionState.DISABLED) ||
             actual.topologySha256 != binding.topologySha256 || actual.policySha256 != binding.policySha256
-        ) throw OwnedAdmissionRejected("Drain recovery authority changed")
+        ) throw OwnedAdmissionRejected("Resume preparation policy changed")
         val empty = createStatement().use { statement ->
             statement.executeQuery("""
                 SELECT NOT EXISTS (SELECT 1 FROM room_ownership_pilot_rooms WHERE closed_at IS NULL OR
                     (snapshot->'pendingCompletedMatch' IS NOT NULL AND snapshot->'pendingCompletedMatch' <> 'null'::jsonb))
             """.trimIndent()).use { rows -> check(rows.next()); rows.getBoolean(1) }
         }
-        if (!empty) throw OwnedAdmissionRejected("Drain recovery still has durable work")
-        replace(this, OwnedAdmissionState.ACTIVE, binding)
+        if (!empty) throw OwnedAdmissionRejected("Resume preparation still has durable work")
+        replace(this, OwnedAdmissionState.STOP_NEW, binding)
     }
 
     /** Revalidate an already disabled authority and global work in one locked transaction. */

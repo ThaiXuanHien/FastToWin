@@ -63,6 +63,6 @@ internal class OwnedWorkerTestFixture(val source: HikariDataSource, val players:
         authority.stopNew(requireNotNull(authority.observe()).generation)
     }
     suspend fun pilot(newIntentAllowed: () -> Boolean = { true }) = RoomOwnershipPilot.open(
-        config, source, { players[it] }, wakeups = emptyFlow(), newIntentAllowed = newIntentAllowed
+        config, source, { players[it] }, wakeups = emptyFlow(), newIntentAllowed = newIntentAllowed, candidateIdentity = { OwnedCandidateIdentity("a".repeat(64), "b".repeat(64), "c".repeat(64)) }
     )
 }

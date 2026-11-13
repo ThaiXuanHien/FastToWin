@@ -148,7 +148,7 @@ class OwnedWorkerNettyTest {
         block: suspend (RoomOwnershipPilot, URI) -> Unit
     ) {
         OwnedWorkerDatabaseRuntime.open(fixture.databaseSettings).use { database ->
-            val worker = database.openRoomOwnershipPilot(fixture.config)
+            val worker = database.openRoomOwnershipPilot(fixture.config, candidateIdentity = { OwnedCandidateIdentity("a".repeat(64), "b".repeat(64), "c".repeat(64)) })
             val server = embeddedServer(Netty, host = "127.0.0.1", port = 0) { ownedWorkerModule(worker) }.start()
             try {
                 val port = server.engine.resolvedConnectors().first().port

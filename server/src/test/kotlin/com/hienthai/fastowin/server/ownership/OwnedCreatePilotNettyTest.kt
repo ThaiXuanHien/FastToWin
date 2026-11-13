@@ -45,7 +45,7 @@ class OwnedCreatePilotNettyTest {
             val policy = f.authority.bootstrap(assertNotNull(f.authority.observe()).generation, OwnedAdmissionBinding.from(configA))
             val settings = DatabaseSettings("${f.source.jdbcUrl}?currentSchema=${f.source.schema}", f.source.username, f.source.password, 5)
             OwnedWorkerDatabaseRuntime.open(settings).use { database ->
-                val worker = database.openRoomOwnershipPilot(configB)
+                val worker = database.openRoomOwnershipPilot(configB, candidateIdentity = { OwnedCandidateIdentity("a".repeat(64), "b".repeat(64), "c".repeat(64)) })
                 val workerServer = embeddedServer(Netty, host = "127.0.0.1", port = 0) { ownedWorkerModule(worker) }.start()
                 try {
                     val workerUri = URI("http://127.0.0.1:${workerServer.engine.resolvedConnectors().single().port}")
@@ -77,7 +77,7 @@ class OwnedCreatePilotNettyTest {
                         val routedA = object : RoomOwnershipRuntimeConfig by configA { override val peerUri = proxyUri }
                         val allowNew = AtomicBoolean(true)
                         val ingress = RoomOwnershipPilot.open(routedA, f.source, { players[it] }, wakeups = emptyFlow(),
-                            newIntentAllowed = allowNew::get)
+                            newIntentAllowed = allowNew::get, candidateIdentity = { OwnedCandidateIdentity("a".repeat(64), "b".repeat(64), "c".repeat(64)) })
                         val ingressServer = embeddedServer(Netty, host = "127.0.0.1", port = 0) {
                             routing { ingress.installRoutes(this) }
                         }.start()

@@ -19,7 +19,7 @@ class OwnedWorkerModuleTest {
                 statement.execute("ALTER TABLE user_missions RENAME TO forbidden_legacy_mission_source")
             } }
             OwnedWorkerDatabaseRuntime.open(f.databaseSettings).use { database ->
-                val runtime = database.openRoomOwnershipPilot(f.config)
+                val runtime = database.openRoomOwnershipPilot(f.config, candidateIdentity = { OwnedCandidateIdentity("a".repeat(64), "b".repeat(64), "c".repeat(64)) })
                 assertTrue(runtime.isProductionMode)
                 assertTrue(runtime.beginDrain())
             }

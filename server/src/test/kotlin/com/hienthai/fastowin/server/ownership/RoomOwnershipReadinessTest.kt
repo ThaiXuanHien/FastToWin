@@ -357,7 +357,7 @@ class RoomOwnershipReadinessTest {
             dataSource: DataSource = source,
             config: RoomOwnershipRuntimeConfig = config(),
             lookup: suspend (UUID) -> StoredActivePlayer? = { players[it] }
-        ) = RoomOwnershipPilot.open(config, dataSource, lookup, wakeups = emptyFlow())
+        ) = RoomOwnershipPilot.open(config, dataSource, lookup, wakeups = emptyFlow(), candidateIdentity = { OwnedCandidateIdentity("a".repeat(64), "b".repeat(64), "c".repeat(64)) })
     }
 
     private class SwitchableDataSource(private val source: DataSource) : DataSource by source {
