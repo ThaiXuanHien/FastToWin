@@ -34,7 +34,22 @@ private data class DrainProof(
     val liveLeases: Int
 )
 
+internal class DrainAcceptanceFailure(val checkpoint: String, cause: Exception) :
+    IllegalStateException("Drain fixture failed", cause)
+
 internal suspend fun productionDrainAcceptance(fixture: RoomAcceptanceFixture): JsonObject {
+    var checkpoint = "prepare"
+    try {
+        return runProductionDrainAcceptance(fixture) { checkpoint = it }
+    } catch (failure: Exception) {
+        throw DrainAcceptanceFailure(checkpoint, failure)
+    }
+}
+
+private suspend fun runProductionDrainAcceptance(
+    fixture: RoomAcceptanceFixture,
+    checkpoint: (String) -> Unit
+): JsonObject {
     val control = requireNotNull(fixture.settings.topologyStatus)
     val identity = control.candidate()
     val authority = PostgresOwnedAdmissionRepository(fixture.source)
@@ -44,11 +59,16 @@ internal suspend fun productionDrainAcceptance(fixture: RoomAcceptanceFixture): 
     val accounts = fixture.accounts()
     val playing = fixture.createMatch(5, targetOwner = 1)
     val waiting = fixture.createWaitingMatch(6, targetOwner = 1)
-    val idleAccount = accounts[control.targetPair(fixture.settings.accountIds, 8, 1).first()]
+    val idleIndex = control.targetPair(fixture.settings.accountIds, 15, 1).first()
+    val joinHostIndex = control.targetPair(fixture.settings.accountIds, 14, 1).first()
+    val legacyIndex = 16
+    val legacyGuestIndex = 17
+    check(setOf(idleIndex, joinHostIndex, legacyIndex, legacyGuestIndex).size == 4)
+    val idleAccount = accounts[idleIndex]
     val idle = fixture.connect(idleAccount, 0)
-    val joinHost = fixture.connect(accounts[control.targetPair(fixture.settings.accountIds, 14, 1).first()], 0)
-    val legacy = fixture.connect(accounts[16], 0)
-    val legacyGuest = fixture.connect(accounts[17], 0)
+    val joinHost = fixture.connect(accounts[joinHostIndex], 0)
+    val legacy = fixture.connect(accounts[legacyIndex], 0)
+    val legacyGuest = fixture.connect(accounts[legacyGuestIndex], 0)
     try {
         legacy.send(ClientMessage.CreateRoom("Legacy drain check", "", ProtocolGameMode.ORDER))
         val legacyRoom = (legacy.await { it is ServerMessage.RoomCreated } as ServerMessage.RoomCreated).game.roomId
@@ -96,14 +116,21 @@ internal suspend fun productionDrainAcceptance(fixture: RoomAcceptanceFixture): 
             racingAccount.userId, control.nodeId(1), active,
             ClientMessage.CreateRoom("Admission before stop", "DrainFixture123!", ProtocolGameMode.ORDER))
         val concurrentSelection = UUID.randomUUID().toString()
+        checkpoint("stop-request")
+        val activeIngress = control.observed(0, active)
+        val stopRequest = OwnedControlRequest(UUID.randomUUID().toString(), "stop_new", active.generation,
+            activeIngress.processId, identity.candidateSha256, control.binding.topologySha256)
         val stoppedReply = try {
             coroutineScope {
                 withLaneWriteHeld(fixture, racingRoom, racingPlayer, create = true, commit = true,
                     observe = { gate, _ ->
+                        checkpoint("held-create")
                         val worker = fixture.blockedLaneBackend(gate.pid(), "INSERT INTO room_ownership_pilot_rooms")
-                        val stop = async { control.mutate("stop_new", active) }
+                        val stop = async { requireNotNull(control.send(0, stopRequest)) }
+                        checkpoint("held-policy")
                         fixture.blockedLaneBackend(worker, "FROM owned_admission_policy WHERE singleton FOR UPDATE")
                         check(!stop.isCompleted)
+                        checkpoint("overlapping-play")
                         val play = async(start = kotlinx.coroutines.CoroutineStart.UNDISPATCHED) { playing.select(playing.nextNumber, concurrentSelection) }
                         gate.rollback()
                         stop.await().also { play.await() }
@@ -113,6 +140,7 @@ internal suspend fun productionDrainAcceptance(fixture: RoomAcceptanceFixture): 
         } finally {
             racingSocket.closeGracefully()
         }
+        checkpoint("stop-committed")
         val stopped = requireNotNull(stoppedReply.policy)
         check(stoppedReply.outcome == "ok" && stopped.state == OwnedAdmissionState.STOP_NEW &&
             stopped.generation > active.generation && stopped == authority.observe())
@@ -128,10 +156,12 @@ internal suspend fun productionDrainAcceptance(fixture: RoomAcceptanceFixture): 
             fixture.number("SELECT count(*) FROM room_ownership_pilot_events WHERE room_id IN ($affectedRooms)"),
             fixture.number("SELECT count(*) FROM play_quota_match_consumptions WHERE match_id IN ($affectedMatches)")
         )
+        checkpoint("late-create")
         val beforeLate = admissionCounts()
         control.workerPeer().use { peer ->
             check(peer.forwardCreate(lateCreate) == OwnedCreateResult.AttemptRejected("OWNED_ADMISSION_STOPPED"))
-            for (request in listOf(lateJoin, lateStart)) {
+            for ((phase, request) in listOf("late-join" to lateJoin, "late-start" to lateStart)) {
+                checkpoint(phase)
                 val result = peer.forward(request)
                 val reason = when (result) {
                     is OwnedRoomReply.Rejected -> result.publicMessage.code
@@ -141,20 +171,26 @@ internal suspend fun productionDrainAcceptance(fixture: RoomAcceptanceFixture): 
                 check(reason == "OWNED_ADMISSION_STOPPED" || reason == "MAINTENANCE")
             }
         }
+        checkpoint("late-state")
         check(admissionCounts() == beforeLate)
         check(rooms.read(lateCreate.roomId) == null)
         check(fixture.snapshot(joinRoom).revision == joinState.revision)
         check(fixture.snapshot(waiting.roomId).revision == waitingState.revision)
+        checkpoint("stopped-ingress")
         val initialA = control.observed(0, stopped)
+        checkpoint("stopped-worker")
         val initialB = control.observed(1, stopped)
+        checkpoint("stopped-gates")
         check(initialA.accepting == true && initialB.accepting == true)
+        checkpoint("stopped-public-create")
         idle.send(ClientMessage.CreateRoom("Refused during drain", "DrainFixture123!", ProtocolGameMode.ORDER))
         try {
             idle.await { it is ServerMessage.RoomCreated }
             error("STOP_NEW accepted an owned room")
         } catch (failure: AcceptanceRejected) {
-            check(failure.code == "MAINTENANCE")
+            if (failure.code != "MAINTENANCE") throw failure
         }
+        checkpoint("stopped-play")
         val request = UUID.randomUUID().toString()
         playing.select(playing.nextNumber, request)
         check(fixture.snapshot(playing.roomId).snapshot.selectionEvents.count { it.requestId == request } == 1)
@@ -163,6 +199,7 @@ internal suspend fun productionDrainAcceptance(fixture: RoomAcceptanceFixture): 
             val step = control.mutate("step", stopped)
             check(step.outcome == "pending" && step.policy == stopped && step.proof == null && authority.observe() == stopped)
         }
+        checkpoint("waiting-closure")
         pendingStep()
         withTimeout(15_000) {
             while (rooms.read(UUID.fromString(waiting.roomId))?.closed != true ||
@@ -170,6 +207,7 @@ internal suspend fun productionDrainAcceptance(fixture: RoomAcceptanceFixture): 
         }
         checkLegacy()
 
+        checkpoint("held-settlement")
         val roomId = UUID.fromString(playing.roomId)
         val matchId = UUID.fromString(playing.matchId)
         fixture.sql("""
@@ -193,6 +231,7 @@ internal suspend fun productionDrainAcceptance(fixture: RoomAcceptanceFixture): 
             check(pendingOpen.remainingOpenRooms == 1 && pendingOpen.pendingSettlements == 1)
             pendingStep()
 
+            checkpoint("closed-settlement")
             withClosedPendingRoom(fixture, roomId) {
                 check(rooms.durableSnapshot() == zero(open = 0, pending = 1, leases = 0))
                 pendingStep()
@@ -207,11 +246,13 @@ internal suspend fun productionDrainAcceptance(fixture: RoomAcceptanceFixture): 
                 fixture.sql("DROP FUNCTION hold_topology_settlement()")
             }
         }
+        checkpoint("settlement-released")
         withTimeout(20_000) {
             while (rooms.durableSnapshot() != zero(open = 0, pending = 0, leases = 0)) delay(50)
         }
         check(fixture.number("SELECT count(*) FROM room_ownership_pilot_settlements WHERE match_id='$matchId'") == 1L)
 
+        checkpoint("worker-unavailable")
         fixture.faults.backend(1, BackendAction.KILL)
         try {
             val unavailable = control.mutate("step", stopped)
@@ -228,6 +269,7 @@ internal suspend fun productionDrainAcceptance(fixture: RoomAcceptanceFixture): 
         check(fixture.client.get(fixture.settings.urls[1] + "/ready").status == HttpStatusCode.ServiceUnavailable)
         checkLegacy()
 
+        checkpoint("final-proof")
         val completed = awaitClusterDrain(UUID.randomUUID(), stopped.generation, 25_000,
             control.nodeId(0), identity, control.binding) { control.send(0, it) }
         check(completed.outcome == "completed")

@@ -68,6 +68,14 @@ internal fun rehearsalFailureDiagnostic(failure: Throwable): String {
                         "ready_host", "start_match", "select", "economy", "close", "membership-release").map { "golden-$node-$it" } }
                     put("phase", cause.phase.takeIf(phases::contains) ?: "unknown")
                 }
+                if (cause is DrainAcceptanceFailure) {
+                    val phases = setOf("prepare", "stop-request", "held-create", "held-policy", "overlapping-play",
+                        "stop-committed", "late-create", "late-join", "late-start", "late-state", "stopped-ingress",
+                        "stopped-worker", "stopped-gates", "stopped-public-create", "stopped-play",
+                        "waiting-closure", "held-settlement", "closed-settlement", "settlement-released",
+                        "worker-unavailable", "final-proof")
+                    put("phase", cause.checkpoint.takeIf(phases::contains) ?: "unknown")
+                }
                 if (cause is ObservedSocketClose) {
                     put("backend", cause.backend)
                     put("code", cause.code)

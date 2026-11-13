@@ -45,5 +45,9 @@ class RoomFaultObservationTest {
         val unknown = rehearsalFailureDiagnostic(ObservedSocketClose(0, 1000, "private account detail"))
         assertFalse(unknown.contains("private"))
         assertTrue(unknown.contains("other"))
+        val drain = rehearsalFailureDiagnostic(DrainAcceptanceFailure("held-policy",
+            IllegalStateException("private query details")))
+        assertTrue(drain.contains("held-policy"))
+        assertFalse(drain.contains("private"))
     }
 }
