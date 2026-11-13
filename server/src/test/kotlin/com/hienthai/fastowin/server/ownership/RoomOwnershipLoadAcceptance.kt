@@ -391,7 +391,10 @@ private suspend fun stopSlotOwner(fixture: RoomAcceptanceFixture, slots: List<Lo
             slot.mutex.lock()
             locked.add(slot)
         }
-        val owner = checkNotNull(selected.match).ownerBackend
+        val owner = if (fixture.settings.soleIngress) {
+            check(locked.any { it.match?.ownerBackend == 1 }) { "No B-owned room available for owner outage" }
+            1
+        } else checkNotNull(selected.match).ownerBackend
         val iterator = locked.iterator()
         while (iterator.hasNext()) {
             val slot = iterator.next()

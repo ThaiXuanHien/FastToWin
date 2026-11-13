@@ -122,6 +122,57 @@ class ProductionRehearsalSettingsTest {
         assertFalse(fixture.productionLike)
     }
 
+    @Test
+    fun `sole ingress requires committed identity and routes every public socket to A`() {
+        val config = values() + mapOf(
+            "FTW_REHEARSAL_TOPOLOGY" to "sole-ingress",
+            "FTW_REHEARSAL_ADMISSION_GENERATION" to "2",
+            "FTW_REHEARSAL_CANDIDATE_SHA256" to "1".repeat(64)
+        )
+        val settings = ProductionRehearsalSettings.parse(config, now)
+        val acceptance = settings.acceptance(settings.endpoints(::resolve))
+        assertEquals(listOf(0), acceptance.publicIngressNodes(1))
+        assertEquals(2L, settings.topologyIdentity?.generation)
+        for (key in listOf("FTW_REHEARSAL_ADMISSION_GENERATION", "FTW_REHEARSAL_CANDIDATE_SHA256")) {
+            assertFailsWith<IllegalArgumentException> { ProductionRehearsalSettings.parse(config - key, now) }
+        }
+        assertFailsWith<IllegalArgumentException> {
+            ProductionRehearsalSettings.parse(config + ("FTW_REHEARSAL_ADMISSION_GENERATION" to "0"), now)
+        }
+    }
+    @Test
+    fun `owner process identity requires matching signed status and durable owner`() {
+        val identity = RehearsalTopologyIdentity(2, "1".repeat(64))
+        val binding = OwnedAdmissionBinding("2".repeat(64), "3".repeat(64))
+        val process = UUID.randomUUID()
+        val request = OwnedControlRequest(UUID.randomUUID().toString(), "status", 2)
+        val status = OwnedControlResponse(request.operationId, "status", 2, "ok",
+            ADMISSION_NODE_B.toString(), process.toString(), identity.candidateSha256, binding.topologySha256,
+            policy = OwnedAdmissionPolicy(2, OwnedAdmissionState.ACTIVE, binding.topologySha256, binding.policySha256))
+        assertEquals(process, verifiedRehearsalProcess(status, ADMISSION_NODE_B, identity, binding))
+        assertFailsWith<IllegalStateException> { verifiedRehearsalProcess(status.copy(nodeId = ADMISSION_NODE_A.toString()), ADMISSION_NODE_B, identity, binding) }
+        assertFailsWith<IllegalStateException> { verifiedRehearsalProcess(status.copy(candidateSha256 = "4".repeat(64)), ADMISSION_NODE_B, identity, binding) }
+        assertFailsWith<IllegalStateException> { verifiedRehearsalProcess(status.copy(policy = status.policy!!.copy(generation = 3)), ADMISSION_NODE_B, identity, binding) }
+    }
+    @Test
+    fun `owner targeted fixtures select creator by production route instead of socket`() {
+        val config = requireNotNull(RoomOwnershipProductionPolicy.fromEnvironment(values()))
+        val route = RoomOwnershipRouting(config)
+        val pair = accounts.indices.first { it % 2 == 0 && route.createNode(accounts[it].toString()) != route.createNode(accounts[it + 1].toString()) }
+        val indexes = targetedRehearsalPair(accounts, pair / 2, config, 1)
+        assertEquals(config.peerId, route.createNode(accounts[indexes.first()].toString()))
+        assertEquals(setOf(pair, pair + 1), indexes.toSet())
+    }
+    @Test
+    fun `sole ingress rejects a manifest binding that disagrees with runtime policy`() {
+        val config = values() + mapOf(
+            "FTW_REHEARSAL_TOPOLOGY" to "sole-ingress",
+            "FTW_REHEARSAL_ADMISSION_GENERATION" to "2",
+            "FTW_REHEARSAL_CANDIDATE_SHA256" to "1".repeat(64),
+            "FTW_REHEARSAL_TOPOLOGY_SHA256" to "2".repeat(64)
+        )
+        assertFailsWith<IllegalArgumentException> { ProductionRehearsalSettings.parse(config, now) }
+    }
     private fun resolve(host: String): List<InetAddress> = listOf(InetAddress.getByName("10.0.0." + when {
         host.endsWith("-pg.railway.internal") -> 1
         host.endsWith("-a.railway.internal") -> 2

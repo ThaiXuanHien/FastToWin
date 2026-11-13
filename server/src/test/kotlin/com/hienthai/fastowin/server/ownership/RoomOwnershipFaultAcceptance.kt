@@ -75,7 +75,7 @@ internal suspend fun runRoomOwnershipFaults(fixture: RoomAcceptanceFixture,
     }
 
     case("kill-after-committed-selection") {
-        val match = fixture.createMatch(0)
+        val match = fixture.createMatch(0, targetOwner = if (fixture.settings.soleIngress) 1 else null)
         try {
             val request = requestId()
             val number = match.nextNumber
@@ -93,7 +93,7 @@ internal suspend fun runRoomOwnershipFaults(fixture: RoomAcceptanceFixture,
     }
 
     case("selective-owner-postgres-partition") {
-        val match = fixture.createMatch(0)
+        val match = fixture.createMatch(0, targetOwner = if (fixture.settings.soleIngress) 1 else null)
         val oldSockets = listOf(match.socket(0), match.socket(1))
         val before = fixture.snapshot(match.roomId)
         val oldOwner = fixture.ownerFor(before)
@@ -114,7 +114,7 @@ internal suspend fun runRoomOwnershipFaults(fixture: RoomAcceptanceFixture,
             val recoveryMillis = timer.elapsedMillis()
             check(recoveryMillis <= 25_000 && after.instanceId != before.instanceId)
             requireSameBoard(before, after)
-            match.ownerBackend = survivor
+            match.ownerBackend = if (fixture.settings.soleIngress) fixture.ownerFor(after) else survivor
             fixture.faults.partition(oldOwner, blocked = false)
             proxyDisabled = false
             fixture.awaitReady(oldOwner)
@@ -178,7 +178,7 @@ internal suspend fun runRoomOwnershipFaults(fixture: RoomAcceptanceFixture,
     }
 
     case("kill-before-selection-commit") {
-        val match = fixture.createMatch(0)
+        val match = fixture.createMatch(0, targetOwner = if (fixture.settings.soleIngress) 1 else null)
         val before = fixture.snapshot(match.roomId)
         val owner = fixture.ownerFor(before)
         val request = requestId()
@@ -239,7 +239,7 @@ internal suspend fun runRoomOwnershipFaults(fixture: RoomAcceptanceFixture,
     }
 
     case("kill-after-commit-before-reading-ack") {
-        val match = fixture.createMatch(0)
+        val match = fixture.createMatch(0, targetOwner = if (fixture.settings.soleIngress) 1 else null)
         try {
             val request = requestId()
             val number = match.nextNumber
@@ -258,7 +258,7 @@ internal suspend fun runRoomOwnershipFaults(fixture: RoomAcceptanceFixture,
     }
 
     case("start-response-loss") {
-        val match = fixture.createWaitingMatch(0)
+        val match = fixture.createWaitingMatch(0, targetOwner = if (fixture.settings.soleIngress) 1 else null)
         try {
             val waiting = fixture.snapshot(match.roomId)
             check(waiting.snapshot.phase == RoomPhase.WAITING)
@@ -282,7 +282,7 @@ internal suspend fun runRoomOwnershipFaults(fixture: RoomAcceptanceFixture,
     }
 
     case("settlement-response-loss") {
-        val match = fixture.createMatch(0)
+        val match = fixture.createMatch(0, targetOwner = if (fixture.settings.soleIngress) 1 else null)
         try {
             while (match.nextNumber < GAME_NUMBER_COUNT) {
                 match.select(match.nextNumber, requestId())
@@ -317,7 +317,7 @@ internal suspend fun runRoomOwnershipFaults(fixture: RoomAcceptanceFixture,
 
     val redisCase = if (fixture.supervised) "redis-process-pause-fails-closed" else "redis-stop-fails-closed"
     case(redisCase) {
-        val match = fixture.createMatch(0)
+        val match = fixture.createMatch(0, targetOwner = if (fixture.settings.soleIngress) 1 else null)
         val before = fixture.snapshot(match.roomId)
         val idleAccount = fixture.accounts()[2]
         val idleId = uuid(idleAccount.userId)
@@ -373,7 +373,7 @@ internal suspend fun runRoomOwnershipFaults(fixture: RoomAcceptanceFixture,
 
     val postgresCase = if (fixture.supervised) "postgres-process-pause-no-optimistic-ack" else "postgres-stop-no-optimistic-ack"
     case(postgresCase) {
-        val match = fixture.createMatch(0)
+        val match = fixture.createMatch(0, targetOwner = if (fixture.settings.soleIngress) 1 else null)
         val before = fixture.snapshot(match.roomId)
         val request = requestId()
         val number = match.nextNumber

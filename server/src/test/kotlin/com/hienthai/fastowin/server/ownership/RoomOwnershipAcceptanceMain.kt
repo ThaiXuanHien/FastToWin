@@ -34,12 +34,17 @@ internal data class RoomAcceptanceSettings(
     val suite: String, val backendCount: Int, val durationSeconds: Int, val roomCount: Int, val seed: Int,
     val fixtureId: UUID, val accountIds: List<UUID>, val databasePassword: String, val accountPassword: String,
     val databaseHost: String = "127.0.0.1",
-    val productionLike: Boolean = false
+    val productionLike: Boolean = false,
+    val soleIngress: Boolean = false,
+    val topologyStatus: RehearsalStatusConfig? = null
 ) {
     private val runSuffix get() = fixtureId.toString().replace("-", "").take(12)
     val databaseName get() = if (productionLike) "room_rehearsal_$runSuffix" else "fasttowin_room_pilot"
     val databasePoolName get() = if (productionLike) "room-acceptance-production-$runSuffix" else "room-acceptance-controller"
     val emailPrefix get() = if (productionLike) "room-production" else "room-pilot"
+
+    fun publicIngressNodes(preferred: Int): List<Int> =
+        if (soleIngress) listOf(0) else (listOf(preferred) + (0 until backendCount)).distinct()
 
     /** Benchmark-only source identities, used solely on the isolated trusted-proxy rehearsal network. */
     fun syntheticSourceAddress(accountId: String): String? {
@@ -190,6 +195,16 @@ internal class RoomAcceptanceFixture(val settings: RoomAcceptanceSettings, contr
         withFixtureDatabase { connection ->
             verifyRoomAcceptanceDatabase(connection, settings)
         }
+        if (settings.soleIngress) refreshOwnerProcesses()
+    }
+
+    suspend fun refreshOwnerProcesses(nodes: List<Int> = listOf(0, 1)) {
+        val status = checkNotNull(settings.topologyStatus)
+        for (node in nodes) {
+            val process = status.process(node)
+            ownerNodes.entries.removeIf { it.value == node && it.key != process }
+            ownerNodes[process] = node
+        }
     }
 
     fun resetDatabaseTimings() { databaseTimings = RoomOwnershipDatabaseTimings() }
@@ -232,7 +247,7 @@ internal class RoomAcceptanceFixture(val settings: RoomAcceptanceSettings, contr
         sql("DELETE FROM room_ownership_pilot_rooms")
     }
 
-    suspend fun createWaitingMatch(index: Int) = createMatch(index, start = false)
+    suspend fun createWaitingMatch(index: Int, targetOwner: Int? = null) = createMatch(index, start = false, targetOwner = targetOwner)
 
     suspend fun createMatchWithRetry(index: Int): AcceptanceMatch {
         // The producer holds its slot mutex and owns a distinct account pair.
@@ -250,12 +265,15 @@ internal class RoomAcceptanceFixture(val settings: RoomAcceptanceSettings, contr
         throw IllegalStateException("Fixture room creation did not recover in 25 seconds", last)
     }
 
-    suspend fun createMatch(index: Int, start: Boolean = true): AcceptanceMatch {
+    suspend fun createMatch(index: Int, start: Boolean = true, targetOwner: Int? = null): AcceptanceMatch {
         val users = accounts()
         require(index * 2 + 1 < users.size)
         val backend = index % backendCount
         val ordinal = creationOrdinals.computeIfAbsent(index) { AtomicInteger() }
-        val pair = settings.matchAccountIndices(index, ordinal.get()).map(users::get)
+        val pairIndices = if (settings.soleIngress && targetOwner != null)
+            checkNotNull(settings.topologyStatus).targetPair(settings.accountIds, index, targetOwner)
+        else settings.matchAccountIndices(index, ordinal.get())
+        val pair = pairIndices.map(users::get)
         val (host, guest) = creationStep("connect_pair") { connectPair(pair[0], backend, pair[1], (backend + 1) % backendCount) }
         // SessionReady carries an existing room when a previous recycle attempt
         // failed after admission. Keep that id so the cleanup path can release
@@ -281,8 +299,10 @@ internal class RoomAcceptanceFixture(val settings: RoomAcceptanceSettings, contr
                 guest.await(25_000, "guest ready update") { it is ServerMessage.RoomUpdated }
                 reply
             }
-            ownerNodes[snapshot(id).instanceId] = host.backend
-            if (!start) return AcceptanceMatch(this, pair, mutableListOf(host, guest), waiting.game, host.backend)
+            val owner = if (settings.soleIngress) ownerFor(snapshot(id)) else host.backend
+            if (!settings.soleIngress) ownerNodes[snapshot(id).instanceId] = owner
+            if (settings.soleIngress && targetOwner != null) check(owner == targetOwner) { "Created room has unexpected verified owner" }
+            if (!start) return AcceptanceMatch(this, pair, mutableListOf(host, guest), waiting.game, owner)
             val (started, other) = creationStep("start_match") {
                 guest.send(ClientMessage.SetReady(id, true))
                 val first = host.await(25_000, "host GameStarted") { it is ServerMessage.GameStarted } as ServerMessage.GameStarted
@@ -290,7 +310,7 @@ internal class RoomAcceptanceFixture(val settings: RoomAcceptanceSettings, contr
                 first to second
             }
             check(started.game == other.game)
-            return AcceptanceMatch(this, pair, mutableListOf(host, guest), started.game, host.backend)
+            return AcceptanceMatch(this, pair, mutableListOf(host, guest), started.game, owner)
         } catch (failure: Throwable) {
             createdRoomId?.let { roomId ->
                 runCatching { host.send(ClientMessage.LeaveRoom(roomId)) }
@@ -339,7 +359,7 @@ internal class RoomAcceptanceFixture(val settings: RoomAcceptanceSettings, contr
         val deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(25)
         var last: Exception? = null
         do {
-            for (node in (listOf(preferred) + (0 until backendCount)).distinct()) {
+            for (node in settings.publicIngressNodes(preferred)) {
                 if (node == intentionallyUnavailableBackend) continue
                 try {
                     val socket = AcceptanceSocket(client.webSocketSession(settings.urls[node].replace("http:", "ws:") + "/game") {
@@ -474,11 +494,13 @@ internal class RoomAcceptanceFixture(val settings: RoomAcceptanceSettings, contr
             }
             after.forEach { (match, receipt) ->
                 val previous = checkNotNull(before[match])
-                ownerNodes[receipt.instanceId] = 1 - owner
+                if (!settings.soleIngress) ownerNodes[receipt.instanceId] = 1 - owner
+                val newOwner = ownerFor(receipt)
+                check(newOwner != owner) { "Takeover must belong to the verified surviving process" }
                 check(receipt.snapshot.selectedNumbers == previous.snapshot.selectedNumbers) { "A committed board changed during failover" }
                 check(receipt.snapshot.matchId == previous.snapshot.matchId && receipt.snapshot.numbers == previous.snapshot.numbers &&
                     receipt.snapshot.scores == previous.snapshot.scores && receipt.snapshot.sequence >= previous.snapshot.sequence)
-                match.ownerBackend = 1 - owner
+                match.ownerBackend = newOwner
             }
             val elapsed = timer.elapsedMillis()
             observe("takeover")
@@ -492,6 +514,7 @@ internal class RoomAcceptanceFixture(val settings: RoomAcceptanceSettings, contr
                 faults.backend(owner, if (hardKill) BackendAction.START else BackendAction.RESUME)
                 observe("restored")
                 awaitReady(owner)
+                if (settings.soleIngress) refreshOwnerProcesses(listOf(owner))
                 observe("ready")
             } catch (restartFailure: Throwable) {
                 if (!supervised) for (node in 0..1) {
