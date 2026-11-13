@@ -42,7 +42,11 @@ internal fun rehearsalFailureDiagnostic(failure: Throwable): String {
         "RoomFaultControl.kt" to "control",
         "RailwayRoomRehearsal.kt" to "rehearsal",
         "RehearsalReceipts.kt" to "projection",
-        "ProductionTopologyAcceptance.kt" to "topology"
+        "ProductionTopologyAcceptance.kt" to "topology",
+        "ProductionPresenceAcceptance.kt" to "presence",
+        "ProductionIngressAcceptance.kt" to "ingress",
+        "ProductionDrainAcceptance.kt" to "drain",
+        "ProductionLaneAcceptance.kt" to "lanes"
     )
     return buildJsonArray {
         for (cause in generateSequence(failure) { it.cause }.take(8)) {

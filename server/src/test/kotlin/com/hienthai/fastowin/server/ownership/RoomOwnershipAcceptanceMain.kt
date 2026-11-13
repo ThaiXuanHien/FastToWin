@@ -357,7 +357,7 @@ internal class RoomAcceptanceFixture(val settings: RoomAcceptanceSettings, contr
         }
     }
 
-    suspend fun connect(account: AcceptanceAccount, preferred: Int): AcceptanceSocket {
+    suspend fun connect(account: AcceptanceAccount, preferred: Int, resumeToken: String? = null): AcceptanceSocket {
         val deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(25)
         var last: Exception? = null
         do {
@@ -368,7 +368,7 @@ internal class RoomAcceptanceFixture(val settings: RoomAcceptanceSettings, contr
                         settings.syntheticSourceAddress(account.userId)?.let { header("X-Forwarded-For", it) }
                     }, node)
                     try {
-                        socket.send(ClientMessage.ConnectAccount(account.accessToken))
+                        socket.send(ClientMessage.ConnectAccount(account.accessToken, resumeToken))
                         socket.ready = socket.await(25_000, "SessionReady") { it is ServerMessage.SessionReady } as ServerMessage.SessionReady
                         publicSockets[node].incrementAndGet()
                         return socket
@@ -735,6 +735,12 @@ internal class AcceptanceMatch(
             }
         }
         return snapshots
+    }
+
+    suspend fun verifyFinishedEconomy(snapshot: GameSnapshot) {
+        check(snapshot.phase == RoomPhase.FINISHED && snapshot.roomId == roomId && snapshot.matchId == matchId)
+        lastSnapshot = snapshot
+        verifyEconomy()
     }
 
     suspend fun verifyEconomy() = withContext(Dispatchers.IO) {

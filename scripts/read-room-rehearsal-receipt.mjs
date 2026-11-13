@@ -4,7 +4,7 @@ import { join } from 'node:path'
 import { pathToFileURL } from 'node:url'
 
 const jar = '8fff8ae123902032d98a92190b0bff3df87e234f213b25a298f4768c7e40e818'
-const kinds = ['load','fault','failure','latency','topology-preflight']
+const kinds = ['load','fault','failure','latency','topology-preflight','topology-presence','topology-outages','topology-lanes','topology-drain']
 const poolLabel = 'fasttowin_room_ownership_pool_max_connections'
 const metrics = new Set([
     'fasttowin_uptime_seconds','fasttowin_websocket_connections','fasttowin_websocket_connections_total',
@@ -135,6 +135,71 @@ function validateTopologyPreflight(p) {
         check(route.path===workerPublicPaths[index] && route.get===404 && route.post===404)
     }
 }
+function validateTopologyPresence(p) {
+    keys(p,['accounts','friendEdges','clanMembers','cases'])
+    check(p.accounts===40 && p.friendEdges===4 && p.clanMembers===5 && list(p.cases,2))
+    const names=['created','joined','started','replaced','finished','host-left','guest-left']
+    for (const [owner,c] of p.cases.entries()) {
+        keys(c,['owner','stages'])
+        check(c.owner===owner && list(c.stages,names.length))
+        for (const [index,s] of c.stages.entries()) {
+            keys(s,['name','friendPushMillis','clanPushMillis','readbacks'])
+            check(s.name===names[index] && s.readbacks===2)
+            for (const millis of [s.friendPushMillis,s.clanPushMillis])
+                check(index===3 || index===4 ? millis===null : integer(millis,0,19999))
+        }
+    }
+}
+
+function validateTopologyOutages(p) {
+    keys(p,['cases','workerPublicMetrics']); check(list(p.cases,2) && p.workerPublicMetrics===0)
+    for(const [index,c] of p.cases.entries()) {
+        const inside=index===0
+        keys(c,['outcome','ownerBefore','ownerAfter','epochBefore','epochAfter','oldProcess','newProcess',
+            'interruptedSockets','refusedConnections','claimDbMillis','recoveryDeadlineMillis','reconnectDbMillis',
+            'closedAtMillis','returningGames','matchRows','originalSelections','quota','settlements','legacyRestoredOnA'])
+        check(c.outcome===(inside?'inside':'outside') && c.ownerBefore===0 && c.ownerAfter===1 &&
+            integer(c.epochBefore,1) && integer(c.epochAfter,c.epochBefore+1) &&
+            [c.oldProcess,c.newProcess].every(v=>typeof v==='string' && /^[0-9a-f]{32}$/.test(v)) &&
+            c.oldProcess!==c.newProcess && c.interruptedSockets===2 && c.refusedConnections===1 &&
+            integer(c.claimDbMillis,1) && integer(c.recoveryDeadlineMillis,c.claimDbMillis+1,c.claimDbMillis+30000) &&
+            integer(c.reconnectDbMillis,c.claimDbMillis) && c.quota===2 && c.originalSelections===1 && c.legacyRestoredOnA===(inside?1:0) &&
+            c.settlements===(inside?1:0) && c.matchRows===(inside?1:0) && c.returningGames===(inside?2:0))
+        if(inside) check(c.reconnectDbMillis<c.recoveryDeadlineMillis && c.closedAtMillis===null)
+        else check(integer(c.closedAtMillis,c.recoveryDeadlineMillis,c.reconnectDbMillis))
+    }
+}
+
+function validateTopologyLanes(p) {
+    keys(p,['cases']); check(list(p.cases,4))
+    for(const [index,c] of p.cases.entries()) {
+        const commit=index%2===0
+        keys(c,['operation','transaction','blockedTransactions','replyWithheld','generationBefore','generationAfter',
+            'resumedOwnedRoom','legacyAdmitted','lateWrites'])
+        check(c.operation===(index<2?'create':'join') && c.transaction===(commit?'commit':'rollback') &&
+            c.blockedTransactions===2 && c.replyWithheld===true && integer(c.generationBefore,1) && c.generationAfter===c.generationBefore+1 &&
+            c.resumedOwnedRoom===commit && c.legacyAdmitted===!commit && c.lateWrites===0)
+    }
+}
+
+function validateTopologyDrain(p, jar) {
+    keys(p,['active','stopped','acknowledged','disabled','playingDuringStop','waitingClosed','concurrentSelections','staleAdmissionsRejected','stopWaitedForAdmission','lateAdmissions','pendingOpen','pendingClosed',
+        'closedOpenRooms','closedLiveLeases','settled','restartChanged','dependency','timedAwait','legacySelections','mode',
+        'candidate','serverJar','classpath','topology','policy','nodes','openRooms','liveLeases','pendingSettlements'])
+    check(integer(p.active,1) && p.stopped===p.active+1 && p.acknowledged===p.stopped+1 && p.disabled===p.acknowledged+1 &&
+        p.playingDuringStop===1 && p.waitingClosed===3 && p.concurrentSelections===1 && p.staleAdmissionsRejected===3 && p.stopWaitedForAdmission===true && p.lateAdmissions===0 && p.pendingOpen===1 && p.pendingClosed===1 && p.settled===1 &&
+        p.closedOpenRooms===0 && p.closedLiveLeases===0 && p.restartChanged===true && p.dependency==='unavailable' &&
+        p.timedAwait==='deadline' && p.legacySelections===4 && p.mode==='INITIAL_DRAIN' && p.serverJar===jar &&
+        [p.candidate,p.classpath,p.topology,p.policy].every(v=>typeof v ==='string' && /^[a-f0-9]{64}$/.test(v)) &&
+        p.openRooms===0 && p.liveLeases===0 && p.pendingSettlements===0 && list(p.nodes,2))
+    for(const n of p.nodes) {
+        keys(n,['node','process','generation','quiesced'])
+        check([n.node,n.process].every(v=>typeof v==='string' && /^[a-f0-9]{32}$/.test(v)) &&
+            n.quiesced===true && n.generation===p.acknowledged)
+    }
+    check(p.nodes[0].node!==p.nodes[1].node && p.nodes[0].process!==p.nodes[1].process)
+}
+
 function validateLatency(p) {
     keys(p,['nodes']); check(list(p.nodes,2))
     const stages = ['poolAcquire','selectRoundTrip','markerUpdateRoundTrip','commitRoundTrip','readinessRoundTrip']
@@ -155,7 +220,7 @@ function validateLatency(p) {
 }
 function validateFailure(p) {
     keys(p,['phase','category','completedCases','progress'])
-    check(['private-dns','fixture-marker-and-readiness','topology-preflight','latency','load','fault','receipt'].includes(p.phase) &&
+    check(['private-dns','fixture-marker-and-readiness','topology-preflight','topology-presence','topology-outages','topology-lanes','topology-drain','latency','load','fault','receipt'].includes(p.phase) &&
         ['timeout','database-connection','database-error','network','protocol-rejected','configuration','assertion','other'].includes(p.category) &&
         integer(p.completedCases,0,8))
     if (p.progress!==null) {
@@ -186,11 +251,11 @@ export function readProductionReceipt(lines, kind, profile, manifest, expectedJa
         check(!line.startsWith('FTW_REHEARSAL_'))
         return line.replace(/^FTW_PRODUCTION_REHEARSAL_/, 'FTW_REHEARSAL_')
     })
-    return readExpectedReceipt(normalized, kind, profile, manifest, expectedJar)
+    return readExpectedReceipt(normalized, kind, profile, manifest, expectedJar, true)
 }
 
-function readExpectedReceipt(lines, kind, profile, manifest, expectedJar) {
-    check(kinds.includes(kind) && ['fault','two-backend'].includes(profile) && /^[0-9a-f]{64}$/.test(manifest))
+function readExpectedReceipt(lines, kind, profile, manifest, expectedJar, production=false) {
+    check(kinds.includes(kind) && (['fault','two-backend'].includes(profile) || (production && profile==='topology')) && /^[0-9a-f]{64}$/.test(manifest))
     const prefix = 'FTW_REHEARSAL_'+kind.toUpperCase()+' '
     const parts = new Map()
     let digest, total
@@ -213,6 +278,10 @@ function readExpectedReceipt(lines, kind, profile, manifest, expectedJar) {
     check(receipt.schema===1 && receipt.kind===kind && receipt.profile===profile && receipt.jarSha256===expectedJar && receipt.manifestSha256===manifest)
     if (kind==='load') { check(profile==='two-backend'); validateLoad(receipt.payload) }
     if (kind==='fault') { check(profile==='fault'); validateFault(receipt.payload) }
+    if (kind==='topology-presence') { check(production && profile==='topology'); validateTopologyPresence(receipt.payload) }
+    if (kind==='topology-outages') { check(production && profile==='topology'); validateTopologyOutages(receipt.payload) }
+    if (kind==='topology-lanes') { check(production && profile==='topology'); validateTopologyLanes(receipt.payload) }
+    if (kind==='topology-drain') { check(production && profile==='topology'); validateTopologyDrain(receipt.payload,expectedJar) }
     if (kind==='latency') validateLatency(receipt.payload)
     if (kind==='topology-preflight') validateTopologyPreflight(receipt.payload)
     if (kind==='failure') validateFailure(receipt.payload)

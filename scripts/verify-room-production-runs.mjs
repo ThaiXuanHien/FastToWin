@@ -12,11 +12,11 @@ const sharedKeys = ['jarSha256','classpathSha256','candidateSha256','runnerManif
     'contextsManifest','migrationManifest','supervisor','backendClasspath','topology','limits',
     'accounts','rooms','offerSeconds','policy','sourceIps']
 
-/** Compare identities only; verifyRun below independently checks the retained artifact bytes. */
+/** Compare identities only; verifyProductionRun below independently checks the retained artifact bytes. */
 export function productionArtifactAgreement(fault, load, expectedCandidate) {
     assert.match(expectedCandidate,hex)
     assert.equal(fault.profile,'fault')
-    assert.equal(load.profile,'two-backend')
+    assert(['two-backend','topology'].includes(load.profile))
     assert.notEqual(fault.runId,load.runId,'Two independent workload runs are required')
     assert.equal(fault.candidateSha256,expectedCandidate)
     assert.equal(load.candidateSha256,expectedCandidate)
@@ -104,13 +104,16 @@ export function verifyProductionRun(directory,expectedProfile,expectedCandidate)
     assert(seed.admissionGeneration>0 && seed.admissionGeneration===committed.generation)
     assert.deepEqual(json('cleanup.json'),{containers:0,networks:0,volumes:0,images:0})
     const local=json('local-receipt.json')
-    assert(local.productionProfileAccepted===true && local.profile===expectedProfile &&
+    const topologyKinds=['topology-preflight','topology-presence','topology-outages','topology-lanes','topology-drain']
+    if(expectedProfile==='topology') assert.deepEqual(local.verifiedCases,topologyKinds)
+    else assert.equal(local.productionProfileAccepted,true)
+    assert(local.profile===expectedProfile &&
         local.manifestSha256===manifestSha256 && local.jarSha256===manifest.jarSha256)
     const replacement=json('worker-address-replacement.json')
     assert(replacement.addressChanged===true && replacement.previous!==replacement.replacement &&
         replacement.sameIngressContainer==='room-pilot-'+manifest.runId.replaceAll('-','').slice(0,12)+'-a')
     const lines=read('runner.log').toString('utf8').split(/\r?\n/)
-    const kinds=[expectedProfile==='fault'?'fault':'load','latency','topology-preflight']
+    const kinds=expectedProfile==='topology'?[...topologyKinds,'latency']:[expectedProfile==='fault'?'fault':'load','latency','topology-preflight']
     const prefixes=kinds.map(kind=>'FTW_PRODUCTION_REHEARSAL_'+kind.toUpperCase()+' ')
     assert(lines.every(line=>!line.startsWith('FTW_PRODUCTION_REHEARSAL_') || prefixes.some(prefix=>line.startsWith(prefix))),'Unexpected failure or receipt kind')
     const receipts={}
@@ -119,29 +122,44 @@ export function verifyProductionRun(directory,expectedProfile,expectedCandidate)
         assert(bytes.equals(read(kind+'.json')),'Retained receipt differs from frozen runner export')
         receipts[kind]=JSON.parse(bytes)
     }
-    assert(receipts.latency.payload.nodes.every(node=>node.complete===true),'Incomplete latency probes')
+    if(expectedProfile==='topology') {
+        const drain=receipts['topology-drain'].payload
+        assert.equal(drain.active,committed.generation)
+        assert.equal(drain.candidate,manifest.candidateSha256)
+        assert.equal(drain.classpath,manifest.classpathSha256)
+        assert.equal(drain.topology,committed.topologySha256)
+        assert.equal(drain.policy,committed.policySha256)
+        assert.deepEqual(drain.nodes.map(node=>node.node),['a','b'].map(role=>manifest.topology.nodeIds[role].replaceAll('-','')))
+    } else assert(receipts.latency.payload.nodes.every(node=>node.complete===true),'Incomplete latency probes')
     assert.equal(receipts['topology-preflight'].payload.admissionGeneration,committed.generation)
     return {manifest,manifestSha256,supervisor,root}
 }
 
-export function verifyProductionRuns(faultDirectory,loadDirectory,expectedCandidate) {
+export function verifyProductionRuns(faultDirectory,loadDirectory,expectedCandidate,topologyDirectory) {
     const fault=verifyProductionRun(faultDirectory,'fault',expectedCandidate)
     const load=verifyProductionRun(loadDirectory,'two-backend',expectedCandidate)
     const frozenArtifactsSha256=productionArtifactAgreement(fault.manifest,load.manifest,expectedCandidate)
-    for(const key of ['compiler','compilerImage','dockerfileSha256','sources'])
-        assert.deepEqual(fault.supervisor[key],load.supervisor[key],'Supervisor build drift')
-    return {schema:1,scope:'local-fault-load-with-golden-topology-preflight',candidateSha256:expectedCandidate,
-        frozenArtifactsSha256,profiles:[
-            {profile:'fault',runId:fault.manifest.runId,manifestSha256:fault.manifestSha256},
-            {profile:'two-backend',runId:load.manifest.runId,manifestSha256:load.manifestSha256}
-        ]}
+    const runs=[fault,load]
+    if(topologyDirectory) {
+        const topology=verifyProductionRun(topologyDirectory,'topology',expectedCandidate)
+        assert.equal(productionArtifactAgreement(fault.manifest,topology.manifest,expectedCandidate),frozenArtifactsSha256)
+        assert.notEqual(load.manifest.runId,topology.manifest.runId)
+        runs.push(topology)
+    }
+    for(const run of runs.slice(1)) {
+        for(const key of ['compiler','compilerImage','dockerfileSha256','sources'])
+            assert.deepEqual(fault.supervisor[key],run.supervisor[key],'Supervisor build drift')
+    }
+    const scope=topologyDirectory?'local-fault-load-topology':'local-fault-load-with-golden-topology-preflight'
+    return {schema:1,scope,candidateSha256:expectedCandidate,frozenArtifactsSha256,
+        profiles:runs.map(({manifest,manifestSha256})=>({profile:manifest.profile,runId:manifest.runId,manifestSha256}))}
 }
 
 if(process.argv[1] && import.meta.url===pathToFileURL(process.argv[1]).href) {
     try {
-        const [candidate,fault,load,output,...extra]=process.argv.slice(2)
+        const [candidate,fault,load,output,topology,...extra]=process.argv.slice(2)
         assert(candidate && fault && load && output && extra.length===0)
-        const proof=verifyProductionRuns(fault,load,candidate)
+        const proof=verifyProductionRuns(fault,load,candidate,topology)
         fs.writeFileSync(output,JSON.stringify(proof,null,2)+'\n',{flag:'wx'})
         console.log('Verified frozen local fault and load evidence')
     } catch { console.error('Incomplete or mismatched frozen production rehearsal evidence'); process.exitCode=1 }

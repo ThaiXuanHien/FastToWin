@@ -36,7 +36,7 @@ internal class ProductionRehearsalSettings private constructor(
     override fun acceptance(addresses: Map<String, String>) = RoomAcceptanceSettings(
         project = runName, composeFiles = null, receipts = Path.of("receipts"),
         urls = listOf("a", "b").map { "http://${addresses.getValue(it)}:8080" }, proxyUrls = emptyList(),
-        postgresPort = 5432, suite = if (profile == "fault") "Fault" else "Load", backendCount = 2,
+        postgresPort = 5432, suite = when (profile) { "fault" -> "Fault"; "topology" -> "Topology"; else -> "Load" }, backendCount = 2,
         durationSeconds = 600, roomCount = 20, seed = 73, fixtureId = runId, accountIds = seedSettings.accounts,
         databasePassword = seedSettings.database.password, accountPassword = seedSettings.password,
         databaseHost = addresses.getValue("pg"), productionLike = true, soleIngress = topologyIdentity != null,
@@ -73,7 +73,7 @@ internal class ProductionRehearsalSettings private constructor(
             val run = prefix + "-" + seed.runId.toString().replace("-", "").take(12)
             require(value("RAILWAY_SERVICE_NAME") == "$run-runner")
             val profile = value("FTW_REHEARSAL_PROFILE")
-            require(profile in setOf("fault", "two-backend"))
+            require(profile in setOf("fault", "two-backend", "topology"))
             require(value("FTW_REHEARSAL_BACKEND_POOL_SIZE") == "20")
             require((values["FTW_REHEARSAL_DURATION_SECONDS"] ?: "600") == "600" &&
                 (values["FTW_REHEARSAL_ROOMS"] ?: "20") == "20" &&
@@ -110,16 +110,20 @@ internal class ProductionRehearsalSettings private constructor(
                         val measured = MessageDigest.getInstance("SHA-256").digest(source).joinToString("") { "%02x".format(it) }
                         require(candidate == measured) { "Candidate manifest binding mismatch" }
                     }
-                    RehearsalTopologyIdentity(generation, candidate)
+                    RehearsalTopologyIdentity(generation, candidate, jar, values["FTW_REHEARSAL_CLASSPATH_SHA256"])
                 }
                 else -> throw IllegalArgumentException("Unknown rehearsal topology")
+            }
+            if (profile == "topology") {
+                require(topology != null && listOf("FTW_REHEARSAL_TOPOLOGY_SHA256","FTW_REHEARSAL_POLICY_SHA256",
+                    "FTW_REHEARSAL_CLASSPATH_SHA256").all(values::containsKey))
             }
             return ProductionRehearsalSettings(seed, profile, deadline, run, jar, redis, token, hosts, requireNotNull(RoomOwnershipProductionPolicy.fromEnvironment(values)), topology)
         }
     }
 }
 
-internal data class RehearsalTopologyIdentity(val generation: Long, val candidateSha256: String)
+internal data class RehearsalTopologyIdentity(val generation: Long, val candidateSha256: String, val jar: String? = null, val classpath: String? = null)
 
 internal fun rehearsalStatusRequest(identity: RehearsalTopologyIdentity, binding: OwnedAdmissionBinding) =
     OwnedControlRequest(java.util.UUID.randomUUID().toString(), "status", identity.generation,
@@ -137,12 +141,44 @@ internal fun verifiedRehearsalProcess(response: OwnedControlResponse?, node: jav
 
 internal class RehearsalStatusConfig(
     private val identity: RehearsalTopologyIdentity,
-    private val binding: OwnedAdmissionBinding,
+    val binding: OwnedAdmissionBinding,
     private val config: RoomOwnershipProductionPolicy,
     private val addresses: Map<String, String>
 ) {
     val generation get() = identity.generation
     fun targetPair(accounts: List<java.util.UUID>, slot: Int, node: Int) = targetedRehearsalPair(accounts, slot, config, node)
+
+    fun nodeId(node: Int) = when(node) { 0 -> config.nodeId; 1 -> config.peerId; else -> error("Invalid node") }
+    fun candidate() = OwnedCandidateIdentity(requireNotNull(identity.jar), requireNotNull(identity.classpath), identity.candidateSha256)
+
+    fun workerPeer() = OwnerPeerTransport(nodeId(0), nodeId(1),
+        java.net.URI("http://${addresses.getValue("b")}:8080"), config.peerSecret)
+
+    suspend fun send(node: Int, request: OwnedControlRequest): OwnedControlResponse? {
+        require(node in 0..1 && (node == 0 || request.operation == "status"))
+        val uri = java.net.URI("http://${addresses.getValue(if (node == 0) "a" else "b")}:8080")
+        return OwnerPeerTransport(nodeId(1-node), nodeId(node), uri, config.peerSecret).use { it.forwardControl(request) }
+            ?.also { check(it.operationId == request.operationId && it.operation == request.operation && it.generation == request.generation) }
+    }
+
+    suspend fun observed(node: Int, policy: OwnedAdmissionPolicy, acknowledged: Long = policy.generation): OwnedControlResponse {
+        val request = OwnedControlRequest(java.util.UUID.randomUUID().toString(), "status", acknowledged,
+            candidateSha256 = identity.candidateSha256, topologySha256 = binding.topologySha256)
+        val s = requireNotNull(send(node, request))
+        check(s.outcome == "ok" && s.nodeId == nodeId(node).toString() && s.processId?.let(::parsePilotUuid) != null &&
+            s.policy == policy && policy.topologySha256 == binding.topologySha256 && policy.policySha256 == binding.policySha256 &&
+            s.candidateSha256 == identity.candidateSha256 && s.topologySha256 == binding.topologySha256 &&
+            listOf(s.openRooms, s.liveLeases, s.pendingSettlements).all { it != null && it >= 0 })
+        return s
+    }
+
+    suspend fun mutate(operation: String, policy: OwnedAdmissionPolicy): OwnedControlResponse {
+        require(operation in setOf("stop_new", "step"))
+        val status = observed(0, policy)
+        val request = OwnedControlRequest(java.util.UUID.randomUUID().toString(), operation, policy.generation,
+            status.processId, identity.candidateSha256, binding.topologySha256)
+        return requireNotNull(send(0, request))
+    }
 
     suspend fun process(node: Int): java.util.UUID {
         require(node in 0..1)

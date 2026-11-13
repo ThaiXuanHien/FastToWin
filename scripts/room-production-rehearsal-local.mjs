@@ -15,13 +15,13 @@ const capabilityOnly=options[0]==='--capability-only'
 const preflightOnly=options[0]==='--preflight-only'
 const root=path.resolve(repo)
 const sourceRoot=path.resolve(import.meta.dirname,'..')
-assert(['Fault','Load'].includes(selected) && /^[a-f0-9-]{36}$/.test(runId))
+assert(['Fault','Load','Topology'].includes(selected) && /^[a-f0-9-]{36}$/.test(runId))
 assert(/^npipe:\/{4}\.\/pipe\/[A-Za-z0-9_.-]+$/.test(endpoint))
 const suffix=runId.replaceAll('-','').slice(0,12), name='room-pilot-'+suffix
 const directory=path.resolve(output)
 assert.equal(directory,path.join(root,'.artifacts/room-production-local',name))
 const label='fasttowin.production-rehearsal='+runId
-const db='room_rehearsal_'+suffix, profile=selected==='Fault'?'fault':'two-backend'
+const db='room_rehearsal_'+suffix, profile={Fault:'fault',Load:'two-backend',Topology:'topology'}[selected]
 const sha=file=>createHash('sha256').update(fs.readFileSync(file)).digest('hex')
 const put=(file,value)=>fs.writeFileSync(path.join(directory,file),JSON.stringify(value,null,2)+'\n')
 assert.equal(sourceRoot,path.join(directory,'tested-source'))
@@ -37,7 +37,10 @@ const sourcePaths=[
     'scripts/lib/room-production-peer.mjs',
     'scripts/lib/room-supervised-local.mjs'
 ]
-assert.deepEqual(sourceManifest.map(entry=>entry.path),sourcePaths)
+assert.deepEqual(sourceManifest.slice(0,sourcePaths.length).map(entry=>entry.path),sourcePaths)
+const runnerSources=sourceManifest.slice(sourcePaths.length).map(entry=>entry.path)
+assert(runnerSources.length>0 && new Set(runnerSources).size===runnerSources.length)
+assert(runnerSources.every(file=>/^server\/src\/test\/kotlin\/(?:[\w.-]+\/)*[\w.-]+\.kt$/.test(file)))
 for(const {path:relative,sha256} of sourceManifest) assert.equal(sha(path.join(sourceRoot,relative)),sha256)
 const hex=()=>randomBytes(32).toString('hex')
 const dbPassword=hex(), redisPassword=hex(), token=hex(), peerSecret=randomBytes(32).toString('base64')
@@ -244,6 +247,13 @@ if(docker(['inspect','--format','{{.State.ExitCode}}',containers.runner])!=='0')
             "FROM room_ownership_pilot_rooms r"])
         fs.writeFileSync(path.join(directory,'room-failure-counts.json'),state+'\n')
     } catch {}
+    for(const completed of ['topology-preflight','topology-presence','topology-outages','topology-lanes']) {
+        if(!lines.some(line=>line.startsWith('FTW_PRODUCTION_REHEARSAL_'+completed.toUpperCase()+' '))) continue
+        try {
+            const bytes=readProductionReceipt(lines,completed,profile,manifest,jar)
+            fs.writeFileSync(path.join(directory,completed+'.json'),bytes)
+        } catch {}
+    }
     const diagnostic=path.join(directory,'failure-sites.json')
     try { docker(['cp',containers.runner+':/opt/runner/receipts/failure-sites.json',diagnostic]) } catch {}
     try { docker(['cp',containers.runner+':/opt/runner/receipts/connection-first-failure.json',path.join(directory,'connection-first-failure.json')]) } catch {}
@@ -254,7 +264,8 @@ if(docker(['inspect','--format','{{.State.ExitCode}}',containers.runner])!=='0')
 }
 assert.equal(docker(['inspect','--format','{{.State.ExitCode}}',containers.runner]),'0','Production runner failed')
 const kind=profile==='fault'?'fault':'load'
-for(const selectedKind of (preflightOnly?['topology-preflight']:[kind,'latency','topology-preflight'])) {
+const topologyCases=['topology-preflight','topology-presence','topology-outages','topology-lanes','topology-drain']
+for(const selectedKind of (preflightOnly?['topology-preflight']:profile==='topology'?[...topologyCases,'latency']:[kind,'latency','topology-preflight'])) {
     const bytes=readProductionReceipt(lines,selectedKind,profile,manifest,jar)
     fs.writeFileSync(path.join(directory,selectedKind+'.json'),bytes)
 }
@@ -262,5 +273,5 @@ for(const role of ['pg','redis','proxy','a','b']) {
     assert.equal(docker(['inspect','--format','{{.State.Running}}',containers[role]]),'true','Controlled runtime stopped')
     assert.equal(docker(['inspect','--format','{{.State.OOMKilled}}',containers[role]]),'false')
 }
-put('local-receipt.json',{...(preflightOnly?{productionPreflightVerified:true}:{productionProfileAccepted:true}),profile,manifestSha256:manifest,jarSha256:jar})
-console.log(profile+(preflightOnly?' production golden preflight verified':' production profile verified'))
+put('local-receipt.json',{...(preflightOnly?{productionPreflightVerified:true}:profile==='topology'?{verifiedCases:topologyCases}:{productionProfileAccepted:true}),profile,manifestSha256:manifest,jarSha256:jar})
+console.log(profile+(preflightOnly?' production golden preflight verified':profile==='topology'?' presence, ingress and drain cases verified':' production profile verified'))

@@ -156,3 +156,74 @@ test('topology preflight accepts measured golden owners and rejects public worke
         {workerRoutes:topologyPreflight.payload.workerRoutes.map((r,i)=>i===0?{...r,rawToken:'secret'}:r)}
     ]) assert.throws(()=>read({...topologyPreflight,payload:{...topologyPreflight.payload,...patch}}))
 })
+test('production topology presence requires both owners, ordered pushes, and bounded heartbeat timing',()=>{
+    const stages=['created','joined','started','replaced','finished','host-left','guest-left']
+    const cases=[0,1].map(owner=>({owner, stages:stages.map((name,index)=>({
+        name, friendPushMillis:[0,1,2,5,6].includes(index)?17:null,
+        clanPushMillis:[0,1,2,5,6].includes(index)?23:null, readbacks:2
+    }))}))
+    const receipt=envelope('topology-presence','topology',{accounts:40,friendEdges:4,clanMembers:5,cases})
+    function verify(value) {
+        return readProductionReceipt(chunks(JSON.stringify(value),value.kind).map(line=>line.replace('FTW_REHEARSAL_','FTW_PRODUCTION_REHEARSAL_')),value.kind,value.profile,manifest,jar)
+    }
+    assert.equal(verify(receipt).toString(),JSON.stringify(receipt))
+    for (const change of [v=>v.cases.pop(),v=>v.cases[1].owner=0,v=>v.cases[0].stages.reverse(),
+        v=>v.cases[0].stages[0].friendPushMillis=null,v=>v.cases[1].stages[1].clanPushMillis=20000,
+        v=>v.cases[1].stages[0].readbacks=1,v=>v.friendEdges=3]) {
+        const bad=structuredClone(receipt); change(bad.payload); assert.throws(()=>verify(bad))
+    }
+})
+
+
+test('A outage receipt requires two distinct terminal outcomes against measured DB deadlines',()=>{
+    const cases=['inside','outside'].map((outcome,i)=>({outcome,ownerBefore:0,ownerAfter:1,
+        epochBefore:1,epochAfter:2,oldProcess:'a'.repeat(31)+i,newProcess:'b'.repeat(31)+i,
+        interruptedSockets:2,refusedConnections:1,claimDbMillis:2000,recoveryDeadlineMillis:31000,
+        reconnectDbMillis:outcome==='inside'?5000:32000,closedAtMillis:outcome==='inside'?null:31500,
+        returningGames:outcome==='inside'?2:0,matchRows:outcome==='inside'?1:0,
+        originalSelections:1,quota:2,settlements:outcome==='inside'?1:0,legacyRestoredOnA:outcome==='inside'?1:0}))
+    const value=envelope('topology-outages','topology',{cases,workerPublicMetrics:0})
+    const verify=v=>readProductionReceipt(chunks(JSON.stringify(v),v.kind).map(line=>line.replace('FTW_REHEARSAL_','FTW_PRODUCTION_REHEARSAL_')),v.kind,v.profile,manifest,jar)
+    assert.equal(verify(value).toString(),JSON.stringify(value))
+    for(const change of [v=>v.cases.reverse(),v=>v.cases[0].newProcess=v.cases[0].oldProcess,
+        v=>v.cases[0].reconnectDbMillis=31001,v=>v.cases[1].closedAtMillis=30900,
+        v=>v.cases[1].returningGames=1,v=>v.cases[1].settlements=1]) {
+        const bad=structuredClone(value); change(bad.payload); assert.throws(()=>verify(bad))
+    }
+})
+
+
+test('topology drain requires pending closed settlement, both process acknowledgements, and global zero',()=>{
+    const d={active:2,stopped:3,acknowledged:4,disabled:5,playingDuringStop:1,waitingClosed:3,concurrentSelections:1,staleAdmissionsRejected:3,stopWaitedForAdmission:true,lateAdmissions:0,
+        pendingOpen:1,pendingClosed:1,closedOpenRooms:0,closedLiveLeases:0,settled:1,restartChanged:true,
+        dependency:'unavailable',timedAwait:'deadline',legacySelections:4,mode:'INITIAL_DRAIN',
+        candidate:'a'.repeat(64),serverJar:jar,classpath:'b'.repeat(64),topology:'d'.repeat(64),policy:'e'.repeat(64),
+        nodes:[0,1].map(i=>({node:'1'.repeat(31)+i,process:'2'.repeat(31)+i,generation:4,quiesced:true})),
+        openRooms:0,liveLeases:0,pendingSettlements:0}
+    const verify=p=>{const v=envelope('topology-drain','topology',p); return readProductionReceipt(chunks(JSON.stringify(v),v.kind).map(l=>l.replace('FTW_REHEARSAL_','FTW_PRODUCTION_REHEARSAL_')),v.kind,v.profile,manifest,jar)}
+    assert.ok(verify(d))
+    for(const change of [v=>v.disabled=v.stopped,v=>v.nodes[1]=v.nodes[0],v=>v.nodes[1].generation=2,
+        v=>v.pendingClosed=0,v=>v.closedOpenRooms=1,v=>v.openRooms=1,v=>v.dependency='completed',
+        v=>v.mode='REVALIDATION',v=>v.serverJar='0'.repeat(64)]) {
+        const bad=structuredClone(d); change(bad); assert.throws(()=>verify(bad))
+    }
+})
+
+
+test('held lane receipts require all four cases and actual fence advancement',()=>{
+    const cases=Array.from({length:4},(_,index)=>({operation:index<2?'create':'join',
+        transaction:index%2===0?'commit':'rollback',blockedTransactions:2,replyWithheld:true,generationBefore:3,generationAfter:4,
+        resumedOwnedRoom:index%2===0,legacyAdmitted:index%2!==0,lateWrites:0}))
+    const verify=payload=>{
+        const value=envelope('topology-lanes','topology',payload)
+        const lines=chunks(JSON.stringify(value),value.kind).map(line=>line.replace('FTW_REHEARSAL_','FTW_PRODUCTION_REHEARSAL_'))
+        return readProductionReceipt(lines,value.kind,value.profile,manifest,jar)
+    }
+    assert.ok(verify({cases}))
+    for(const change of [v=>v.pop(),v=>v[0].blockedTransactions=1,v=>v[1].resumedOwnedRoom=true,
+        v=>v[2].lateWrites=1,v=>v[3].generationAfter=3]) {
+        const invalid=structuredClone(cases)
+        change(invalid)
+        assert.throws(()=>verify({cases:invalid}))
+    }
+})

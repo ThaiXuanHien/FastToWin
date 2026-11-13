@@ -200,6 +200,17 @@ internal fun runRehearsal(
                         export("topology-preflight", preflight)
                     }
                     check(!preflightOnly) { "Golden preflight requires sole ingress topology" }
+                    if (settings.profile == "topology") {
+                        check(production && fixture.settings.soleIngress)
+                        phase = "topology-presence"
+                        export(phase, productionPresenceAcceptance(fixture))
+                        phase = "topology-outages"
+                        export(phase, productionIngressAcceptance(fixture))
+                        phase = "topology-lanes"
+                        export(phase, productionLaneAcceptance(fixture))
+                        phase = "topology-drain"
+                        return@use productionDrainAcceptance(fixture)
+                    }
                     phase = "latency"
                     withTimeout(60000) {
                         for (node in 0..1) fixture.measureBaselineLatency(latency[node], node)

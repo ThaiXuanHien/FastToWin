@@ -27,3 +27,11 @@ test('a matching JAR cannot hide runner source classpath migration or cap drift'
     assert.throws(()=>productionArtifactAgreement(manifest('fault'),manifest('two-backend'),'a'.repeat(64)))
     assert.throws(()=>productionArtifactAgreement(manifest('fault'),{...manifest('two-backend'),runId:manifest('fault').runId},'3'.repeat(64)))
 })
+test('topology artifacts must match the same fault candidate and harness',()=>{
+    const fault=manifest('fault')
+    const load=manifest('two-backend')
+    const topology={...load,profile:'topology',runId:'00000000-0000-4000-8000-000000000003'}
+    assert.equal(productionArtifactAgreement(fault,topology,'3'.repeat(64)),productionArtifactAgreement(fault,load,'3'.repeat(64)))
+    assert.throws(()=>productionArtifactAgreement(fault,{...topology,runnerManifest:'a'.repeat(64)},'3'.repeat(64)))
+    assert.throws(()=>productionArtifactAgreement(fault,{...topology,runId:fault.runId},'3'.repeat(64)))
+})

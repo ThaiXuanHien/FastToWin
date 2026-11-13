@@ -1,6 +1,6 @@
 #Requires -Version 7.0
 [CmdletBinding()]
-param([ValidateSet('Seed', 'Fault', 'Load')][string]$Profile = 'Seed', [switch]$CapabilityOnly, [switch]$PreflightOnly)
+param([ValidateSet('Seed', 'Fault', 'Load', 'Topology')][string]$Profile = 'Seed', [switch]$CapabilityOnly, [switch]$PreflightOnly)
 $ErrorActionPreference = 'Stop'
 if (($CapabilityOnly -or $PreflightOnly) -and $Profile -ceq 'Seed') { throw 'A runtime check requires Fault or Load profile' }
 if ($CapabilityOnly -and $PreflightOnly) { throw 'Choose one bounded runtime check' }
@@ -54,7 +54,11 @@ try {
             'scripts/lib/room-production-peer.mjs',
             'scripts/lib/room-supervised-local.mjs'
         )
-        $sourceManifest = foreach ($relative in $launcherSources) {
+        $runnerSources = @(Get-ChildItem -LiteralPath (Join-Path $repo 'server/src/test/kotlin') -Recurse -File -Filter '*.kt' |
+            ForEach-Object { $_.FullName.Substring($repo.Length + 1).Replace([char]92, [char]47) } |
+            Sort-Object -CaseSensitive)
+        if (!$runnerSources) { throw 'Rehearsal runner sources are missing' }
+        $sourceManifest = foreach ($relative in ($launcherSources + $runnerSources)) {
             $original = Get-Item -LiteralPath (Join-Path $repo $relative)
             if ($original.PSIsContainer -or ($original.Attributes -band [IO.FileAttributes]::ReparsePoint)) {
                 throw 'Rehearsal launcher source must be a regular file'
@@ -76,6 +80,11 @@ try {
     Set-RunVariable 'JAVA_TOOL_OPTIONS' "-Djava.io.tmpdir=""$tempDirectory"""
     & ./gradlew.bat :server:roomOwnershipAcceptanceClasspath :server:installDist --offline --no-daemon --no-configuration-cache --max-workers=1 --console=plain *> "$output/compile.log"
     if ($LASTEXITCODE -ne 0) { throw 'Runner compile failed. See compile.log' }
+    if ($Profile -cne 'Seed') {
+        foreach ($entry in $sourceManifest) {
+            if ((Hash (Join-Path $repo $entry.path)) -cne $entry.sha256) { throw 'Rehearsal source changed during build' }
+        }
+    }
 
     Copy-Item -Path 'server/build/classes/kotlin/test/*' -Destination "$context/classes" -Recurse
     Copy-Item -Path 'server/build/install/server/lib/*' -Destination "$context/lib"
