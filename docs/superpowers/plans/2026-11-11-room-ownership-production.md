@@ -23,6 +23,16 @@ This checkpoint supersedes historical signatures, counts and candidate hashes be
 
 Remaining sequence: implement and test the topology/drain gaps in [the closure plan](2026-11-11-room-ownership-rollout-closure.md); repeat acceptance on the resulting frozen candidate; freeze a concrete new cloud scope; run cloud capability/fault/load/drain/rollback and cleanup; review branch integration and release package; execute the authorized production rollout against the reviewed package. Keep this branch isolated until those gates are earned.
 
+## Local acceptance checkpoint on 13 November 2026
+
+The final local Fault, Load and Topology profiles bind candidate
+7d55765c15f2e3435ea7e80ffb065df967b7f8bf4fe5441d39e14185a0fc68b0.
+Load completed 60,000 selections and 1,200 matches in 601.667822 seconds.
+All eight fault cases and five topology groups passed with cleanup.
+See the [closure checkpoint](2026-11-11-room-ownership-rollout-closure.md)
+for exact runs, latency, pool saturation, regression scope and remaining
+Staging gates. Full server verification recorded 1,301 passing tests with
+two expected opt-in capacity skips after correcting two fixture settings.
 ## Global Constraints
 
 - The current `pilot` mode remains restricted to `dev` and fixture accounts.

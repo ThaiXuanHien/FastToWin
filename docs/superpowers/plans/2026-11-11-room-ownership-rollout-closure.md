@@ -40,6 +40,67 @@ Task 4 now publishes owned presence from a single durable membership/socket-gene
 Task 5 now integrates global maintenance with the existing durable owned admission authority. The sole ingress blocks legacy admission, acknowledges committed STOP_NEW, and samples all global open rooms or pending settlements under the matching stopped policy generation/configuration. Closed pending work and expired open rooms count; failed, partial or stale samples cannot become trusted zero in public or admin observations. Emergency/environment urgency remains intact, and cancelling global maintenance does not resume ownership admission. Tests first reproduced the missing coordination and the independent review's false-zero diagnostic finding before implementation/fix. Real PostgreSQL/private-peer/Netty coverage includes a prepared create and signed join/start arriving after STOP_NEW, normal play during drain, a held settlement with no remaining legacy match, completion without duplicate settlement, and partial/failure/stale observation cases. The final integrated ownership/maintenance/presence suite passed **328 tests with zero failures, errors or skips**; independent re-review found no remaining issue and fixtures were cleaned. Evidence: `.artifacts/owned-maintenance-20261113/`.
 
 Task 6 implements private cluster drain and rollback proof in `9f65409` and `bd58727`. It binds proof to the current A/B process identities, measured artifacts, policy generation, and durable global zero. A new proof can be issued for the current processes after restart under DISABLED. Explicit recovery resume prepares a fresh STOP_NEW generation before checking that both processes can accept work. Independent review found seven issues, including cleanup that could delete pending settlement evidence and a race between resume and delayed quiesce. All findings passed re-review. The final local PostgreSQL, Redis, Netty, and packaged CLI regression passed **352 tests with zero failures or skips**. Disposable services were cleaned. See `.artifacts/owned-cluster-drain-20261113/review-final-regression-results.json` and the [operations guide](../../room-ownership-production-operations.md). Task 7 still requires acceptance of the frozen A/B topology under fault and load.
+## Local acceptance checkpoint on 13 November 2026
+
+The local profiles at source commit 78c66421 passed independent aggregate
+verification. All 262 frozen source entries match that commit. The runs bind
+the same JAR, ordered runtime classpath, runner, launcher sources, migrations,
+supervisor source/compiler and resource limits.
+
+| Profile | Retained run |
+| --- | --- |
+| Fault | room-pilot-866b6a36fabf |
+| Load | room-pilot-d936d0101f9b |
+| Topology | room-pilot-5154ecb724e7 |
+
+Candidate SHA-256 is
+7d55765c15f2e3435ea7e80ffb065df967b7f8bf4fe5441d39e14185a0fc68b0.
+Server JAR SHA-256 is
+b25c8f8d4cae927e127b616f0ee780eb669c341dd132ba7bfcdc9d5aa32f742f.
+Ordered classpath SHA-256 is
+97f250313f0e0662f879ebe5ca93cd4e8b1653a5c46a8913460ab8c9cb85443b.
+Aggregate evidence is
+.artifacts/owned-topology-20261113/aggregate-78c66421.json, reproduced in
+aggregate-independent-final.json.
+
+Load completed 60,000 selections and 1,200 matches in 601.667822 seconds,
+or 99.7228 selections/second, on 20 rooms and 40 synthetic accounts with
+production rate policies and pools 20/20. Selection-command retries were
+zero. Command latency p95 was 193.617 ms. Scheduled-to-ACK p95 was 8.529
+seconds including injected outages. Three B pauses recovered within
+25 seconds. PostgreSQL pool saturation p95 and maximum were 1.0.
+Compare these local measurements with Staging resource samples before rollout.
+
+Eight fault cases passed with maximum recovery 14,573 ms. Topology verified
+A as sole public ingress, both owned destinations, changed B private address,
+friend/clan presence, A interruption and reconnect inside and outside the
+durable deadline, and held create/join commit/rollback cases with an obsolete
+WebSocket attempting a legacy create. Drain observed generations 2, 3, 4 and 5,
+three closed waiting rooms, three refused stale admissions, four legacy
+selections, one owned settlement, both current process acknowledgments and
+final zero rooms, leases and pending settlements. All three runs retained
+zero owned containers, networks, volumes and images after cleanup.
+
+The complete server suite exercised 1,303 tests. After rerunning two cases
+with corrected fixture configuration, 1,301 tests passed. Two separately
+opted-in Redis capacity suites were skipped as intended. The original
+fixture errors were a missing subprocess classpath and a presence account
+with unrestricted Redis permissions. The rerun supplied the required
+classpath and a dedicated presence ACL. Both tests passed and all disposable
+services were removed. The complete suite and resolution are recorded in
+.artifacts/owned-topology-20261113/full-server-final-verification.json.
+The final source/artifact review found no blocking issue.
+
+Earlier Load attempts exposed fixture handling of a room in SessionReady
+and a current waiting snapshot during create replay. The runner now leaves
+resumed rooms and verifies membership release before recycling. The match
+settlement regression also reproduced a PostgreSQL catalog/player lock
+inversion. a7a41d37 acquires the catalog before sorted player locks.
+Its focused real-database suite passed 53 tests.
+
+Remaining rollout work includes the concrete Railway Staging controller,
+reviewed execution scope, cloud capability/fault/load/topology/drain and
+cleanup receipts, followed by the release package and production QA.
 ## Current names and proposed boundaries
 
 At this plan's initial review, `Main.main` always constructed a `GameEngine`, restored legacy state and installed `Application.gameModule`. Task 1 replaced that unconditional startup with an explicit private worker branch; Tasks 1A/2 added real admission authority and a separate replay-safe create seam. The ingress branch still runs legacy/application jobs plus ownership delivery/worker. `OwnerPeerTransport`, command/create wire transport and `OwnerOperation` live in **`ownership/OwnerCommandRoutes.kt`**; there is no separate `OwnerPeerTransport.kt`. Existing command operations remain `COMMAND`, `RECONNECT`, `DISCONNECT` for an existing room/epoch. The ordinary public create path is still local until Task 3 integrates the new descriptor API.
@@ -159,27 +220,27 @@ Focused test command convention (run once for initial failure, then after implem
 
 **Files:** Extend `scripts/room-production-rehearsal-local.ps1`, `scripts/room-production-rehearsal-local.mjs`, `scripts/read-room-rehearsal-receipt.mjs` and its tests; `ownership/ProductionRehearsalSettings.kt`, `ProductionRoomRehearsal.kt`, `RoomOwnershipAcceptanceMain.kt`, `RailwayRoomRehearsal.kt`, receipt projections. Add focused `ownership/ProductionTopologyAcceptance.kt`, `ownership/ProductionDrainAcceptance.kt`; update the original production plan checkpoint and operations document with verified links only.
 
-- [ ] Add a topology-specific bounded profile: every public game/auth socket targets A; B is worker-only and private. Pin runtime roles, route algorithm vectors, policy generation, JAR, complete runner dependencies, migration list, image digests and resource caps to a new manifest. Preserve the existing pilot and earlier local receipt readers.
-- [ ] Extend the disposable production seeder/controller to perform Task 1A's explicit trusted bootstrap/resume with the manifest-bound topology/policy fingerprints. Read the committed generation back into runtime requests/receipts; do not use a hard-coded generation, automatically resume on backend restart, or let missing authority fall through to ACTIVE. Confirm replay of the occupied seed database remains refused.
-- [ ] Remove the current local controller's dependency on historical `.artifacts` supervisor packages: build the tracked Go supervisor with the pinned `supervisor.Dockerfile`, verify its binary hash, and bind its source and compiler image. Snapshot and hash the exact launcher/controller/receipt-reader sources before execution; do not relabel later source edits as the code that ran an earlier receipt.
-- [ ] Before workloads, verify no B public handlers/jobs, only A legacy restore, peer DNS exclusively private, signed create operation works, and golden accounts produce normal A-owned and B-owned rooms. Proposed `OwnerPeerTransport.refreshPrivatePeer(): Boolean` must validate all fresh DNS answers and atomically replace the pinned address/client state before rejoin; retain fail-closed readiness when resolution fails or yields public/mixed answers. Test B address replacement, not just its supervisor restarting a process on the same address.
-- [ ] Run real topology cases: concurrent old/new socket mixed-lane attempts; ambiguous remote create/join with held transaction and late peer request; A/B owned presence transitions observed by friend/clan users; B owner kill preserving acknowledged board/quota/result; A outage and restart with public interruption, including reconnect inside and outside the existing recovery deadline. Record both expected terminal outcomes without claiming ingress high availability.
-- [ ] Run the complete existing eight fault cases and 600-second Load on this topology, default production rate policies, pools 20, 20 rooms/40 synthetic accounts. Require normal traffic to put owned work on B; assert every public socket terminates on A. Bind receipts to the frozen JAR; do not reuse the pre-closure candidate's results.
-- [ ] Separate the runner's ingress address from the owner node. `createMatch` currently infers ownership from the host socket's backend and `connect` tries both nodes. In the production topology, use only A for login and WebSocket, identify each owner from the durable owner instance and verified node identity, and select a B-owned room for fault cases that require surviving ingress. Rehearse A interruption and restart separately. Keep the existing receipt thresholds and distinguish an owner takeover from a public ingress outage.
-- [ ] Run cluster acceptance during traffic: STOP_NEW acknowledgements, late in-flight admission fencing, active completion, WAITING resolution, B restart without reopening, rollback refusal with deliberately held pending settlement (also on a closed room), process quiesce acknowledgements and final global zero proof. Test dependency/deadline failures preserve routes and incomplete status.
-- [ ] Run the full PostgreSQL/Redis/Netty regression against isolated disposable services, require no unexpected skips, and retain cleanup receipts. Record exact commands and totals actually observed. Run local script syntax/receipt-reader tests before executing the bounded profiles. If CI is requested, dispatch all jobs once with `run_android_ui=true`, return its link and follow project instructions against polling.
-- [ ] Request focused source/spec review, resolve findings and freeze a final artifact manifest. Update checklist stages only from evidence. Cloud capability/fault/load/topology/drain/rollback remain a separate concrete cloud scope and execution receipt; do not mark that scope approved or production deployed based on this local result.
+- [x] Add a topology-specific bounded profile: every public game/auth socket targets A; B is worker-only and private. Pin runtime roles, route algorithm vectors, policy generation, JAR, complete runner dependencies, migration list, image digests and resource caps to a new manifest. Preserve the existing pilot and earlier local receipt readers.
+- [x] Extend the disposable production seeder/controller to perform Task 1A's explicit trusted bootstrap/resume with the manifest-bound topology/policy fingerprints. Read the committed generation back into runtime requests/receipts; do not use a hard-coded generation, automatically resume on backend restart, or let missing authority fall through to ACTIVE. Confirm replay of the occupied seed database remains refused.
+- [x] Remove the current local controller's dependency on historical `.artifacts` supervisor packages: build the tracked Go supervisor with the pinned `supervisor.Dockerfile`, verify its binary hash, and bind its source and compiler image. Snapshot and hash the exact launcher/controller/receipt-reader sources before execution; do not relabel later source edits as the code that ran an earlier receipt.
+- [x] Before workloads, verify no B public handlers/jobs, only A legacy restore, peer DNS exclusively private, signed create operation works, and golden accounts produce normal A-owned and B-owned rooms. Proposed `OwnerPeerTransport.refreshPrivatePeer(): Boolean` must validate all fresh DNS answers and atomically replace the pinned address/client state before rejoin; retain fail-closed readiness when resolution fails or yields public/mixed answers. Test B address replacement, not just its supervisor restarting a process on the same address.
+- [x] Run real topology cases: concurrent old/new socket mixed-lane attempts; ambiguous remote create/join with held transaction and late peer request; A/B owned presence transitions observed by friend/clan users; B owner kill preserving acknowledged board/quota/result; A outage and restart with public interruption, including reconnect inside and outside the existing recovery deadline. Record both expected terminal outcomes without claiming ingress high availability.
+- [x] Run the complete existing eight fault cases and 600-second Load on this topology, default production rate policies, pools 20, 20 rooms/40 synthetic accounts. Require normal traffic to put owned work on B; assert every public socket terminates on A. Bind receipts to the frozen JAR; do not reuse the pre-closure candidate's results.
+- [x] Separate the runner's ingress address from the owner node. `createMatch` currently infers ownership from the host socket's backend and `connect` tries both nodes. In the production topology, use only A for login and WebSocket, identify each owner from the durable owner instance and verified node identity, and select a B-owned room for fault cases that require surviving ingress. Rehearse A interruption and restart separately. Keep the existing receipt thresholds and distinguish an owner takeover from a public ingress outage.
+- [x] Run cluster acceptance during traffic: STOP_NEW acknowledgements, late in-flight admission fencing, active completion, WAITING resolution, B restart without reopening, rollback refusal with deliberately held pending settlement (also on a closed room), process quiesce acknowledgements and final global zero proof. Test dependency/deadline failures preserve routes and incomplete status.
+- [x] Run the full PostgreSQL/Redis/Netty regression against isolated disposable services, require no unexpected skips, and retain cleanup receipts. Record exact commands and totals actually observed. Run local script syntax/receipt-reader tests before executing the bounded profiles. If CI is requested, dispatch all jobs once with `run_android_ui=true`, return its link and follow project instructions against polling.
+- [x] Request focused source/spec review, resolve findings and freeze a final artifact manifest. Update checklist stages only from evidence. Cloud capability/fault/load/topology/drain/rollback remain a separate concrete cloud scope and execution receipt; do not mark that scope approved or production deployed based on this local result.
 
 ## Execution and acceptance checklist
 
-- [ ] Runtime-role seam reviewed; B proves no legacy/public/singleton execution.
-- [ ] Task 1A durable admission/configuration authority exists and passes restart/missing/stale/race tests before remote-create work starts.
-- [ ] Signed idempotent remote create and fixed route choice pass real-DB replay tests.
-- [ ] A account coordinator and generation barrier pass held-transaction + Netty races.
-- [ ] Authoritative owned presence and friend/clan notification tests pass.
-- [ ] Durable stop-new and planned maintenance count all owned work without false zero.
+- [x] Runtime-role seam reviewed; B proves no legacy/public/singleton execution.
+- [x] Task 1A durable admission/configuration authority exists and passes restart/missing/stale/race tests before remote-create work starts.
+- [x] Signed idempotent remote create and fixed route choice pass real-DB replay tests.
+- [x] A account coordinator and generation barrier pass held-transaction + Netty races.
+- [x] Authoritative owned presence and friend/clan notification tests pass.
+- [x] Durable stop-new and planned maintenance count all owned work without false zero.
 - [x] Both process acknowledgements plus fresh global zero prove rollback safety in the Task 6 local integration suite.
-- [ ] Frozen candidate passes full regression, eight faults, 600-second Load and added topology/presence/drain profile, with cleanup evidence.
+- [x] Frozen candidate passes full regression, eight faults, 600-second Load and added topology/presence/drain profile, with cleanup evidence.
 - [ ] Concrete cloud acceptance receipts and final release/operations package reviewed.
 - [ ] Production rollout executed and QA verified under the existing user authorization and the concrete reviewed scope.
 
