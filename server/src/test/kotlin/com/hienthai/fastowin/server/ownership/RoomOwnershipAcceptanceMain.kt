@@ -737,20 +737,22 @@ internal class AcceptanceMatch(
         return snapshots
     }
 
-    suspend fun verifyFinishedEconomy(snapshot: GameSnapshot) {
+    suspend fun verifyFinishedEconomy(snapshot: GameSnapshot, intentionalLeaver: String) {
         check(snapshot.phase == RoomPhase.FINISHED && snapshot.roomId == roomId && snapshot.matchId == matchId)
+        check(accounts.any { it.userId == intentionalLeaver })
         lastSnapshot = snapshot
-        verifyEconomy()
+        verifyEconomy(setOf(intentionalLeaver))
     }
 
-    suspend fun verifyEconomy() = withContext(Dispatchers.IO) {
+    suspend fun verifyEconomy(unrewardedPlayers: Set<String> = emptySet()) = withContext(Dispatchers.IO) {
         UUID.fromString(matchId)
         val receiptCount = fixture.number("SELECT count(*) FROM play_quota_match_consumptions WHERE match_id='$matchId' AND reservation_state='FINALIZED'")
         check(receiptCount == 2L) { "Each match must debit each player once" }
         if (lastSnapshot.phase == RoomPhase.FINISHED) {
             withTimeout(30_000) { while (fixture.number("SELECT count(*) FROM matches WHERE id='$matchId'") != 1L) delay(50) }
             val wallets = fixture.number("SELECT count(*) FROM wallet_transactions WHERE source_type='MATCH' AND source_id='$matchId'")
-            check(wallets == 2L) { "A completed match must reward exactly two players once" }
+            val expectedPayees = accounts.map { it.userId }.toSet() - unrewardedPlayers
+            check(wallets == expectedPayees.size.toLong()) { "A completed match must reward each eligible player once" }
             fixture.withFixtureDatabase { connection ->
                 connection.prepareStatement("SELECT user_id,gold_delta,xp_delta,gems_delta FROM wallet_transactions WHERE source_type='MATCH' AND source_id=?").use { statement ->
                     statement.setString(1, matchId)
@@ -763,7 +765,7 @@ internal class AcceptanceMatch(
                             check(rows.getInt(2) == expected.first && rows.getInt(3) == expected.second && rows.getInt(4) == 0)
                             check(paid.add(id))
                         }
-                        check(paid == accounts.map { it.userId }.toSet()) { "Match paid unexpected players" }
+                        check(paid == expectedPayees) { "Match paid unexpected players" }
                     }
                 }
                 for (account in accounts) {

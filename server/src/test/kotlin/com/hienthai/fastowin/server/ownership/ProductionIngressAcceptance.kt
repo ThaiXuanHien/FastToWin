@@ -102,7 +102,7 @@ internal suspend fun productionIngressAcceptance(fixture: RoomAcceptanceFixture)
                     match.socket(i).await { it is ServerMessage.GameFinished && it.game.matchId == match.matchId } as ServerMessage.GameFinished
                 }
                 check(finishes[0].game == finishes[1].game && finishes[0].game.winnerPlayerId == match.playerId(1))
-                match.verifyFinishedEconomy(finishes[0].game)
+                match.verifyFinishedEconomy(finishes[0].game, intentionalLeaver = match.playerId(0))
                 for (i in 0..1) match.socket(i).leaveRoom(match.roomId)
                 withTimeout(30_000) {
                     while (fixture.number("SELECT count(*) FROM room_ownership_pilot_settlements WHERE match_id='${match.matchId}'") != 1L) delay(50)
