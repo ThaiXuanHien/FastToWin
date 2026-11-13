@@ -29,6 +29,35 @@ import kotlin.test.assertTrue
 
 class PostgresRoomOwnershipRepositoryTest {
     @Test
+    fun `presence reads current generation membership and snapshot in one query`() = runBlocking {
+        fixture { f ->
+            val socket = f.a.bindSocket(f.host)
+            assertEquals(OwnedPresenceRead.NoMembership, f.a.presence(socket))
+            val initial = assertIs<FencedResult.Committed>(f.a.createRoom(f.instanceA, socket,
+                f.snapshot().copy(pilotConnectionEpoch = 1,
+                    pilotSocketGenerations = mapOf(f.host.toString() to socket.generation)))).state
+            val calls = JdbcCallRecorder(f.dataSource)
+            assertEquals(OwnedPresenceRead.Present(com.hienthai.fastowin.protocol.FriendPresence.IN_ROOM),
+                PostgresRoomOwnershipRepository(calls).presence(socket))
+            assertEquals(1, calls.serverCalls.get())
+            val replacement = f.b.bindSocket(f.host)
+            assertEquals(OwnedPresenceRead.Unavailable, f.a.presence(socket))
+            assertEquals(OwnedPresenceRead.Unavailable, f.a.presence(replacement))
+            val recovered = assertIs<FencedResult.Committed>(
+                f.a.withFencedRoom(initial.fence, initial.revision, null) { _, observed ->
+                    RoomMutation.Change(observed.snapshot.copy(phase = RoomPhase.PLAYING,
+                        pilotSocketGenerations = mapOf(f.host.toString() to replacement.generation)))
+                }).state
+            assertEquals(OwnedPresenceRead.Present(com.hienthai.fastowin.protocol.FriendPresence.PLAYING),
+                f.a.presence(replacement))
+            assertIs<FencedResult.Committed>(f.a.withFencedRoom(recovered.fence, recovered.revision, null) { _, observed ->
+                RoomMutation.Change(observed.snapshot, close = true)
+            })
+            assertEquals(OwnedPresenceRead.NoMembership, f.a.presence(replacement))
+        }
+    }
+
+    @Test
     fun `ownership schema validation does not require fixture marker and rejects missing keys`() = runBlocking {
         fixture { f ->
             assertTrue(f.a.schemaReady())

@@ -50,7 +50,9 @@ internal class RoomOwnershipPilot private constructor(
     private val pool: HikariDataSource?,
     wakeups: Flow<UUID>
 ) {
-    val delivery = RoomEventDelivery(rooms, wakeups, reattach = ::reconnect, metrics = metrics)
+    var onPresenceChanged: (Set<UUID>) -> Unit = {}
+    val delivery = RoomEventDelivery(rooms, wakeups, reattach = ::reconnect, metrics = metrics,
+        onCommittedStateChanged = { onPresenceChanged(it) })
     private val admission = RoomAdmissionGate()
     private val lastHealthyTick = AtomicLong()
     private val drainMutex = Mutex()
@@ -61,6 +63,12 @@ internal class RoomOwnershipPilot private constructor(
     fun allows(account: AuthenticatedAccount): Boolean = account.emailVerified && account.userId in config.allowedAccounts
 
     val isProductionMode: Boolean get() = config.fixtureId == null
+
+    suspend fun presence(socket: SocketFence): OwnedPresenceRead = try {
+        rooms.presence(socket)
+    } catch (_: SQLException) {
+        OwnedPresenceRead.Unavailable
+    }
 
     suspend fun ownedRoom(playerId: UUID): UUID? = rooms.lookupRoom(playerId)
 

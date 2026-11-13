@@ -8,6 +8,7 @@ import com.hienthai.fastowin.server.gifts.*
 import com.hienthai.fastowin.server.compensation.*
 import com.hienthai.fastowin.server.events.*
 import com.hienthai.fastowin.server.maintenance.*
+import com.hienthai.fastowin.server.ownership.OwnedPresenceRead
 import com.hienthai.fastowin.server.ownership.AccountGameLane
 import com.hienthai.fastowin.server.ownership.OwnedAdmissionRejected
 import com.hienthai.fastowin.server.ownership.OwnedCreatePreparation
@@ -270,8 +271,18 @@ internal fun Application.gameModule(
         val socketId = connection.presenceId ?: return
         connection.presenceMutex.withLock {
             if (connection.presenceClosed || connections[playerId] !== connection) return
-            val state = engine.localPresence(playerId)
-            if (state == com.hienthai.fastowin.protocol.FriendPresence.OFFLINE) return
+            val generation = connection.pilotGeneration
+            val owned = if (roomOwnershipPilot != null && generation != null) {
+                roomOwnershipPilot.presence(SocketFence(java.util.UUID.fromString(playerId), generation))
+            } else OwnedPresenceRead.NoMembership
+            val state = when (owned) {
+                is OwnedPresenceRead.Present -> owned.presence
+                OwnedPresenceRead.NoMembership -> engine.localPresence(playerId)
+                OwnedPresenceRead.Unavailable -> return
+            }
+            if (connection.presenceClosed || connections[playerId] !== connection ||
+                state == com.hienthai.fastowin.protocol.FriendPresence.OFFLINE
+            ) return
             if ((heartbeat || connection.lastPublishedPresence != state) && store.renew(playerId, socketId, state)) {
                 connection.lastPublishedPresence = state
             }
@@ -352,6 +363,9 @@ internal fun Application.gameModule(
         val pending = ConcurrentHashMap.newKeySet<String>()
         engine.enqueuePresenceUpdate = { id ->
             if (pending.add(id) && queue.trySend(id).isFailure) pending.remove(id)
+        }
+        roomOwnershipPilot?.onPresenceChanged = { ids ->
+            ids.forEach { engine.enqueuePresenceUpdate?.invoke(it.toString()) }
         }
         launch {
             for (id in queue) {

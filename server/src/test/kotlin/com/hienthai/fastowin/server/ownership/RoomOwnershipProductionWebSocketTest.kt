@@ -2,6 +2,11 @@ package com.hienthai.fastowin.server.ownership
 
 import com.hienthai.fastowin.protocol.*
 import com.hienthai.fastowin.server.*
+import com.hienthai.fastowin.server.presence.PresenceConfiguration
+import com.hienthai.fastowin.server.presence.PresenceStore
+import com.hienthai.fastowin.server.presence.RedisPresenceStore
+import com.hienthai.fastowin.server.ratelimit.RedisFaultProxy
+import kotlinx.coroutines.withTimeoutOrNull
 import com.zaxxer.hikari.HikariConfig
 import com.zaxxer.hikari.HikariDataSource
 import io.ktor.client.HttpClient
@@ -204,7 +209,209 @@ class RoomOwnershipProductionWebSocketTest {
         }
     }
 
-    private suspend fun fixture(rateLimiter: RateLimiter = InMemoryRateLimiter(), block: suspend (Fixture) -> Unit) {
+
+    @Test
+    fun `worker owned presence reaches friend and clan viewers before heartbeat and survives reconnect`() = runBlocking {
+        presenceFixture { f, observer, _ ->
+            val viewer = f.connect(f.aPort, f.tokens[2])
+            val host = f.connect(f.aPort, f.tokens[0])
+            val guest = f.connect(f.aPort, f.tokens[1])
+            try {
+                host.sendMessage(ClientMessage.CreateRoom("Social owned", "private", ProtocolGameMode.ORDER))
+                val room = host.receiveMessage<ServerMessage.RoomCreated>().game
+                assertEquals(f.workerId, f.createDestination(UUID.fromString(room.roomId)))
+                viewer.assertSocialPush(mapOf(f.accounts[0].toString() to FriendPresence.IN_ROOM))
+                guest.sendMessage(ClientMessage.JoinRoom(room.roomId, "private"))
+                guest.receiveMessage<ServerMessage.RoomUpdated>()
+                viewer.assertSocialPush(f.accounts.take(2).associate { it.toString() to FriendPresence.IN_ROOM })
+                host.sendMessage(ClientMessage.SetReady(room.roomId, true))
+                host.receiveMessage<ServerMessage.RoomUpdated>()
+                guest.sendMessage(ClientMessage.SetReady(room.roomId, true))
+                host.receiveMessage<ServerMessage.GameStarted>()
+                guest.receiveMessage<ServerMessage.GameStarted>()
+                val playing = f.accounts.take(2).associate { it.toString() to FriendPresence.PLAYING }
+                viewer.assertSocialPush(playing)
+                viewer.sendMessage(ClientMessage.GetPresence("owned-playing", f.clanId))
+                val explicit = viewer.receiveMessage<ServerMessage.PresenceData>()
+                playing.forEach { (id, state) -> assertEquals(state, explicit.states[id]) }
+                val replacement = f.connect(f.aPort, f.tokens[0], host.ready.resumeToken)
+                try {
+                    assertEquals(room.roomId, replacement.ready.currentGame?.roomId)
+                    host.close()
+                    viewer.sendMessage(ClientMessage.GetFriends)
+                    assertTrue(viewer.receiveMessage<ServerMessage.FriendsData> {
+                        playing.all { (id, state) -> it.social.friends.any { p -> p.userId == id && p.presence == state } }
+                    }.social.friends.isNotEmpty())
+                    assertEquals(FriendPresence.PLAYING, observer.read(listOf(f.accounts[0].toString()))?.get(f.accounts[0].toString()))
+                    replacement.sendMessage(ClientMessage.LeaveRoom(room.roomId))
+                    replacement.receiveMessage<ServerMessage.GameFinished>()
+                    guest.receiveMessage<ServerMessage.GameFinished>()
+                    viewer.sendMessage(ClientMessage.GetClanInfo(f.clanId))
+                    val finished = viewer.receiveMessage<ServerMessage.ClanInfoData> { !it.isPresenceRefresh }
+                    playing.forEach { (id, state) -> assertEquals(state, finished.clan.members.single { it.userId == id }.presence) }
+                    replacement.sendMessage(ClientMessage.LeaveRoom(room.roomId))
+                    replacement.receiveMessage<ServerMessage.RoomClosed>()
+                    viewer.assertSocialPush(mapOf(f.accounts[0].toString() to FriendPresence.ONLINE,
+                        f.accounts[1].toString() to FriendPresence.PLAYING))
+                    guest.sendMessage(ClientMessage.LeaveRoom(room.roomId))
+                    guest.receiveMessage<ServerMessage.RoomClosed>()
+                    viewer.assertSocialPush(f.accounts.take(2).associate { it.toString() to FriendPresence.ONLINE })
+                } finally { replacement.close() }
+            } finally { guest.close(); host.close(); viewer.close() }
+        }
+    }
+
+    @Test
+    fun `owned social reads do not fabricate online during Redis outage and recover on next commit`() = runBlocking {
+        presenceFixture { f, observer, proxy ->
+            val viewer = f.connect(f.aPort, f.tokens[2])
+            val host = f.connect(f.aPort, f.tokens[0])
+            val guest = f.connect(f.aPort, f.tokens[1])
+            try {
+                host.sendMessage(ClientMessage.CreateRoom("Outage owned", "private", ProtocolGameMode.ORDER))
+                val room = host.receiveMessage<ServerMessage.RoomCreated>().game
+                guest.sendMessage(ClientMessage.JoinRoom(room.roomId, "private"))
+                guest.receiveMessage<ServerMessage.RoomUpdated>()
+                viewer.assertSocialPush(f.accounts.take(2).associate { it.toString() to FriendPresence.IN_ROOM })
+                proxy.mode = RedisFaultProxy.Mode.DROP
+                try {
+                    viewer.sendMessage(ClientMessage.GetPresence("outage-owned", f.clanId))
+                    assertNull(withTimeoutOrNull(400) { viewer.receiveMessage<ServerMessage.PresenceData>() })
+                    viewer.sendMessage(ClientMessage.GetFriends)
+                    assertEquals("FRIENDS_PRESENCE_UNAVAILABLE", viewer.receiveMessage<ServerMessage.Error>().code)
+                    viewer.sendMessage(ClientMessage.GetClanInfo(f.clanId))
+                    assertEquals("CLAN_PRESENCE_UNAVAILABLE", viewer.receiveMessage<ServerMessage.Error>().code)
+                    host.sendMessage(ClientMessage.SetReady(room.roomId, true))
+                    host.receiveMessage<ServerMessage.RoomUpdated>()
+                    guest.sendMessage(ClientMessage.SetReady(room.roomId, true))
+                    host.receiveMessage<ServerMessage.GameStarted>()
+                    guest.receiveMessage<ServerMessage.GameStarted>()
+                    assertTrue(observer.read(listOf(f.accounts[0].toString()))?.get(f.accounts[0].toString()) in
+                        setOf(FriendPresence.IN_ROOM, FriendPresence.PLAYING))
+                } finally { proxy.release() }
+                host.sendMessage(ClientMessage.SelectNumber(room.roomId, 1, "after-redis-repair"))
+                host.receiveMessage<ServerMessage.GameStateUpdated>()
+                viewer.assertSocialPush(f.accounts.take(2).associate { it.toString() to FriendPresence.PLAYING })
+            } finally { guest.close(); host.close(); viewer.close() }
+        }
+    }
+
+    @Test
+    fun `ownership SQL outage retains Redis presence instead of publishing legacy online`() = runBlocking {
+        presenceFixture { f, observer, _ ->
+            val viewer = f.connect(f.aPort, f.tokens[2])
+            val host = f.connect(f.aPort, f.tokens[0])
+            try {
+                host.sendMessage(ClientMessage.CreateRoom("SQL outage owned", "private", ProtocolGameMode.ORDER))
+                val room = host.receiveMessage<ServerMessage.RoomCreated>().game
+                viewer.assertSocialPush(mapOf(f.accounts[0].toString() to FriendPresence.IN_ROOM))
+                fun rename(from: String, to: String) = f.source.connection.use { c ->
+                    c.createStatement().use { it.execute("ALTER TABLE $from RENAME TO $to") }
+                }
+                rename("room_ownership_pilot_memberships", "unavailable_memberships")
+                try {
+                    assertEquals(OwnedPresenceRead.Unavailable, f.pilot.presence(SocketFence(f.accounts[0], 1)))
+                    repeat(3) {
+                        f.pilot.onPresenceChanged(setOf(f.accounts[0]))
+                        delay(100)
+                    }
+                    viewer.sendMessage(ClientMessage.GetFriends)
+                    val social = viewer.receiveMessage<ServerMessage.FriendsData>()
+                    assertEquals(FriendPresence.IN_ROOM, social.social.friends.single { it.userId == f.accounts[0].toString() }.presence)
+                    assertEquals(FriendPresence.IN_ROOM, observer.read(listOf(f.accounts[0].toString()))?.get(f.accounts[0].toString()))
+                } finally { rename("unavailable_memberships", "room_ownership_pilot_memberships") }
+                host.sendMessage(ClientMessage.LeaveRoom(room.roomId))
+                host.receiveMessage<ServerMessage.RoomClosed>()
+                viewer.assertSocialPush(mapOf(f.accounts[0].toString() to FriendPresence.ONLINE))
+            } finally { host.close(); viewer.close() }
+        }
+    }
+
+
+    @Test
+    fun `lost start reply and worker takeover preserve owned social presence and acknowledged board`() = runBlocking {
+        presenceFixture { f, observer, _ ->
+            val viewer = f.connect(f.aPort, f.tokens[2])
+            val host = f.connect(f.aPort, f.tokens[0])
+            val guest = f.connect(f.aPort, f.tokens[1])
+            try {
+                host.sendMessage(ClientMessage.CreateRoom("Takeover social", "private", ProtocolGameMode.ORDER))
+                val room = host.receiveMessage<ServerMessage.RoomCreated>().game
+                val roomId = UUID.fromString(room.roomId)
+                guest.sendMessage(ClientMessage.JoinRoom(room.roomId, "private"))
+                guest.receiveMessage<ServerMessage.RoomUpdated>()
+                viewer.assertSocialPush(f.accounts.take(2).associate { it.toString() to FriendPresence.IN_ROOM })
+                host.sendMessage(ClientMessage.SetReady(room.roomId, true))
+                host.receiveMessage<ServerMessage.RoomUpdated>()
+                // The peer commits, but A's command-response delivery path never sees this reply.
+                // Only the durable outbox can notify public sockets and social viewers.
+                assertIs<OwnedRoomReply.Applied>(f.pilot.onMessage(SocketFence(f.accounts[1], 1),
+                    ClientMessage.SetReady(room.roomId, true)))
+                host.receiveMessage<ServerMessage.GameStarted>()
+                guest.receiveMessage<ServerMessage.GameStarted>()
+                viewer.assertSocialPush(f.accounts.take(2).associate { it.toString() to FriendPresence.PLAYING })
+                host.sendMessage(ClientMessage.SelectNumber(room.roomId, 1, "before-social-takeover"))
+                host.receiveMessage<ServerMessage.GameStateUpdated> { it.game.selectedNumbers == listOf(1) }
+                guest.receiveMessage<ServerMessage.GameStateUpdated> { it.game.selectedNumbers == listOf(1) }
+                val before = assertNotNull(f.rooms.read(roomId))
+                f.stopWorker()
+                val recovered = withTimeout(8_000) {
+                    var current = assertNotNull(f.rooms.read(roomId))
+                    while (current.fence.epoch == before.fence.epoch ||
+                        current.snapshot.pilotConnectionEpoch != current.fence.epoch ||
+                        current.snapshot.pilotSocketGenerations.keys.size != 2) {
+                        delay(25)
+                        current = assertNotNull(f.rooms.read(roomId))
+                    }
+                    current
+                }
+                assertNotEquals(before.fence.instanceId, recovered.fence.instanceId)
+                assertEquals(listOf(1), recovered.snapshot.selectedNumbers)
+                host.receiveMessage<ServerMessage.GameStateUpdated> { it.game.selectedNumbers == listOf(1) }
+                guest.receiveMessage<ServerMessage.GameStateUpdated> { it.game.selectedNumbers == listOf(1) }
+                val ids = f.accounts.take(2).map(UUID::toString)
+                assertEquals(ids.associateWith { FriendPresence.PLAYING }, observer.read(ids))
+                viewer.sendMessage(ClientMessage.GetFriends)
+                val friends = viewer.receiveMessage<ServerMessage.FriendsData>()
+                ids.forEach { id -> assertEquals(FriendPresence.PLAYING, friends.social.friends.single { it.userId == id }.presence) }
+                viewer.sendMessage(ClientMessage.GetClanInfo(f.clanId))
+                val clan = viewer.receiveMessage<ServerMessage.ClanInfoData> { !it.isPresenceRefresh }
+                ids.forEach { id -> assertEquals(FriendPresence.PLAYING, clan.clan.members.single { it.userId == id }.presence) }
+                host.sendMessage(ClientMessage.SelectNumber(room.roomId, 2, "after-social-takeover"))
+                assertEquals(listOf(1, 2), host.receiveMessage<ServerMessage.GameStateUpdated>().game.selectedNumbers)
+            } finally { guest.close(); host.close(); viewer.close() }
+        }
+    }
+
+    private suspend fun presenceFixture(block: suspend (Fixture, PresenceStore, RedisFaultProxy) -> Unit) {
+        val redis = System.getenv("FASTTOWIN_TEST_PRESENCE_REDIS_URL")
+        assumeTrue(!redis.isNullOrBlank(), "Isolated Redis required")
+        val config = PresenceConfiguration(requireNotNull(redis), "t" + UUID.randomUUID().toString().replace("-", ""))
+        RedisPresenceStore(config).use { observer ->
+            RedisFaultProxy(redis).use { proxy ->
+                RedisPresenceStore(PresenceConfiguration(proxy.proxyUrl, config.namespace)).use { publisher ->
+                    fixture(presenceStore = publisher) { f -> block(f, observer, proxy) }
+                }
+            }
+        }
+    }
+
+    private suspend fun Connection.assertSocialPush(expected: Map<String, FriendPresence>) {
+        val friends = receiveMessage<ServerMessage.FriendsData> { data ->
+            expected.all { (id, state) ->
+                data.social.friends.any { it.userId == id && it.presence == state }
+            }
+        }
+        expected.forEach { (id, state) -> assertEquals(state, friends.social.friends.single { it.userId == id }.presence) }
+        val clan = receiveMessage<ServerMessage.ClanInfoData> { data ->
+            data.isPresenceRefresh && expected.all { (id, state) ->
+                data.clan.members.any { it.userId == id && it.presence == state }
+            }
+        }
+        expected.forEach { (id, state) -> assertEquals(state, clan.clan.members.single { it.userId == id }.presence) }
+    }
+
+    private suspend fun fixture(rateLimiter: RateLimiter = InMemoryRateLimiter(), presenceStore: PresenceStore? = null, block: suspend (Fixture) -> Unit) {
         val url = System.getenv("TEST_DATABASE_URL")
         if (System.getenv("FASTTOWIN_TEST_ROOM_OWNERSHIP") == "true") requireNotNull(url)
         assumeTrue(url != null, "Isolated PostgreSQL required")
@@ -267,21 +474,37 @@ class RoomOwnershipProductionWebSocketTest {
                         val pb = RoomOwnershipPilot.open(cb, b, lookup, wakeups = emptyFlow())
                         val aPort = ar.localPort
                         val bPort = br.localPort
-                        val engine = GameEngine(playerProfileRepository = PostgresPlayerProfileRepository(a))
+                        val clan = ClanSnapshot(UUID.randomUUID().toString(), "Owned social", "", sessions[0].userId,
+                            sessions.map { ClanMemberSnapshot(it.userId, it.displayName, ClanRole.MEMBER, 1_000) }, trophies = 0)
+                        val clans = object : ClanRepository by NoOpClanRepository {
+                            override suspend fun getClanById(clanId: String) = clan.takeIf { it.id == clanId }
+                            override suspend fun getClanByUserId(userId: String) = clan.takeIf { c -> c.members.any { it.userId == userId } }
+                            override suspend fun presenceMemberIds(userId: String, clanId: String) =
+                                super<ClanRepository>.presenceMemberIds(userId, clanId)
+                        }
+                        val friends = object : FriendRepository by NoOpFriendRepository {
+                            override suspend fun load(userId: String) = StoredFriends(friends = sessions.filter { it.userId != userId }
+                                .map { FriendSnapshot(it.userId, it.displayName, it.displayName.uppercase()) })
+                        }
+                        val engine = GameEngine(playerProfileRepository = PostgresPlayerProfileRepository(a),
+                            friendRepository = friends, clanRepository = clans, presenceStore = presenceStore,
+                            productionPresenceFailClosed = true)
                         val sa = embeddedServer(Netty, host = "127.0.0.1", port = aPort) {
                             gameModule(engine = engine, rateLimiter = rateLimiter, authService = authA, roomOwnershipPilot = pa)
                         }
                         val sb = embeddedServer(Netty, host = "127.0.0.1", port = bPort) {
                             ownedWorkerModule(pb)
                         }
+                        val workerStopped = java.util.concurrent.atomic.AtomicBoolean()
+                        fun stopWorker() { if (workerStopped.compareAndSet(false, true)) sb.stop(0, 2000) }
                         try {
                             ar.close(); sa.start(wait = false)
                             br.close(); sb.start(wait = false)
                             HttpClient(OkHttp) { install(WebSockets) }.use { client ->
                                 block(Fixture(client, aPort, sessions.map { it.accessToken }, ids,
-                                    PostgresRoomOwnershipRepository(a), a, bId, engine, pa))
+                                    PostgresRoomOwnershipRepository(a), a, bId, engine, pa, clan.id, ::stopWorker))
                             }
-                        } finally { sb.stop(0, 2000); sa.stop(0, 2000) }
+                        } finally { stopWorker(); sa.stop(0, 2000) }
                     } }
                 } }
             } finally {
@@ -292,7 +515,7 @@ class RoomOwnershipProductionWebSocketTest {
 
     private data class Fixture(val client: HttpClient, val aPort: Int, val tokens: List<String>,
         val accounts: List<UUID>, val rooms: RoomOwnershipRepository, val source: HikariDataSource, val workerId: UUID,
-        val engine: GameEngine, val pilot: RoomOwnershipPilot) {
+        val engine: GameEngine, val pilot: RoomOwnershipPilot, val clanId: String, val stopWorker: () -> Unit) {
         suspend fun awaitDatabaseWaiter(blocker: Int): Int = withTimeout(2_000) {
             var waiter: Int? = null
             while (waiter == null) {
@@ -340,17 +563,21 @@ class RoomOwnershipProductionWebSocketTest {
     private data class Connection(val socket: DefaultClientWebSocketSession, val ready: ServerMessage.SessionReady) {
         suspend fun close() = socket.close()
         suspend fun sendMessage(message: ClientMessage) = socket.sendMessage(message)
-        suspend inline fun <reified T : ServerMessage> receiveMessage(): T = socket.receiveMessage<T>()
+        suspend inline fun <reified T : ServerMessage> receiveMessage(crossinline accept: (T) -> Boolean = { true }): T = socket.receiveMessage<T>(accept)
     }
     private companion object {
         suspend fun DefaultClientWebSocketSession.sendMessage(message: ClientMessage) = send(ProtocolJson.encodeToString<ClientMessage>(message))
-        suspend inline fun <reified T : ServerMessage> DefaultClientWebSocketSession.receiveMessage(): T = withTimeout(8_000) {
-            for (frame in incoming) if (frame is Frame.Text) {
-                val message = ProtocolJson.decodeFromString<ServerMessage>(frame.readText())
-                if (message is T) return@withTimeout message
-                if (message is ServerMessage.Error) error("Unexpected ${message.code} before ${T::class.simpleName}")
-            }
-            error("Socket closed before ${T::class.simpleName}")
+        suspend inline fun <reified T : ServerMessage> DefaultClientWebSocketSession.receiveMessage(crossinline accept: (T) -> Boolean = { true }): T {
+            val seen = mutableListOf<String>()
+            return withTimeoutOrNull(8_000) {
+                for (frame in incoming) if (frame is Frame.Text) {
+                    val message = ProtocolJson.decodeFromString<ServerMessage>(frame.readText())
+                    seen.add(message::class.simpleName.orEmpty())
+                    if (message is T && accept(message)) return@withTimeoutOrNull message
+                    if (message is ServerMessage.Error) error("Unexpected ${message.code} before ${T::class.simpleName}")
+                }
+                error("Socket closed before ${T::class.simpleName}")
+            } ?: error("Expected ${T::class.simpleName}; received $seen")
         }
     }
 }

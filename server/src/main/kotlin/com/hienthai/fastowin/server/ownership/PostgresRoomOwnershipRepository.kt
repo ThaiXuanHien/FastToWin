@@ -258,6 +258,27 @@ internal class PostgresRoomOwnershipRepository(
         }
     }
 
+    suspend fun presence(socket: SocketFence): OwnedPresenceRead = transaction(singleRead = true) {
+        query(
+            """
+            SELECT s.generation, m.room_id, r.owner_epoch, r.closed_at, r.snapshot - 'processedRequests' AS snapshot
+            FROM room_ownership_pilot_sessions s
+            LEFT JOIN room_ownership_pilot_memberships m ON m.player_id = s.player_id
+            LEFT JOIN room_ownership_pilot_rooms r ON r.room_id = m.room_id
+            WHERE s.player_id = ?
+            """.trimIndent(),
+            socket.playerId
+        ) { rows ->
+            when {
+                !rows.next() || rows.getLong("generation") != socket.generation -> OwnedPresenceRead.Unavailable
+                rows.getObject("room_id") == null -> OwnedPresenceRead.NoMembership
+                rows.getTimestamp("closed_at") != null || rows.getString("snapshot") == null -> OwnedPresenceRead.Unavailable
+                else -> ProtocolJson.decodeFromString<StoredActiveRoom>(rows.getString("snapshot"))
+                    .ownedPresence(socket, rows.getLong("owner_epoch"))
+            }
+        }
+    }
+
     suspend fun listJoinableRooms(): List<RoomSummary> = transaction(singleRead = true) {
         query(
             """

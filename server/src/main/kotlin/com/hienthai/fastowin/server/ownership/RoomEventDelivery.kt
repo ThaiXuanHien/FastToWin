@@ -36,7 +36,8 @@ internal class RoomEventDelivery(
     private val wakeups: Flow<UUID> = emptyFlow(),
     private val reconciliationIntervalMillis: Long = 1_000,
     private val reattach: suspend (SocketFence) -> OwnedRoomReply = { OwnedRoomReply.NoRoom },
-    private val metrics: RoomOwnershipMetrics? = null
+    private val metrics: RoomOwnershipMetrics? = null,
+    private val onCommittedStateChanged: (Set<UUID>) -> Unit = {}
 ) {
     private val subscriptions = ConcurrentHashMap<SocketFence, Subscription>()
 
@@ -214,6 +215,7 @@ internal class RoomEventDelivery(
             subscription.cursor = Cursor(reply.roomId, reply.epoch, reply.revision)
             subscription.discoverAfterUncertainCommand = false
         }
+        onCommittedStateChanged(state.snapshot.players().map { UUID.fromString(it.playerId) }.toSet() + subscription.socket.playerId)
         emit(subscription, reply.publicMessage)
     }
 
@@ -249,6 +251,8 @@ internal class RoomEventDelivery(
         val isMember = state.includes(subscription.socket)
         val playerId = subscription.socket.playerId.toString()
         for (revision in batch.revisions) {
+            onCommittedStateChanged(revision.events.flatMap { it.recipients }.toSet() +
+                state.snapshot.players().map { UUID.fromString(it.playerId) } + subscription.socket.playerId)
             for (index in cursor.nextEventIndex until revision.events.size) {
                 val event = revision.events[index]
                 if (playerId in event.recipientIds) {
@@ -288,6 +292,7 @@ internal class RoomEventDelivery(
             if (current != null && current.fence.epoch != epoch) return
         }
         if (!isCurrent(subscription)) return
+        onCommittedStateChanged(current?.snapshot?.players()?.map { UUID.fromString(it.playerId) }.orEmpty().toSet() + socket.playerId)
         if (current == null || !current.includes(socket)) terminate(subscription, cursor)
         else if (emit(subscription, current.snapshot.publicState())) {
             cursor.epoch = current.fence.epoch

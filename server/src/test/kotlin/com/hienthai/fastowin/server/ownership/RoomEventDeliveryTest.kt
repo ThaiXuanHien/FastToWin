@@ -33,6 +33,24 @@ import kotlin.test.assertTrue
 @OptIn(ExperimentalCoroutinesApi::class)
 class RoomEventDeliveryTest {
     @Test
+    fun `committed departure notifies both identities after membership removal`() = runTest {
+        val rooms = RoomFeed()
+        val changed = mutableListOf<Set<UUID>>()
+        val delivery = RoomEventDelivery(rooms, onCommittedStateChanged = { changed.add(it) })
+        delivery.register(rooms.host, rooms.applied()) {}
+        backgroundScope.launch { delivery.run() }
+        runCurrent()
+        rooms.state = rooms.state.copy(snapshot = rooms.state.snapshot.copy(guest = null))
+        rooms.commit(
+            RoomOwnershipEvent(listOf(rooms.guest.playerId), ServerMessage.RoomClosed(rooms.state.fence.roomId.toString(), "Left")),
+            RoomOwnershipEvent(listOf(rooms.host.playerId), rooms.state.snapshot.publicState())
+        )
+        advanceTimeBy(1_001)
+        runCurrent()
+        assertTrue(changed.any { rooms.host.playerId in it && rooms.guest.playerId in it })
+    }
+
+    @Test
     fun `a slow room wakeup does not block delivery to another room`() = runTest {
         val slow = RoomFeed()
         val fast = RoomFeed()
