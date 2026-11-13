@@ -4,6 +4,7 @@ import kotlinx.serialization.json.*
 
 internal class TopologyPhaseFailure(val phase: String, failure: Throwable) : IllegalStateException("Topology preflight failed", failure)
 
+internal class FixtureCreationFailure(val stage: String, cause: Exception) : IllegalStateException("Fixture creation failed", cause)
 internal class LoadPhaseFailure(val phase: String, failure: Throwable) : IllegalStateException("Fixture load phase failed", failure)
 internal class ObservedSocketClose(val backend: Int, val code: Int, reason: String?) : IllegalStateException("Fixture websocket closed") {
     val classification = when (reason) {
@@ -54,6 +55,10 @@ internal fun rehearsalFailureDiagnostic(failure: Throwable): String {
                 put("category", rehearsalFailureCategory(cause))
                 if (cause is LoadPhaseFailure && cause.phase in setOf("initial_create", "recreate", "command", "economy", "close")) {
                     put("phase", cause.phase)
+                }
+                if (cause is FixtureCreationFailure) {
+                    val steps = setOf("connect_pair", "create_room", "join_room", "ready_host", "start_match")
+                    put("phase", cause.stage.takeIf(steps::contains) ?: "unknown")
                 }
                 if (cause is AcceptanceRejected) {
                     val codes = setOf("ROOM_RECOVERING", "ROOM_NOT_FOUND", "RATE_LIMITED", "RATE_LIMIT_UNAVAILABLE",

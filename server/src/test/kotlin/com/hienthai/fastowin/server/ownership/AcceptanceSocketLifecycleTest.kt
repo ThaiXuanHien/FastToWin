@@ -34,6 +34,22 @@ class AcceptanceSocketLifecycleTest {
         }
     }
 
+    @Test fun `recycled create accepts the authoritative waiting snapshot for the requested room`() = runBlocking {
+        val host = "fixture-host"
+        val game = GameSnapshot("new-room", roomName = "Attempt 12-2", hostId = host,
+            gameMode = ProtocolGameMode.ORDER, phase = RoomPhase.WAITING,
+            players = listOf(PlayerSnapshot(host, "Host", 0)))
+        assertEquals(game, matchCreatedRoom(ServerMessage.RoomCreated(game), game.roomName, host, emptySet()))
+        assertEquals(game, matchCreatedRoom(ServerMessage.RoomUpdated(game), game.roomName, host, emptySet()))
+        assertEquals(null, matchCreatedRoom(ServerMessage.RoomUpdated(game.copy(roomName = "Attempt 12-1")),
+            game.roomName, host, emptySet()))
+        assertEquals(null, matchCreatedRoom(ServerMessage.RoomUpdated(game), game.roomName, host, setOf(game.roomId)))
+        assertEquals(null, matchCreatedRoom(ServerMessage.RoomUpdated(game.copy(hostId = "other")),
+            game.roomName, host, emptySet()))
+        assertEquals(null, matchCreatedRoom(ServerMessage.RoomUpdated(game.copy(phase = RoomPhase.PLAYING)),
+            game.roomName, host, emptySet()))
+    }
+
     private suspend fun withSocket(code: String, block: suspend (AcceptanceSocket, AtomicInteger) -> Unit) {
         val calls = AtomicInteger()
         val server = embeddedServer(Netty, host = "127.0.0.1", port = 0) {

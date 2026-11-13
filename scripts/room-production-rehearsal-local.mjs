@@ -254,6 +254,9 @@ if(docker(['inspect','--format','{{.State.ExitCode}}',containers.runner])!=='0')
             fs.writeFileSync(path.join(directory,completed+'.json'),bytes)
         } catch {}
     }
+    for(const diagnostic of ['load-outages.ndjson','load-phase-summary.json']) {
+        try { docker(['cp',containers.runner+':/opt/runner/receipts/'+diagnostic,path.join(directory,diagnostic)]) } catch {}
+    }
     const diagnostic=path.join(directory,'failure-sites.json')
     try { docker(['cp',containers.runner+':/opt/runner/receipts/failure-sites.json',diagnostic]) } catch {}
     try { docker(['cp',containers.runner+':/opt/runner/receipts/connection-first-failure.json',path.join(directory,'connection-first-failure.json')]) } catch {}

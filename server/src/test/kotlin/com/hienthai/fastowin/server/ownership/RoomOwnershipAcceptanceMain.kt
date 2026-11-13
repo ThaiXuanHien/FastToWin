@@ -159,7 +159,12 @@ internal class RoomAcceptanceFixture(val settings: RoomAcceptanceSettings, contr
         val started = System.nanoTime()
         var failed = false
         try { return operation() }
-        catch (failure: Throwable) { failed = true; throw failure }
+        catch (failure: Throwable) {
+            failed = true
+            if (supervised && failure is Exception && failure !is kotlinx.coroutines.CancellationException)
+                throw FixtureCreationFailure(name, failure)
+            throw failure
+        }
         finally { observer(name, (System.nanoTime() - started) / 1_000_000.0, failed) }
     }
     private var databaseTimings = RoomOwnershipDatabaseTimings()
@@ -281,13 +286,18 @@ internal class RoomAcceptanceFixture(val settings: RoomAcceptanceSettings, contr
         // failed after admission. Keep that id so the cleanup path can release
         // the pair before the next retry; otherwise CreateRoom is rejected while
         // the stale membership remains in the fixture.
-        var createdRoomId: String? = host.ready.currentGame?.roomId ?: guest.ready.currentGame?.roomId
+        val previousRooms = listOfNotNull(host.ready.currentGame?.roomId, guest.ready.currentGame?.roomId).toSet()
+        var createdRoomId = previousRooms.firstOrNull()
         try {
             val created = creationStep("create_room") {
-                host.send(ClientMessage.CreateRoom("Acceptance $index", "PrivateAcceptance123!", ProtocolGameMode.ORDER))
-                host.await(25_000, "host RoomCreated") { it is ServerMessage.RoomCreated } as ServerMessage.RoomCreated
+                val roomName = "Load $index ${UUID.randomUUID()}"
+                host.send(ClientMessage.CreateRoom(roomName, "PrivateAcceptance123!", ProtocolGameMode.ORDER))
+                val message = host.await(25_000, "new waiting room snapshot") {
+                    matchCreatedRoom(it, roomName, pair[0].userId, previousRooms) != null
+                }
+                checkNotNull(matchCreatedRoom(message, roomName, pair[0].userId, previousRooms))
             }
-            val id = created.game.roomId
+            val id = created.roomId
             createdRoomId = id
             ordinal.incrementAndGet()
             creationStep("join_room") {
@@ -568,6 +578,22 @@ internal class RoomAcceptanceFixture(val settings: RoomAcceptanceSettings, contr
     override fun close() { faults.close(); client.close(); source.close() }
 }
 
+/** Delivery can replace a superseded create acknowledgement with the current waiting snapshot. */
+internal fun matchCreatedRoom(
+    message: ServerMessage,
+    roomName: String,
+    hostId: String,
+    previousRooms: Set<String>
+): GameSnapshot? {
+    val snapshot = when (message) {
+        is ServerMessage.RoomCreated -> message.game
+        is ServerMessage.RoomUpdated -> message.game
+        else -> return null
+    }
+    return snapshot.takeIf {
+        it.roomName == roomName && it.hostId == hostId && it.phase == RoomPhase.WAITING && it.roomId !in previousRooms
+    }
+}
 internal data class StoredRoomReceipt(val epoch: Long, val revision: Long, val snapshot: com.hienthai.fastowin.server.StoredActiveRoom, val instanceId: UUID)
 
 internal class AcceptanceSocket(val session: DefaultClientWebSocketSession, val backend: Int) {
