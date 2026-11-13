@@ -121,6 +121,9 @@ internal class ProductionRehearsalSettings private constructor(
 
 internal data class RehearsalTopologyIdentity(val generation: Long, val candidateSha256: String)
 
+internal fun rehearsalStatusRequest(identity: RehearsalTopologyIdentity, binding: OwnedAdmissionBinding) =
+    OwnedControlRequest(java.util.UUID.randomUUID().toString(), "status", identity.generation,
+        candidateSha256 = identity.candidateSha256, topologySha256 = binding.topologySha256)
 internal fun verifiedRehearsalProcess(response: OwnedControlResponse?, node: java.util.UUID,
     identity: RehearsalTopologyIdentity, binding: OwnedAdmissionBinding): java.util.UUID {
     check(response != null && response.operation == "status" && response.generation == identity.generation &&
@@ -145,7 +148,7 @@ internal class RehearsalStatusConfig(
         val target = if (node == 0) config.nodeId else config.peerId
         val sender = if (node == 0) config.peerId else config.nodeId
         val uri = java.net.URI("http://${addresses.getValue(if (node == 0) "a" else "b")}:8080")
-        val request = OwnedControlRequest(java.util.UUID.randomUUID().toString(), "status", identity.generation)
+        val request = rehearsalStatusRequest(identity, binding)
         return OwnerPeerTransport(sender, target, uri, config.peerSecret).use { transport ->
             verifiedRehearsalProcess(transport.forwardControl(request), target, identity, binding)
         }

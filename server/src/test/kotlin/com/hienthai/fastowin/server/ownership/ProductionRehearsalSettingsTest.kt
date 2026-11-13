@@ -173,6 +173,16 @@ class ProductionRehearsalSettingsTest {
         )
         assertFailsWith<IllegalArgumentException> { ProductionRehearsalSettings.parse(config, now) }
     }
+    @Test
+    fun `signed status request includes candidate and topology binding`() {
+        val identity = RehearsalTopologyIdentity(2, "1".repeat(64))
+        val binding = OwnedAdmissionBinding("2".repeat(64), "3".repeat(64))
+        val request = rehearsalStatusRequest(identity, binding)
+        assertEquals("status", request.operation)
+        assertEquals(2L, request.generation)
+        assertEquals(identity.candidateSha256, request.candidateSha256)
+        assertEquals(binding.topologySha256, request.topologySha256)
+    }
     private fun resolve(host: String): List<InetAddress> = listOf(InetAddress.getByName("10.0.0." + when {
         host.endsWith("-pg.railway.internal") -> 1
         host.endsWith("-a.railway.internal") -> 2
