@@ -26,6 +26,7 @@ internal fun Application.ownedWorkerModule(
     require(runtime.isProductionMode) { "An owned worker requires production room ownership" }
     launch { runtime.delivery.run() }
     launch { runtime.runWorker() }
+    launch { runtime.runPeerRefresh() }
     monitor.subscribe(ApplicationStopPreparing) {
         val drained = runBlocking {
             withTimeoutOrNull(15_000) {

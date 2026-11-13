@@ -247,6 +247,7 @@ internal fun Application.gameModule(
         routing { pilot.installRoutes(this) }
         launch { pilot.delivery.run() }
         launch { pilot.runWorker() }
+        launch { pilot.runPeerRefresh() }
         monitor.subscribe(ApplicationStopPreparing) {
             val drained = runBlocking {
                 withTimeoutOrNull(15_000) {

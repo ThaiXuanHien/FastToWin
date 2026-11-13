@@ -130,7 +130,8 @@ internal class OwnerPeerTransport(
     val peerId: UUID,
     peerUri: URI,
     secret: ByteArray,
-    private val clock: Clock = Clock.systemUTC()
+    private val clock: Clock = Clock.systemUTC(),
+    private val resolvePeer: (String) -> List<InetAddress> = { InetAddress.getAllByName(it).toList() }
 ) : AutoCloseable {
     init {
         require(instanceId != peerId) { "Room ownership peer must be a different instance" }
@@ -146,25 +147,57 @@ internal class OwnerPeerTransport(
     private val endpoint = peerUri.resolve(OWNER_COMMAND_PATH).toString().toHttpUrl()
     private val createEndpoint = peerUri.resolve(OWNER_CREATE_PATH).toString().toHttpUrl()
     private val controlEndpoint = peerUri.resolve(OWNER_CONTROL_PATH).toString().toHttpUrl()
-    private val peerAddresses = resolvePrivatePeer(endpoint.host)
+    private data class PinnedPeer(val addresses: Set<InetAddress>, val client: OkHttpClient)
+
     private val nonces = PeerNonces(clock)
-    private val client = OkHttpClient.Builder()
+    private val peerLock = Any()
+    private var closed = false
+    @Volatile private var peer: PinnedPeer? = pin(resolvePrivatePeer(endpoint.host, resolvePeer))
+
+    private fun pin(addresses: Set<InetAddress>): PinnedPeer = PinnedPeer(addresses, OkHttpClient.Builder()
         .dns(Dns { host ->
             if (host != endpoint.host) throw UnknownHostException(host)
-            peerAddresses
+            addresses.toList()
         })
         .proxy(Proxy.NO_PROXY)
         .followRedirects(false)
         .followSslRedirects(false)
         .retryOnConnectionFailure(false)
         .callTimeout(PEER_TIMEOUT_MILLIS, TimeUnit.MILLISECONDS)
-        .build()
+        .build())
 
-    override fun close() {
-        client.dispatcher.executorService.shutdownNow()
-        client.connectionPool.evictAll()
-        client.cache?.close()
+    fun hasValidatedPeer(): Boolean = peer != null
+
+    /** Resolve and validate the whole answer set before replacing the connection pool and its DNS pin. */
+    fun refreshPrivatePeer(): Boolean = synchronized(peerLock) {
+        if (closed) return false
+        val addresses = try {
+            resolvePrivatePeer(endpoint.host, resolvePeer)
+        } catch (_: IllegalArgumentException) {
+            null
+        }
+        val previous = peer
+        if (previous?.addresses != addresses) {
+            peer = addresses?.let(::pin)
+            previous?.retire()
+        }
+        peer != null
     }
+
+    override fun close() = synchronized(peerLock) {
+        closed = true
+        val previous = peer
+        peer = null
+        previous?.retire()
+        Unit
+    }
+
+    private fun PinnedPeer.retire() {
+        client.dispatcher.cancelAll()
+        client.connectionPool.evictAll()
+        client.dispatcher.executorService.shutdown()
+    }
+
 
     suspend fun forwardControl(request: OwnedControlRequest): OwnedControlResponse? = withTimeoutOrNull(CONTROL_TIMEOUT_MILLIS) {
         if (!request.valid()) return@withTimeoutOrNull null
@@ -174,6 +207,7 @@ internal class OwnerPeerTransport(
         val auth = sign(Direction.REQUEST, nonce, payload, CONTROL_DOMAIN)
         val http = Request.Builder().url(controlEndpoint).post(OneShotBody(payload))
         auth.headers().forEach { (name, value) -> http.header(name, value) }
+        val client = peer?.client ?: return@withTimeoutOrNull null
         val response = client.newBuilder().callTimeout(CONTROL_TIMEOUT_MILLIS, TimeUnit.MILLISECONDS).build()
             .newCall(http.build()).readReply() ?: return@withTimeoutOrNull null
         if (response.auth.nonce != nonce || !verify(Direction.REPLY, response.auth, response.payload, CONTROL_DOMAIN)) return@withTimeoutOrNull null
@@ -202,6 +236,7 @@ internal class OwnerPeerTransport(
         val auth = sign(Direction.REQUEST, nonce, payload)
         val httpRequest = Request.Builder().url(endpoint).post(OneShotBody(payload))
         auth.headers().forEach { (name, value) -> httpRequest.header(name, value) }
+        val client = peer?.client ?: return@withTimeoutOrNull null
         val response = client.newCall(httpRequest.build()).readReply() ?: return@withTimeoutOrNull null
         if (response.auth.nonce != nonce || !verify(Direction.REPLY, response.auth, response.payload)) {
             return@withTimeoutOrNull null
@@ -217,6 +252,7 @@ internal class OwnerPeerTransport(
         val auth = sign(Direction.REQUEST, nonce, payload, CREATE_DOMAIN)
         val httpRequest = Request.Builder().url(createEndpoint).post(OneShotBody(payload))
         auth.headers().forEach { (name, value) -> httpRequest.header(name, value) }
+        val client = peer?.client ?: return@withTimeoutOrNull null
         val response = client.newCall(httpRequest.build()).readReply() ?: return@withTimeoutOrNull null
         if (response.auth.nonce != nonce || !verify(Direction.REPLY, response.auth, response.payload, CREATE_DOMAIN)) {
             return@withTimeoutOrNull null
@@ -254,7 +290,8 @@ internal class OwnerPeerTransport(
     private suspend fun authenticatedPayload(call: ApplicationCall, domain: String): Pair<PeerAuth, ByteArray>? {
         // The local connection point is the actual socket even when ForwardedHeaders is installed.
         val source = call.request.local.remoteAddress.asSocketAddress()
-        if (source == null || !source.isAllowedPeerSource(peerAddresses)) {
+        val pinned = peer
+        if (source == null || pinned == null || !source.isAllowedPeerSource(pinned.addresses)) {
             call.respond(HttpStatusCode.Unauthorized); return null
         }
         val auth = PeerAuth.read(call.request.headers::getAll)
@@ -365,9 +402,9 @@ private fun Long.isFreshAt(now: Long) = this in (now - MAX_AGE_MILLIS)..(now + M
 
 private fun String.asCanonicalUuid(): UUID? = parsePilotUuid(this)?.takeIf { it.toString() == this }
 
-private fun resolvePrivatePeer(host: String): List<InetAddress> {
+private fun resolvePrivatePeer(host: String, resolve: (String) -> List<InetAddress>): Set<InetAddress> {
     val addresses = try {
-        InetAddress.getAllByName(host).toList()
+        resolve(host).toSet()
     } catch (failure: UnknownHostException) {
         throw IllegalArgumentException("Room ownership peer host could not be resolved", failure)
     }
@@ -387,7 +424,7 @@ private fun resolvePrivatePeer(host: String): List<InetAddress> {
  * exact-address check for loopback/local tests, but accept private non-loopback
  * sources only after the HMAC sender/target check below.
  */
-internal fun InetAddress.isAllowedPeerSource(expected: List<InetAddress>): Boolean =
+internal fun InetAddress.isAllowedPeerSource(expected: Collection<InetAddress>): Boolean =
     this in expected || (!isLoopbackAddress && isPrivatePeerAddress())
 
 private fun InetAddress.isPrivatePeerAddress(): Boolean = when (this) {

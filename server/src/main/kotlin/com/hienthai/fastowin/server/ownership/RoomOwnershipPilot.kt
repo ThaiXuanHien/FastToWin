@@ -14,6 +14,7 @@ import com.hienthai.fastowin.server.legacyFallback
 import io.ktor.server.routing.Route
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.withTimeoutOrNull
 import kotlinx.coroutines.flow.Flow
@@ -113,11 +114,11 @@ internal class RoomOwnershipPilot private constructor(
     fun isAccepting(): Boolean = admission.accepting
 
     suspend fun isReady(): Boolean {
-        if (!isAccepting() || !workerHealthy()) return false
+        if (!isAccepting() || !workerHealthy() || !transport.hasValidatedPeer()) return false
         return try {
             (config.fixtureId?.let { rooms.fixtureReady(it) } ?: (rooms.schemaReady() &&
                 admissionAuthority?.observe()?.admits(checkNotNull(admissionBinding)) == true)) &&
-                isAccepting() && workerHealthy()
+                isAccepting() && workerHealthy() && transport.hasValidatedPeer()
         } catch (_: SQLException) {
             false
         }
@@ -126,6 +127,14 @@ internal class RoomOwnershipPilot private constructor(
     private fun workerHealthy(): Boolean {
         val lastTick = lastHealthyTick.get()
         return lastTick != 0L && System.nanoTime() - lastTick < TimeUnit.SECONDS.toNanos(8)
+    }
+
+    suspend fun runPeerRefresh() {
+        if (!isProductionMode) return
+        while (currentCoroutineContext().isActive) {
+            delay(3_000)
+            withContext(Dispatchers.IO) { transport.refreshPrivatePeer() }
+        }
     }
 
     suspend fun runWorker() {
