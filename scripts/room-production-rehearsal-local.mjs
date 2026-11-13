@@ -1,11 +1,12 @@
 import assert from 'node:assert/strict'
 import { execFileSync } from 'node:child_process'
-import { createHash, randomBytes, randomUUID } from 'node:crypto'
+import { createHash, randomBytes } from 'node:crypto'
 import fs from 'node:fs'
 import path from 'node:path'
 import { setTimeout as sleep } from 'node:timers/promises'
 import { readProductionReceipt } from './read-room-rehearsal-receipt.mjs'
 import { buildRehearsalSupervisor } from './lib/room-production-supervisor.mjs'
+import { candidateIdentity, pairedRouteAccounts } from './lib/room-production-manifest.mjs'
 
 const [output,selected,runId,runnerImage,endpoint,repo]=process.argv.slice(2)
 const root=path.resolve(repo)
@@ -27,6 +28,7 @@ const sourcePaths=[
     'scripts/room-production-rehearsal-local.mjs',
     'scripts/read-room-rehearsal-receipt.mjs',
     'scripts/lib/room-production-supervisor.mjs',
+    'scripts/lib/room-production-manifest.mjs',
     'scripts/lib/room-supervised-local.mjs'
 ]
 assert.deepEqual(sourceManifest.map(entry=>entry.path),sourcePaths)
@@ -75,17 +77,29 @@ const files=dir=>fs.readdirSync(dir,{withFileTypes:true}).flatMap(e=>{
     return e.isDirectory()?files(file):[{path:path.relative(contexts,file).replaceAll('\\','/'),sha256:sha(file),bytes:fs.statSync(file).size}]
 })
 put('contexts-manifest.json',files(contexts))
+const distribution=path.join(contexts,'backend/distribution')
+const identity=candidateIdentity(fs.readFileSync(path.join(distribution,'bin/server'),'utf8'),
+    name=>sha(path.join(distribution,'lib',name)))
+const nodeIds={a:'00000000-0000-4000-8000-00000000000a',b:'00000000-0000-4000-8000-00000000000b'}
+const accounts=pairedRouteAccounts(nodeIds.a,nodeIds.b,20)
+const routeVectors=accounts.map((account,index)=>({account,ownerNode:nodeIds[index%2===0?'a':'b']}))
+const migrationManifestPath=path.join(directory,'migration-manifest.json')
+const migrationManifest=JSON.parse(fs.readFileSync(migrationManifestPath,'utf8'))
+assert.equal(migrationManifest.jarSha256,identity.serverJarSha256)
+assert(migrationManifest.migrations.length>0,'No packaged migrations recorded')
+const limits={pg:['2','512000000'],redis:['0.25','250000000'],proxy:['2','128000000'],a:['3','1000000000'],b:['3','1000000000'],runner:['0.5','500000000']}
 put('run-manifest.json',{runId,profile,runnerManifest:sha(path.join(directory,'runner-manifest.json')),
     contextsManifest:sha(path.join(directory,'contexts-manifest.json')),imagesManifest:sha(path.join(directory,'images.json')),supervisor:expectedSupervisor,
     supervisorManifest:sha(path.join(directory,'supervisor-manifest.json')),
     sourceManifest:sha(sourceManifestPath),
-    jarSha256:sha(path.join(directory,'runner/lib/server.jar')),accounts:40,rooms:20,offerSeconds:600,
-    policy:'production-defaults',sourceIps:'synthetic-per-account-forwarded-in-isolated-network'})
+    jarSha256:identity.serverJarSha256,classpathSha256:identity.classpathSha256,candidateSha256:identity.candidateSha256,
+    backendClasspath:identity.jarFiles,topology:{publicIngress:'a',privateWorker:'b',nodeIds},routeVectors,migrationManifest:sha(migrationManifestPath),limits,
+    accounts:40,rooms:20,offerSeconds:600,policy:'production-defaults',
+    sourceIps:'synthetic-per-account-forwarded-in-isolated-network'})
 const manifest=sha(path.join(directory,'run-manifest.json'))
 const jar=sha(path.join(directory,'runner/lib/server.jar'))
 docker(['network','create','--internal','--label',label,name])
 const containers={}
-const limits={pg:['2','512000000'],redis:['0.25','250000000'],proxy:['2','128000000'],a:['3','1000000000'],b:['3','1000000000'],runner:['0.5','500000000']}
 function launch(role,image,env,args=[],detached=true) {
     const selectedName=name+'-'+role
     containers[role]=selectedName
@@ -106,7 +120,7 @@ for(let attempt=0;attempt<60;attempt++) {
     await sleep(1000)
 }
 assert(pgReady,'PostgreSQL did not initialize')
-const accounts=Array.from({length:40},()=>randomUUID()).join(',')
+
 const runnerEnv={
     RAILWAY_PROJECT_ID:'b5c5db71-2df8-46da-84fb-d9b9df6d7951',RAILWAY_ENVIRONMENT_ID:'8bcf4119-3a6b-49b3-b4ff-8ea20080f3b9',
     RAILWAY_ENVIRONMENT_NAME:'staging',RAILWAY_SERVICE_NAME:name+'-runner',FTW_REHEARSAL_ID:runId,FTW_REHEARSAL_PREFIX:'room-pilot',
@@ -115,10 +129,10 @@ const runnerEnv={
     FTW_REHEARSAL_DEADLINE_UTC:new Date(deadline).toISOString(),FTW_REHEARSAL_JAR_SHA256:jar,
     FTW_REHEARSAL_BACKEND_A_HOST:host('a'),FTW_REHEARSAL_BACKEND_B_HOST:host('b'),FTW_REHEARSAL_REDIS_HOST:host('redis'),
     FTW_REHEARSAL_PROXY_HOST:host('proxy'),FTW_REHEARSAL_REDIS_PASSWORD:redisPassword,ROOM_FAULT_TOKEN:token,
-    FASTTOWIN_ENV:'prod',FASTTOWIN_ROOM_OWNERSHIP_MODE:'production',FASTTOWIN_ROOM_OWNERSHIP_ACCOUNTS:accounts,
+    FASTTOWIN_ENV:'prod',FASTTOWIN_ROOM_OWNERSHIP_MODE:'production',FASTTOWIN_ROOM_OWNERSHIP_ACCOUNTS:accounts.join(','),
     FASTTOWIN_ROOM_OWNERSHIP_ROLE:'ingress',
-    FASTTOWIN_ROOM_OWNERSHIP_NODE_ID:'00000000-0000-4000-8000-00000000000a',
-    FASTTOWIN_ROOM_OWNERSHIP_PEER_ID:'00000000-0000-4000-8000-00000000000b',
+    FASTTOWIN_ROOM_OWNERSHIP_NODE_ID:nodeIds.a,
+    FASTTOWIN_ROOM_OWNERSHIP_PEER_ID:nodeIds.b,
     FASTTOWIN_ROOM_OWNERSHIP_PEER_URL:'http://'+host('b')+':8080',FASTTOWIN_ROOM_OWNERSHIP_PEER_SECRET:peerSecret,
     FASTTOWIN_ROOM_OWNERSHIP_REHEARSAL_PASSWORD:'Rehearsal1!'+hex(),
     DATABASE_URL:'jdbc:postgresql://'+host('pg')+':5432/'+db,DATABASE_USER:db,DATABASE_PASSWORD:dbPassword
@@ -128,6 +142,25 @@ assert(seed.productionSeeded===true && seed.manifestSha256===manifest && seed.ru
 assert(Number.isSafeInteger(seed.admissionGeneration) && seed.admissionGeneration>0 &&
     /^[a-f0-9]{64}$/.test(seed.topologySha256) && /^[a-f0-9]{64}$/.test(seed.policySha256))
 put('seed-receipt.json',seed)
+function databaseObservation() {
+    return docker(['exec',containers.pg,'psql','-X','-At','-U',db,'-d',db,'-c',
+        'SELECT generation,state,topology_sha256,policy_sha256,(SELECT count(*) FROM users),(SELECT count(*) FROM profiles),(SELECT count(*) FROM room_ownership_pilot_fixture) FROM owned_admission_policy WHERE singleton'])
+}
+const committedSeed=[seed.admissionGeneration,'ACTIVE',seed.topologySha256,seed.policySha256,40,40,0].join('|')
+assert.equal(databaseObservation(),committedSeed,'Seed receipt does not match committed database')
+docker(['start',containers.runner])
+assert.equal(docker(['wait',containers.runner]),'1','Seeder accepted an occupied database')
+assert.equal(databaseObservation(),committedSeed,'Seed replay changed committed authority or accounts')
+put('admission-observation.json',{generation:seed.admissionGeneration,topologySha256:seed.topologySha256,
+    policySha256:seed.policySha256,state:'ACTIVE',replayRefused:true})
+Object.assign(runnerEnv,{
+    FTW_REHEARSAL_TOPOLOGY:'sole-ingress',
+    FTW_REHEARSAL_ADMISSION_GENERATION:String(seed.admissionGeneration),
+    FTW_REHEARSAL_TOPOLOGY_SHA256:seed.topologySha256,
+    FTW_REHEARSAL_POLICY_SHA256:seed.policySha256,
+    FTW_REHEARSAL_CLASSPATH_SHA256:identity.classpathSha256,
+    FTW_REHEARSAL_CANDIDATE_SHA256:identity.candidateSha256
+})
 docker(['rm','-v',containers.runner])
 const redisUrl='redis://:'+redisPassword+'@'+host('redis')+':6379'
 for(const role of ['a','b']) {
@@ -139,10 +172,10 @@ for(const role of ['a','b']) {
         FASTTOWIN_SMTP_FROM_EMAIL:'rehearsal@fasttowin.invalid',FASTTOWIN_SMTP_PASSWORD:hex(),FASTTOWIN_SMTP_STARTTLS:'true',
         DATABASE_URL:'jdbc:postgresql://'+host('proxy')+':'+(role==='a'?15432:25432)+'/'+db,
         DATABASE_USER:db,DATABASE_PASSWORD:dbPassword,DATABASE_POOL_SIZE:'20',
-        FASTTOWIN_ROOM_OWNERSHIP_MODE:'production',FASTTOWIN_ROOM_OWNERSHIP_ACCOUNTS:accounts,
+        FASTTOWIN_ROOM_OWNERSHIP_MODE:'production',FASTTOWIN_ROOM_OWNERSHIP_ACCOUNTS:accounts.join(','),
         FASTTOWIN_ROOM_OWNERSHIP_ROLE:role==='a'?'ingress':'owned-worker',
-        FASTTOWIN_ROOM_OWNERSHIP_NODE_ID:'00000000-0000-4000-8000-00000000000'+role,
-        FASTTOWIN_ROOM_OWNERSHIP_PEER_ID:'00000000-0000-4000-8000-00000000000'+peer,
+        FASTTOWIN_ROOM_OWNERSHIP_NODE_ID:nodeIds[role],
+        FASTTOWIN_ROOM_OWNERSHIP_PEER_ID:nodeIds[peer],
         FASTTOWIN_ROOM_OWNERSHIP_PEER_URL:'http://'+host(peer)+':8080',FASTTOWIN_ROOM_OWNERSHIP_PEER_SECRET:peerSecret,
         FASTTOWIN_RATE_LIMIT_STORE:'redis',FASTTOWIN_RATE_LIMIT_REDIS_URL:redisUrl,FASTTOWIN_RATE_LIMIT_NAMESPACE:name+'-limits',
         FASTTOWIN_PRESENCE_STORE:'redis',FASTTOWIN_PRESENCE_REDIS_URL:redisUrl,FASTTOWIN_PRESENCE_NAMESPACE:name+'-presence'

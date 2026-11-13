@@ -47,6 +47,7 @@ try {
             'scripts/room-production-rehearsal-local.mjs',
             'scripts/read-room-rehearsal-receipt.mjs',
             'scripts/lib/room-production-supervisor.mjs',
+            'scripts/lib/room-production-manifest.mjs',
             'scripts/lib/room-supervised-local.mjs'
         )
         $sourceManifest = foreach ($relative in $launcherSources) {
@@ -101,6 +102,22 @@ ENTRYPOINT ["timeout","1800","java","-Xmx384m","-cp","classes:lib/*","com.hienth
     $manifest = Hash "$output/runner-manifest.json"
     $jar = Hash "$context/lib/server.jar"
     if ($jar -cne (Hash 'server/build/libs/server.jar')) { throw 'Packaged server JAR mismatch' }
+    if ($Profile -cne 'Seed') {
+        $archive = [IO.Compression.ZipFile]::OpenRead((Join-Path $context 'lib/server.jar'))
+        try {
+            $migrationEntries = @($archive.Entries | Where-Object { $_.FullName -match '^db/migration/[^/]+\.sql$' })
+            if (!$migrationEntries) { throw 'Packaged server JAR has no migrations' }
+            $migrationManifest = foreach ($entry in ($migrationEntries | Sort-Object FullName -CaseSensitive)) {
+                $stream = $entry.Open()
+                try {
+                    [ordered]@{ path = $entry.FullName
+                        sha256 = (Get-FileHash -InputStream $stream -Algorithm SHA256).Hash.ToLowerInvariant() }
+                } finally { $stream.Dispose() }
+            }
+        } finally { $archive.Dispose() }
+        [ordered]@{ jarSha256 = $jar; migrations = @($migrationManifest) } |
+            ConvertTo-Json -Depth 4 | Set-Content (Join-Path $output 'migration-manifest.json') -Encoding utf8NoBOM
+    }
     $created = $true
     Docker @('build', '--pull=false', '--network', 'none', '--label', $label, '--tag', $tag, $context) | Set-Content "$output/build.log"
     $image = (Docker @('image', 'inspect', $tag) | ConvertFrom-Json)[0]
