@@ -1,0 +1,70 @@
+rule_files:
+  - alerts.yml
+
+evaluation_interval: 15s
+
+tests:
+  - interval: 15s
+    input_series:
+      - series: 'fasttowin_room_ownership_routes_total{job="fasttowin-server",instance="a:8080",outcome="unavailable"}'
+        values: '0+0x2 1+1x12 13+0x12'
+      - series: 'fasttowin_room_ownership_routes_total{job="fasttowin-server",instance="b:8080",outcome="peer"}'
+        values: '0+1x27'
+      - series: 'fasttowin_room_ownership_routes_total{job="fasttowin-server",instance="c:8080",outcome="unavailable"}'
+        values: '8+0x2 0+0x24'
+    alert_rule_test:
+      - eval_time: 2m
+        alertname: FastToWinRoomOwnershipRoutingUnavailable
+        exp_alerts: []
+      - eval_time: 3m
+        alertname: FastToWinRoomOwnershipRoutingUnavailable
+        exp_alerts:
+          - exp_labels: {job: fasttowin-server, instance: "a:8080", outcome: unavailable, severity: warning}
+            exp_annotations:
+              summary: "Định tuyến phòng liên tục gặp lỗi"
+              description: "Kiểm tra trạng thái ký của A và B, DNS nội bộ và kết nối PostgreSQL."
+      - eval_time: 6m
+        alertname: FastToWinRoomOwnershipRoutingUnavailable
+        exp_alerts: []
+
+  - interval: 15s
+    input_series:
+      - series: 'fasttowin_room_ownership_settlement_failures_total{job="fasttowin-server",instance="b:8080"}'
+        values: '0+0x4 1+0x27'
+      - series: 'fasttowin_room_ownership_settlement_failures_total{job="fasttowin-server",instance="a:8080"}'
+        values: '4+0x4 0+0x27'
+    alert_rule_test:
+      - eval_time: 1m
+        alertname: FastToWinRoomOwnershipSettlementFailed
+        exp_alerts: []
+      - eval_time: 1m15s
+        alertname: FastToWinRoomOwnershipSettlementFailed
+        exp_alerts:
+          - exp_labels: {job: fasttowin-server, instance: "b:8080", severity: warning}
+            exp_annotations:
+              summary: "Có lỗi chốt trận trong 5 phút qua"
+              description: "Kiểm tra log chốt trận và số trận đang chờ ghi kết quả trước khi drain."
+      - eval_time: 7m
+        alertname: FastToWinRoomOwnershipSettlementFailed
+        exp_alerts: []
+
+  - interval: 15s
+    input_series:
+      - series: 'fasttowin_room_ownership_oldest_queued_event_seconds{job="fasttowin-server",instance="a:8080"}'
+        values: '25+0x4 26+0x6 0+0x5'
+      - series: 'fasttowin_room_ownership_oldest_queued_event_seconds{job="fasttowin-server",instance="b:8080"}'
+        values: 'NaN+0x17'
+    alert_rule_test:
+      - eval_time: 2m
+        alertname: FastToWinRoomOwnershipEventBacklog
+        exp_alerts: []
+      - eval_time: 2m15s
+        alertname: FastToWinRoomOwnershipEventBacklog
+        exp_alerts:
+          - exp_labels: {job: fasttowin-server, instance: "a:8080", severity: warning}
+            exp_annotations:
+              summary: "Sự kiện phòng chờ gửi quá 25 giây"
+              description: "Kiểm tra hàng đợi gửi sự kiện và kết nối PostgreSQL của backend."
+      - eval_time: 3m
+        alertname: FastToWinRoomOwnershipEventBacklog
+        exp_alerts: []

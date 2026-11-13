@@ -36,3 +36,29 @@ groups:
         annotations:
           summary: "Nhiều WebSocket message không hợp lệ"
           description: "Có hơn 25 message sai định dạng trong 5 phút."
+
+      - alert: FastToWinRoomOwnershipRoutingUnavailable
+        expr: increase(fasttowin_room_ownership_routes_total{job="fasttowin-server",outcome="unavailable"}[2m]) > 0
+        for: 2m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Định tuyến phòng liên tục gặp lỗi"
+          description: "Kiểm tra trạng thái ký của A và B, DNS nội bộ và kết nối PostgreSQL."
+
+      - alert: FastToWinRoomOwnershipSettlementFailed
+        expr: increase(fasttowin_room_ownership_settlement_failures_total{job="fasttowin-server"}[5m]) > 0
+        labels:
+          severity: warning
+        annotations:
+          summary: "Có lỗi chốt trận trong 5 phút qua"
+          description: "Kiểm tra log chốt trận và số trận đang chờ ghi kết quả trước khi drain."
+
+      - alert: FastToWinRoomOwnershipEventBacklog
+        expr: fasttowin_room_ownership_oldest_queued_event_seconds{job="fasttowin-server"} > 25
+        for: 1m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Sự kiện phòng chờ gửi quá 25 giây"
+          description: "Kiểm tra hàng đợi gửi sự kiện và kết nối PostgreSQL của backend."
