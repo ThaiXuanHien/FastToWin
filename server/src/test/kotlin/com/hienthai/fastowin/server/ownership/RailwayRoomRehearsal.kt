@@ -162,7 +162,8 @@ internal fun runRehearsal(
     settings: RehearsalRuntimeSettings,
     out: PrintStream,
     jarSha256: String = REHEARSAL_JAR_SHA,
-    production: Boolean = false
+    production: Boolean = false,
+    preflightOnly: Boolean = false
 ) {
     val path = Path.of("receipts")
     Files.createDirectories(path)
@@ -194,8 +195,11 @@ internal fun runRehearsal(
                     fixture.fundQuota()
                     if (fixture.settings.soleIngress) {
                         phase = "topology-preflight"
-                        export("topology-preflight", runProductionTopologyPreflight(fixture))
+                        val preflight = runProductionTopologyPreflight(fixture)
+                        if (preflightOnly) return@use preflight
+                        export("topology-preflight", preflight)
                     }
+                    check(!preflightOnly) { "Golden preflight requires sole ingress topology" }
                     phase = "latency"
                     withTimeout(60000) {
                         for (node in 0..1) fixture.measureBaselineLatency(latency[node], node)

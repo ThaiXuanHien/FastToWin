@@ -1,8 +1,9 @@
 #Requires -Version 7.0
 [CmdletBinding()]
-param([ValidateSet('Seed', 'Fault', 'Load')][string]$Profile = 'Seed', [switch]$CapabilityOnly)
+param([ValidateSet('Seed', 'Fault', 'Load')][string]$Profile = 'Seed', [switch]$CapabilityOnly, [switch]$PreflightOnly)
 $ErrorActionPreference = 'Stop'
-if ($CapabilityOnly -and $Profile -ceq 'Seed') { throw 'Capability requires Fault or Load profile' }
+if (($CapabilityOnly -or $PreflightOnly) -and $Profile -ceq 'Seed') { throw 'A runtime check requires Fault or Load profile' }
+if ($CapabilityOnly -and $PreflightOnly) { throw 'Choose one bounded runtime check' }
 Set-StrictMode -Version Latest
 $repo = [IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..'))
 $runId = [guid]::NewGuid().ToString()
@@ -131,6 +132,7 @@ ENTRYPOINT ["timeout","1800","java","-Xmx384m","-cp","classes:lib/*","com.hienth
     if ($Profile -cne 'Seed') {
         $controllerArgs = @($output, $Profile, $runId, $tag, $script:endpoint, $repo)
         if ($CapabilityOnly) { $controllerArgs += '--capability-only' }
+        if ($PreflightOnly) { $controllerArgs += '--preflight-only' }
         & node (Join-Path $sourceRoot 'scripts/room-production-rehearsal-local.mjs') @controllerArgs
         if ($LASTEXITCODE -ne 0) { throw 'Production workload failed. See its classified receipt' }
     } else {

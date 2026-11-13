@@ -51,7 +51,7 @@ fun main(args: Array<String>) {
 private fun runProductionWorkload(args: Array<String>, values: Map<String, String>, out: PrintStream): Int {
     var stage = PrivateCapabilityStage.READY
     return try {
-        require(args.size == 1 && args[0] in setOf("--capability-production", "--workload-production"))
+        require(args.size == 1 && args[0] in setOf("--capability-production", "--workload-production", "--preflight-production"))
         val settings = ProductionRehearsalSettings.parse(values)
         val jar = settings.verifiedJarSha(java.nio.file.Path.of("lib/server.jar"))
         if (args[0] == "--capability-production") {
@@ -65,7 +65,7 @@ private fun runProductionWorkload(args: Array<String>, values: Map<String, Strin
             }
             out.println("""{"productionCapabilityVerified":true,"manifestSha256":"${settings.manifestSha}","profile":"${settings.profile}","jarSha256":"$jar"}""")
         } else {
-            runRehearsal(settings, out, jarSha256 = jar, production = true)
+            runRehearsal(settings, out, jarSha256 = jar, production = true, preflightOnly = args[0] == "--preflight-production")
         }
         0
     } catch (_: Exception) {

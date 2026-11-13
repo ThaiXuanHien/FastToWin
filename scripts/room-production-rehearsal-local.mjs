@@ -10,8 +10,9 @@ import { candidateIdentity, pairedRouteAccounts } from './lib/room-production-ma
 import { replacePrivateWorker } from './lib/room-production-peer.mjs'
 
 const [output,selected,runId,runnerImage,endpoint,repo,...options]=process.argv.slice(2)
-assert(options.length===0 || (options.length===1 && options[0]==='--capability-only'))
-const capabilityOnly=options.length===1
+assert(options.length===0 || (options.length===1 && ['--capability-only','--preflight-only'].includes(options[0])))
+const capabilityOnly=options[0]==='--capability-only'
+const preflightOnly=options[0]==='--preflight-only'
 const root=path.resolve(repo)
 const sourceRoot=path.resolve(import.meta.dirname,'..')
 assert(['Fault','Load'].includes(selected) && /^[a-f0-9-]{36}$/.test(runId))
@@ -223,7 +224,7 @@ put('worker-address-replacement.json',{...replacement,sameIngressContainer:conta
 // The earned preflight must still create/select a B-owned room through the original A process.
 await sleep(35_000)
 console.log(profile+' production capability passed; starting full workload')
-launch('runner',images.runner,runnerEnv,['--workload-production'])
+launch('runner',images.runner,runnerEnv,[preflightOnly?'--preflight-production':'--workload-production'])
 const end=Date.now()+1_050_000
 while(docker(['inspect','--format','{{.State.Running}}',containers.runner])==='true') {
     assert(Date.now()<end,'Workload exceeded its deadline')
@@ -253,7 +254,7 @@ if(docker(['inspect','--format','{{.State.ExitCode}}',containers.runner])!=='0')
 }
 assert.equal(docker(['inspect','--format','{{.State.ExitCode}}',containers.runner]),'0','Production runner failed')
 const kind=profile==='fault'?'fault':'load'
-for(const selectedKind of [kind,'latency','topology-preflight']) {
+for(const selectedKind of (preflightOnly?['topology-preflight']:[kind,'latency','topology-preflight'])) {
     const bytes=readProductionReceipt(lines,selectedKind,profile,manifest,jar)
     fs.writeFileSync(path.join(directory,selectedKind+'.json'),bytes)
 }
@@ -261,5 +262,5 @@ for(const role of ['pg','redis','proxy','a','b']) {
     assert.equal(docker(['inspect','--format','{{.State.Running}}',containers[role]]),'true','Controlled runtime stopped')
     assert.equal(docker(['inspect','--format','{{.State.OOMKilled}}',containers[role]]),'false')
 }
-put('local-receipt.json',{productionProfileAccepted:true,profile,manifestSha256:manifest,jarSha256:jar})
-console.log(profile+' production profile verified')
+put('local-receipt.json',{...(preflightOnly?{productionPreflightVerified:true}:{productionProfileAccepted:true}),profile,manifestSha256:manifest,jarSha256:jar})
+console.log(profile+(preflightOnly?' production golden preflight verified':' production profile verified'))
