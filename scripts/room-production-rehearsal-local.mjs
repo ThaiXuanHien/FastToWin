@@ -7,6 +7,7 @@ import { setTimeout as sleep } from 'node:timers/promises'
 import { readProductionReceipt } from './read-room-rehearsal-receipt.mjs'
 import { buildRehearsalSupervisor } from './lib/room-production-supervisor.mjs'
 import { candidateIdentity, pairedRouteAccounts } from './lib/room-production-manifest.mjs'
+import { replacePrivateWorker } from './lib/room-production-peer.mjs'
 
 const [output,selected,runId,runnerImage,endpoint,repo,...options]=process.argv.slice(2)
 assert(options.length===0 || (options.length===1 && options[0]==='--capability-only'))
@@ -31,6 +32,7 @@ const sourcePaths=[
     'scripts/read-room-rehearsal-receipt.mjs',
     'scripts/lib/room-production-supervisor.mjs',
     'scripts/lib/room-production-manifest.mjs',
+    'scripts/lib/room-production-peer.mjs',
     'scripts/lib/room-supervised-local.mjs'
 ]
 assert.deepEqual(sourceManifest.map(entry=>entry.path),sourcePaths)
@@ -89,7 +91,7 @@ const migrationManifestPath=path.join(directory,'migration-manifest.json')
 const migrationManifest=JSON.parse(fs.readFileSync(migrationManifestPath,'utf8'))
 assert.equal(migrationManifest.jarSha256,identity.serverJarSha256)
 assert(migrationManifest.migrations.length>0,'No packaged migrations recorded')
-const limits={pg:['2','512000000'],redis:['0.25','250000000'],proxy:['2','128000000'],a:['3','1000000000'],b:['3','1000000000'],runner:['0.5','500000000']}
+const limits={pg:['2','512000000'],redis:['0.25','250000000'],proxy:['2','128000000'],a:['3','1000000000'],b:['3','1000000000'],runner:['0.5','500000000'],'address-guard':['0.1','32000000']}
 put('run-manifest.json',{runId,profile,runnerManifest:sha(path.join(directory,'runner-manifest.json')),
     contextsManifest:sha(path.join(directory,'contexts-manifest.json')),imagesManifest:sha(path.join(directory,'images.json')),supervisor:expectedSupervisor,
     supervisorManifest:sha(path.join(directory,'supervisor-manifest.json')),
@@ -201,18 +203,21 @@ if(capabilityOnly) {
     console.log(profile+' production capability verified')
     process.exit(0)
 }
-// Retain the stopped old container on the network so its address cannot be reused.
 // A remains the same running process, with its initially pinned old B address.
 const privateAddress=role=>JSON.parse(docker(['inspect','--format','{{json .NetworkSettings.Networks}}',containers[role]]))[name].IPAddress
-const previousBAddress=privateAddress('b')
-assert(previousBAddress,'Missing original worker address')
-docker(['stop','--time','2',containers.b])
-docker(['rename',containers.b,name+'-b-retired'])
-launch('b',images.backend,backendEnvironments.b)
-const replacementBAddress=privateAddress('b')
-assert(replacementBAddress && replacementBAddress!==previousBAddress,'Worker address was not replaced')
-put('worker-address-replacement.json',{addressChanged:true,previous:previousBAddress,replacement:replacementBAddress,
-    sameIngressContainer:containers.a,verification:'requires-subsequent-signed-golden-B-create'})
+const replacement=replacePrivateWorker({docker,address:privateAddress,worker:containers.b,retired:name+'-b-retired',
+    launchGuard:()=>{
+        const role='address-guard'
+        containers[role]=name+'-'+role
+        const [cpu,memory]=limits[role]
+        docker(['run','-d','--name',containers[role],'--label',label,'--network',name,'--cap-drop','ALL',
+            '--security-opt','no-new-privileges:true','--cpus',cpu,'--memory',memory,'--memory-swap',memory,
+            '--entrypoint','/bin/sh',images.backend,'-c','sleep 1800'])
+    },
+    launchWorker:()=>launch('b',images.backend,backendEnvironments.b)
+})
+put('worker-address-replacement.json',{...replacement,sameIngressContainer:containers.a,
+    verification:'requires-subsequent-signed-golden-B-create'})
 // Allow the unchanged JRE positive DNS cache (normally 30s) and periodic private-peer refresh.
 // The earned preflight must still create/select a B-owned room through the original A process.
 await sleep(35_000)

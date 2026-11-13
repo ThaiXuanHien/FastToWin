@@ -49,6 +49,7 @@ try {
             'scripts/read-room-rehearsal-receipt.mjs',
             'scripts/lib/room-production-supervisor.mjs',
             'scripts/lib/room-production-manifest.mjs',
+            'scripts/lib/room-production-peer.mjs',
             'scripts/lib/room-supervised-local.mjs'
         )
         $sourceManifest = foreach ($relative in $launcherSources) {
