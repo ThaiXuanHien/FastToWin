@@ -150,6 +150,7 @@ internal class OwnerPeerTransport(
     private data class PinnedPeer(val addresses: Set<InetAddress>, val client: OkHttpClient)
 
     private val nonces = PeerNonces(clock)
+    private val refreshLock = Any()
     private val peerLock = Any()
     private var closed = false
     @Volatile private var peer: PinnedPeer? = pin(resolvePrivatePeer(endpoint.host, resolvePeer))
@@ -168,32 +169,40 @@ internal class OwnerPeerTransport(
 
     fun hasValidatedPeer(): Boolean = peer != null
 
-    /** Resolve and validate the whole answer set before replacing the connection pool and its DNS pin. */
-    fun refreshPrivatePeer(): Boolean = synchronized(peerLock) {
-        if (closed) return false
+    /** Serialize DNS lookups so a stale refresh cannot overwrite a newer validation result. */
+    fun refreshPrivatePeer(): Boolean = synchronized(refreshLock) {
+        if (synchronized(peerLock) { closed }) return false
         val addresses = try {
             resolvePrivatePeer(endpoint.host, resolvePeer)
         } catch (_: IllegalArgumentException) {
             null
         }
-        val previous = peer
-        if (previous?.addresses != addresses) {
-            peer = addresses?.let(::pin)
-            previous?.retire()
+        val previous = synchronized(peerLock) {
+            if (closed) return false
+            if (peer?.addresses == addresses) return peer != null
+            replacePeer(addresses?.let(::pin))
         }
+        previous?.releaseResources()
         peer != null
     }
 
-    override fun close() = synchronized(peerLock) {
-        closed = true
-        val previous = peer
-        peer = null
-        previous?.retire()
-        Unit
+    override fun close() {
+        val previous = synchronized(peerLock) {
+            closed = true
+            replacePeer(null)
+        }
+        previous?.releaseResources()
     }
 
-    private fun PinnedPeer.retire() {
-        client.dispatcher.cancelAll()
+    /** Caller holds peerLock, so every old call is registered before cancellation. */
+    private fun replacePeer(replacement: PinnedPeer?): PinnedPeer? {
+        val previous = peer
+        peer = replacement
+        previous?.client?.dispatcher?.cancelAll()
+        return previous
+    }
+
+    private fun PinnedPeer.releaseResources() {
         client.connectionPool.evictAll()
         client.dispatcher.executorService.shutdown()
     }
