@@ -1,8 +1,16 @@
 package com.hienthai.fastowin.server
 
+import com.hienthai.fastowin.localization.AppLanguage
+import com.hienthai.fastowin.localization.TextKey
 import com.hienthai.fastowin.protocol.ClientMessage
 import com.hienthai.fastowin.protocol.AuthSessionResponse
 import com.hienthai.fastowin.protocol.LoginRequest
+import com.hienthai.fastowin.protocol.MatchForfeitReason
+import com.hienthai.fastowin.protocol.MatchForfeitSnapshot
+import com.hienthai.fastowin.protocol.MissionSnapshot
+import com.hienthai.fastowin.protocol.PlayerProfileSnapshot
+import com.hienthai.fastowin.protocol.PlayerProgressionSnapshot
+import com.hienthai.fastowin.protocol.PushNotificationCategory
 import com.hienthai.fastowin.protocol.ProtocolGameMode
 import com.hienthai.fastowin.protocol.ProtocolJson
 import com.hienthai.fastowin.protocol.PROTOCOL_VERSION
@@ -36,6 +44,7 @@ import kotlinx.serialization.decodeFromString
 import kotlinx.serialization.encodeToString
 import org.flywaydb.core.Flyway
 import kotlin.time.Duration.Companion.milliseconds
+import java.util.concurrent.atomic.AtomicBoolean
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertNotNull
@@ -819,7 +828,7 @@ class GameWebSocketTest {
     }
 
     @Test
-    fun `two websocket clients can play and host can resume snapshot`() = testApplication {
+    fun `both resumed clients receive finish when a parameterized mission completes`() = testApplication {
         val authService = AuthenticationService(
             repository = InMemoryAuthRepository(),
             passwordHasher = PasswordHasher(iterations = 1_000)
@@ -834,7 +843,38 @@ class GameWebSocketTest {
             password = "strong-password-123",
             displayName = "Hiếu"
         )
-        application { gameModule(engine = GameEngine(), authService = authService) }
+        val matchSaved = AtomicBoolean(false)
+        val missionTitle = "Chơi 3 trận online (Đấu thường)"
+        val missionPushes = mutableListOf<LocalizedPushContent>()
+        val profiles = object : PlayerProfileRepository by NoOpPlayerProfileRepository {
+            override suspend fun findByPlayerId(playerId: String) = if (playerId != guestAccount.userId) null else {
+                val completed = matchSaved.get()
+                PlayerProfileSnapshot(playerId, "Hiếu", "GUEST", progression = PlayerProgressionSnapshot(
+                    dailyMissions = listOf(MissionSnapshot(
+                        "PLAY_CASUAL", missionTitle, if (completed) 3 else 2, 3, completed,
+                        titleKey = TextKey.MissionActionPLAY.name
+                    ))
+                ))
+            }
+
+            override suspend fun findPushTarget(playerId: String, category: PushNotificationCategory) =
+                PushTarget("guest-test-token", AppLanguage.VIETNAMESE)
+                    .takeIf { playerId == guestAccount.userId && category == PushNotificationCategory.MISSION_REWARDS }
+        }
+        val push = object : PushNotificationService {
+            override suspend fun sendNotification(
+                fcmToken: String, language: AppLanguage, content: LocalizedPushContent, destinationPath: String
+            ): PushDeliveryStatus {
+                missionPushes += content
+                return PushDeliveryStatus.SENT
+            }
+        }
+        application {
+            gameModule(engine = GameEngine(
+                matchResultRepository = MatchResultRepository { matchSaved.set(true) },
+                playerProfileRepository = profiles, pushNotificationService = push
+            ), authService = authService)
+        }
         val webSocketClient = createClient { install(WebSockets) }
         val host = webSocketClient.webSocketSession("/game")
         val guest = webSocketClient.webSocketSession("/game")
@@ -904,6 +944,33 @@ class GameWebSocketTest {
                 assertEquals(2, snapshot.currentTarget)
                 assertTrue(snapshot.selectedNumbers.contains(1))
                 assertEquals(guestSession.playerId, snapshot.players.first { it.id != resumed.playerId }.id)
+
+                guest.close()
+                val resumedGuest = webSocketClient.webSocketSession("/game")
+                try {
+                    resumedGuest.sendMessage(ClientMessage.ConnectAccount(
+                        guestAccount.accessToken, resumeToken = assertNotNull(guestSession.resumeToken)
+                    ))
+                    val guestResume = resumedGuest.receiveMessage<ServerMessage.SessionReady>()
+                    assertEquals(snapshot, guestResume.currentGame)
+
+                    resumedGuest.sendMessage(ClientMessage.SelectNumber(room.roomId, 2, "after-both-resume"))
+                    assertEquals(3, resumedHost.receiveGameUpdateAtLeast(snapshot.sequence + 1).currentTarget)
+                    assertEquals(3, resumedGuest.receiveGameUpdateAtLeast(snapshot.sequence + 1).currentTarget)
+
+                    resumedHost.sendMessage(ClientMessage.LeaveRoom(room.roomId))
+                    val (hostFinished, guestFinished) = withTimeout(5_000) {
+                        resumedHost.receiveMessage<ServerMessage.GameFinished>().game to
+                            resumedGuest.receiveMessage<ServerMessage.GameFinished>().game
+                    }
+                    assertEquals(hostFinished, guestFinished)
+                    assertEquals(room.roomId, guestFinished.roomId)
+                    assertEquals(guestSession.playerId, guestFinished.winnerPlayerId)
+                    assertEquals(MatchForfeitSnapshot(hostSession.playerId, MatchForfeitReason.VOLUNTARY_LEAVE), guestFinished.forfeit)
+                    assertEquals(missionTitle, missionPushes.single().bodyArguments["mission"])
+                } finally {
+                    resumedGuest.close()
+                }
             } finally {
                 resumedHost.close()
             }

@@ -10,6 +10,8 @@ import kotlin.test.*
 
 @OptIn(kotlinx.coroutines.ExperimentalCoroutinesApi::class)
 class ClanMemberControllerTest {
+    private val serverUnavailable = "Dịch vụ tạm thời không khả dụng. Vui lòng thử lại."
+
     @Test fun `membership removal profile closes the stale clan view`() = runTest {
         val f = Fixture(this)
         try {
@@ -32,6 +34,61 @@ class ClanMemberControllerTest {
             f.server(ServerMessage.FriendsData(FriendsSnapshot()))
             assertFalse(f.controller.uiState.value.isFriendsLoading)
             assertTrue(f.controller.uiState.value.isClanSocialReady)
+        } finally { f.controller.close() }
+    }
+
+    @Test fun `friend presence error ends loading and preserves the last roster until retry succeeds`() = runTest {
+        val f = Fixture(this)
+        try {
+            val friend = FriendSnapshot("member", "Member", "MEMBER", presence = FriendPresence.PLAYING)
+            val social = FriendsSnapshot(friends = listOf(friend))
+            f.controller.openFriends()
+            f.server(ServerMessage.FriendsData(social))
+            f.controller.openFriends()
+            runCurrent()
+            assertTrue(f.controller.uiState.value.isFriendsLoading)
+            f.server(ServerMessage.Error("FRIENDS_PRESENCE_UNAVAILABLE", "Try again"))
+            assertFalse(f.controller.uiState.value.isFriendsLoading)
+            assertEquals(social, f.controller.uiState.value.social)
+            assertEquals(serverUnavailable, f.controller.uiState.value.error)
+            f.controller.openFriends()
+            runCurrent()
+            assertTrue(f.controller.uiState.value.isFriendsLoading)
+            f.server(ServerMessage.FriendsData(FriendsSnapshot(friends = listOf(friend.copy(presence = FriendPresence.ONLINE)))))
+            assertFalse(f.controller.uiState.value.isFriendsLoading)
+            assertNull(f.controller.uiState.value.error)
+            assertEquals(FriendPresence.ONLINE, f.controller.uiState.value.social.friends.single().presence)
+        } finally { f.controller.close() }
+    }
+
+    @Test fun `clan presence error stays scoped to the requested clan`() = runTest {
+        val f = Fixture(this)
+        try {
+            f.controller.openClan()
+            f.controller.viewClan("viewed")
+            runCurrent()
+            f.server(ServerMessage.Error("CLAN_PRESENCE_UNAVAILABLE", "Stale", requestId = "other"))
+            assertNull(f.controller.uiState.value.error)
+            assertNull(f.controller.uiState.value.clanLoadError)
+            assertTrue(f.controller.uiState.value.isFriendsLoading)
+            f.server(ServerMessage.Error("CLAN_PRESENCE_UNAVAILABLE", "Try again", requestId = "viewed"))
+            assertNull(f.controller.uiState.value.error)
+            assertEquals(serverUnavailable, f.controller.uiState.value.clanLoadError)
+            assertTrue(f.controller.uiState.value.isFriendsLoading)
+            f.controller.viewClan("viewed")
+            runCurrent()
+            assertNull(f.controller.uiState.value.clanLoadError)
+            assertEquals(2, f.transport.sent.count { it == ClientMessage.GetClanInfo("viewed") })
+            val roster = clan("viewed")
+            f.server(ServerMessage.ClanInfoData(roster))
+            f.controller.viewClan("viewed")
+            runCurrent()
+            f.server(ServerMessage.Error("CLAN_PRESENCE_UNAVAILABLE", "Try again", requestId = "viewed"))
+            assertEquals(roster, f.controller.uiState.value.currentClan)
+            assertEquals(serverUnavailable, f.controller.uiState.value.clanLoadError)
+            f.server(ServerMessage.ClanInfoData(roster))
+            assertEquals(roster, f.controller.uiState.value.currentClan)
+            assertNull(f.controller.uiState.value.clanLoadError)
         } finally { f.controller.close() }
     }
 

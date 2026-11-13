@@ -14,6 +14,7 @@ import com.hienthai.fastowin.protocol.clanLogoRequiredLevel
 import com.hienthai.fastowin.localization.protocolTextKeyForCode
 import com.hienthai.fastowin.localization.TextKey
 import com.hienthai.fastowin.localization.LocalizationService
+import com.hienthai.fastowin.localization.missionTitle
 import com.hienthai.fastowin.protocol.CosmeticType
 import com.hienthai.fastowin.protocol.DAILY_CHECK_IN_AVATAR_ID
 import com.hienthai.fastowin.protocol.MAX_PROFILE_DISPLAY_NAME_LENGTH
@@ -34,6 +35,8 @@ import com.hienthai.fastowin.protocol.PublicTournamentSummary
 import com.hienthai.fastowin.protocol.TournamentFeeFilter
 import com.hienthai.fastowin.protocol.TournamentVisibility
 import com.hienthai.fastowin.protocol.MatchType
+import com.hienthai.fastowin.protocol.MatchForfeitReason
+import com.hienthai.fastowin.protocol.MatchForfeitSnapshot
 import com.hienthai.fastowin.protocol.MatchRewardEventSnapshot
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.delay
@@ -766,7 +769,7 @@ class GameEngine(
         }
         if (message is ClientMessage.EquipCosmetics) return equipCosmetics(playerId, message)
         if (message is ClientMessage.GetLeaderboard) return loadLeaderboard(playerId)
-        if (message is ClientMessage.GetFriends) return loadFriends(playerId)
+        if (message is ClientMessage.GetFriends) return loadFriends(playerId, reportPresenceFailure = true)
         if (message is ClientMessage.GetRoomInvitations) return loadRoomInvitations(playerId)
         if (message is ClientMessage.GetNotifications) return loadNotifications(playerId)
         if (message is ClientMessage.GetTournamentHub) return loadTournamentHub(playerId)
@@ -799,7 +802,7 @@ class GameEngine(
         if (message is ClientMessage.JoinClan) return joinClan(playerId, message.clanId)
         if (message is ClientMessage.RespondClanJoinRequest) return respondClanJoinRequest(playerId, message)
         if (message is ClientMessage.LeaveClan) return leaveClan(playerId)
-        if (message is ClientMessage.GetClanInfo) return getClanInfo(playerId, message.clanId)
+        if (message is ClientMessage.GetClanInfo) return getClanInfo(playerId, message.clanId, reportPresenceFailure = true)
         if (message is ClientMessage.GetClanList) return getClanList(playerId, message.query)
         if (message is ClientMessage.InviteToClan) return inviteToClan(playerId, message.playerCode)
         if (message is ClientMessage.KickClanMember) return kickClanMember(playerId, message.clanId, message.memberId)
@@ -1625,12 +1628,22 @@ class GameEngine(
         return deliveries + loadTournamentHub(playerId)
     }
 
-    private suspend fun loadFriends(playerId: String, isPresenceRefresh: Boolean = false): List<Delivery> {
+    private suspend fun loadFriends(
+        playerId: String,
+        isPresenceRefresh: Boolean = false,
+        reportPresenceFailure: Boolean = false
+    ): List<Delivery> {
         if (!isAccountSession(playerId)) return listOf(accountRequired(playerId))
         val stored = runCatching { friendRepository.load(playerId) }.getOrElse {
             return listOf(error(playerId, "FRIENDS_UNAVAILABLE", legacyFallback("Chưa tải được danh sách bạn bè.")))
         }
-        val presence = rosterPresence(stored.friends.map { it.userId }, isPresenceRefresh) ?: return emptyList()
+        val presence = rosterPresence(stored.friends.map { it.userId }, isPresenceRefresh)
+        if (presence == null) {
+            return if (reportPresenceFailure) {
+                listOf(error(playerId, "FRIENDS_PRESENCE_UNAVAILABLE",
+                    legacyFallback("Chưa tải được danh sách bạn bè. Vui lòng thử lại.")))
+            } else emptyList()
+        }
         return listOf(Delivery(
             ServerMessage.FriendsData(FriendsSnapshot(
                 friends = stored.friends.map { it.copy(presence = presence[it.userId] ?: FriendPresence.OFFLINE) },
@@ -2660,18 +2673,15 @@ class GameEngine(
                     PushNotificationCategory.MISSION_REWARDS
                 )
             }.getOrNull() ?: return@forEach
+            val localization = LocalizationService(target.language)
             newlyCompleted.forEach { mission ->
-                val missionTitle = mission.titleKey
-                    ?.let { keyName -> TextKey.entries.firstOrNull { it.name == keyName } }
-                    ?.let { key -> LocalizationService(target.language).text(key) }
-                    ?: mission.title
                 sendPushNotification(
                     playerId = player.playerId,
                     target = target,
                     content = LocalizedPushContent(
                         titleKey = TextKey.PushMissionCompletedTitle,
                         bodyKey = TextKey.PushMissionCompletedMessage,
-                        bodyArguments = mapOf("mission" to missionTitle)
+                        bodyArguments = mapOf("mission" to localization.missionTitle(mission))
                     ),
                     destinationPath = "/account/missions"
                 )
@@ -3153,7 +3163,7 @@ class GameEngine(
                         room.sequence++
                         room.takeCompletedMatch()?.let(completedMatches::add)
                         deliveries += Delivery(
-                            ServerMessage.GameFinished(room.snapshot()),
+                            ServerMessage.GameFinished(room.snapshot(disconnectedForfeitPlayerId = playerId)),
                             room.activePlayerIds()
                         )
                     } else if (room.phase == RoomPhase.PLAYING) {
@@ -3166,7 +3176,7 @@ class GameEngine(
                             room.phase = RoomPhase.FINISHED
                             room.finishedAtEpochMillis = now
                             room.sequence++
-                            val snapshot = room.snapshot()
+                            val snapshot = room.snapshot(disconnectedForfeitPlayerId = playerId)
                             pendingReconnectResultsByPlayerId[playerId] = PendingReconnectResult(snapshot, now)
                             sessionsByPlayerId[playerId]?.accountResumeToken?.let {
                                 pendingAccountTokensByPlayerId[playerId] = PendingAccountToken(it, now)
@@ -4229,7 +4239,7 @@ class GameEngine(
         .sortedBy { it.name.lowercase() }
         .toList()
 
-    private fun Room.snapshot(): GameSnapshot {
+    private fun Room.snapshot(disconnectedForfeitPlayerId: String? = null): GameSnapshot {
         val metricsByPlayer = selectionMetrics()
         if (!maintenanceAborted && phase == RoomPhase.FINISHED && tournamentId != null && winnerId() == null) {
             forcedWinnerId = playerIds().sortedWith(
@@ -4318,7 +4328,11 @@ class GameEngine(
             rematchExpiresAtEpochMillis = rematchExpiresAtEpochMillis,
             tournamentId = tournamentId,
             tournamentMatchId = tournamentMatchId,
-            tournamentRound = tournamentRound
+            tournamentRound = tournamentRound,
+            forfeit = if (phase == RoomPhase.FINISHED) {
+                disconnectedForfeitPlayerId?.let { MatchForfeitSnapshot(it, MatchForfeitReason.DISCONNECT_TIMEOUT) }
+                    ?: intentionalLeavePlayerIds.singleOrNull()?.let { MatchForfeitSnapshot(it, MatchForfeitReason.VOLUNTARY_LEAVE) }
+            } else null
         )
     }
 
@@ -4897,12 +4911,23 @@ class GameEngine(
         }
     }
 
-    private suspend fun getClanInfo(playerId: String, clanId: String): List<Delivery> {
+    private suspend fun getClanInfo(
+        playerId: String,
+        clanId: String,
+        reportPresenceFailure: Boolean = false
+    ): List<Delivery> {
         val clan = clanRepository.getClanById(clanId)
-        return if (clan != null) {
-            clanInfo(clan)?.let { listOf(Delivery(it, setOf(playerId))) } ?: emptyList()
-        } else {
-            listOf(error(playerId, "CLAN_NOT_FOUND", legacyFallback("Không tìm thấy clan.")))
+            ?: return listOf(error(playerId, "CLAN_NOT_FOUND", legacyFallback("Không tìm thấy clan.")))
+        val snapshot = clanInfo(clan)
+        return when {
+            snapshot != null -> listOf(Delivery(snapshot, setOf(playerId)))
+            reportPresenceFailure -> listOf(error(
+                playerId,
+                "CLAN_PRESENCE_UNAVAILABLE",
+                legacyFallback("Chưa tải được thông tin bang hội. Vui lòng thử lại."),
+                requestId = clanId
+            ))
+            else -> emptyList()
         }
     }
 

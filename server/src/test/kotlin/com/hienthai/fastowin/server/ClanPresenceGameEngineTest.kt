@@ -16,6 +16,7 @@ import java.util.UUID
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
+import kotlin.test.assertIs
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
@@ -44,8 +45,14 @@ class ClanPresenceGameEngineTest {
         )
         engine.connectAccount(account(owner))
 
-        assertTrue(engine.handle(owner, ClientMessage.GetFriends).isEmpty())
-        assertTrue(engine.handle(owner, ClientMessage.GetClanInfo(clans.snapshot.id)).isEmpty())
+        val friendsError = engine.handle(owner, ClientMessage.GetFriends).single()
+        assertEquals(setOf(owner), friendsError.recipients)
+        assertEquals("FRIENDS_PRESENCE_UNAVAILABLE", assertIs<ServerMessage.Error>(friendsError.message).code)
+        val clanError = engine.handle(owner, ClientMessage.GetClanInfo(clans.snapshot.id)).single()
+        assertEquals(setOf(owner), clanError.recipients)
+        assertEquals("CLAN_PRESENCE_UNAVAILABLE", assertIs<ServerMessage.Error>(clanError.message).code)
+        assertNull(engine.presenceSnapshot(owner, ClientMessage.GetPresence("refresh")))
+        assertTrue(engine.presenceUpdates(owner).isEmpty())
     }
 
     @Test

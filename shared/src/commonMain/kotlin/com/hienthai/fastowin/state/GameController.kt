@@ -18,6 +18,7 @@ import com.hienthai.fastowin.protocol.ClanDonationCurrency
 import com.hienthai.fastowin.protocol.ClanDonationStatus
 import com.hienthai.fastowin.protocol.CosmeticType
 import com.hienthai.fastowin.protocol.GameSnapshot
+import com.hienthai.fastowin.protocol.MatchForfeitReason
 import com.hienthai.fastowin.protocol.GoldExchangeStatus
 import com.hienthai.fastowin.protocol.MAX_PROFILE_DISPLAY_NAME_LENGTH
 import com.hienthai.fastowin.protocol.PROFILE_AVATAR_IDS
@@ -1259,11 +1260,6 @@ class GameController private constructor(
                     val game = currentGame
                     if (game.phase == RoomPhase.PLAYING || game.phase == RoomPhase.FINISHED) {
                         startGameWithSnapshot(game)
-                        if (wasRecoveringRoom && game.phase == RoomPhase.FINISHED) {
-                            _uiState.update {
-                                it.copy(message = messageMapper.text(TextKey.MatchExpiredOfficialLoss))
-                            }
-                        }
                     } else {
                         applyWaitingSnapshot(game)
                     }
@@ -1343,6 +1339,7 @@ class GameController private constructor(
                         currentClan = state.currentClan?.takeUnless {
                             previousClanId != message.profile.clanId && it.id == previousClanId
                         },
+                        clanLoadError = state.clanLoadError.takeIf { previousClanId == message.profile.clanId },
                         avatarRevision = state.avatarRevision + 1,
                         player = state.player.copy(
                             name = message.profile.displayName,
@@ -1701,7 +1698,12 @@ class GameController private constructor(
                         }
                         state.currentClan != null && state.currentClan.id != message.clan.id &&
                             requestedClanId != message.clan.id -> state
-                        else -> state.copy(currentClan = message.clan)
+                        else -> state.copy(
+                            currentClan = message.clan,
+                            clanLoadError = state.clanLoadError.takeIf {
+                                requestedClanId != null && requestedClanId != message.clan.id
+                            }
+                        )
                     }
                 }
                 if (!message.isPresenceRefresh && requestedClanId == message.clan.id) requestedClanId = null
@@ -1895,7 +1897,14 @@ class GameController private constructor(
         val currentState = _uiState.value
         if (!currentState.canApplyGameSnapshot(game.roomId, game.sequence)) return false
         val finished = game.phase == RoomPhase.FINISHED
-        _uiState.update { it.applyAuthoritativeSnapshot(game, requireNotNull(playerId)) }
+        val localPlayerId = requireNotNull(playerId)
+        val disconnectLoss = finished && game.forfeit?.let {
+            it.playerId == localPlayerId && it.reason == MatchForfeitReason.DISCONNECT_TIMEOUT
+        } == true
+        _uiState.update { state ->
+            val result = state.applyAuthoritativeSnapshot(game, localPlayerId)
+            if (disconnectLoss) result.copy(message = messageMapper.text(TextKey.MatchExpiredOfficialLoss)) else result
+        }
         if (game.phase == RoomPhase.PLAYING && game.gameMode.isTimed()) {
             startTimer(_uiState.value.timeLeftMillis)
         } else if (!finished) {
@@ -1910,6 +1919,26 @@ class GameController private constructor(
     }
 
     private fun handleServerError(error: ServerMessage.Error) {
+        val localizedError = messageMapper.message(error)
+        when (error.code) {
+            "FRIENDS_PRESENCE_UNAVAILABLE" -> {
+                _uiState.update { state ->
+                    if ((state.isFriendsOpen || state.isClanOpen) && state.isFriendsLoading) {
+                        state.copy(isFriendsLoading = false, error = localizedError)
+                    } else state
+                }
+                return
+            }
+            "CLAN_PRESENCE_UNAVAILABLE" -> {
+                _uiState.update { state ->
+                    val clanId = requestedClanId ?: state.currentClan?.id
+                    if (state.isClanOpen && clanId != null && error.requestId == clanId) {
+                        state.copy(clanLoadError = localizedError)
+                    } else state
+                }
+                return
+            }
+        }
         if (error.requestId == pendingRewardedAdClaim?.receipt?.requestId &&
             error.code !in setOf("CONNECTION_NOT_READY", "CONNECTION_FAILED", "SEND_FAILED")) {
             pendingRewardedAdClaim = null
@@ -1927,7 +1956,6 @@ class GameController private constructor(
             }
             return
         }
-        val localizedError = messageMapper.message(error)
         if (error.code in setOf("NOTIFICATIONS_UNAVAILABLE", "NOT_NOTIFICATIONS_UNAVAILABLE")) {
             _uiState.update { it.copy(isNotificationsLoading = false, notificationsError = localizedError) }
             return
@@ -2249,6 +2277,7 @@ class GameController private constructor(
                 isFriendsLoading = false,
                 isNotificationsOpen = false,
                 clanNotice = null,
+                clanLoadError = null,
                 error = null
             )
         }
@@ -2257,7 +2286,8 @@ class GameController private constructor(
     }
 
     fun closeClan() {
-        _uiState.update { it.copy(isClanOpen = false) }
+        requestedClanId = null
+        _uiState.update { it.copy(isClanOpen = false, clanLoadError = null) }
     }
 
     fun createClan(name: String, description: String) {
@@ -2278,11 +2308,13 @@ class GameController private constructor(
 
     fun leaveClan() {
         scope.launch { sendMessage(ClientMessage.LeaveClan) }
-        _uiState.update { it.copy(currentClan = null) }
+        requestedClanId = null
+        _uiState.update { it.copy(currentClan = null, clanLoadError = null) }
     }
 
     fun viewClan(clanId: String) {
         requestedClanId = clanId
+        _uiState.update { it.copy(clanLoadError = null) }
         scope.launch { sendMessage(ClientMessage.GetClanInfo(clanId)) }
     }
 

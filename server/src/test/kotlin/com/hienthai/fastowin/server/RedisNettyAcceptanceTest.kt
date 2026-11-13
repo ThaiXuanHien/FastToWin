@@ -2,7 +2,11 @@ package com.hienthai.fastowin.server
 
 import com.hienthai.fastowin.protocol.*
 import com.hienthai.fastowin.server.admin.*
+import com.hienthai.fastowin.server.presence.PresenceConfiguration
+import com.hienthai.fastowin.server.presence.RedisPresenceStore
 import com.hienthai.fastowin.server.ratelimit.*
+import com.zaxxer.hikari.HikariConfig
+import com.zaxxer.hikari.HikariDataSource
 import io.ktor.client.*
 import io.ktor.client.engine.okhttp.*
 import io.ktor.client.plugins.websocket.*
@@ -14,6 +18,7 @@ import io.ktor.server.netty.*
 import io.ktor.websocket.*
 import kotlinx.coroutines.*
 import kotlinx.serialization.*
+import org.flywaydb.core.Flyway
 import org.junit.jupiter.api.Assumptions.assumeTrue
 import java.util.UUID
 import ch.qos.logback.classic.Level
@@ -48,8 +53,13 @@ class RedisNettyAcceptanceTest {
         @Suppress("UNREACHABLE_CODE") error("unreachable")
     }
     private suspend fun DefaultClientWebSocketSession.sendMessage(message: ClientMessage) = send(ProtocolJson.encodeToString(message))
-    private fun app(runtime: RateLimitRuntime, policies: ServerRateLimitPolicies = ServerRateLimitPolicies(), auth: AuthenticationService = AuthenticationService(InMemoryAuthRepository())) =
-        embeddedServer(Netty, host = "127.0.0.1", port = 0) { gameModule(rateLimiter = runtime, rateLimitPolicies = policies, authService = auth,
+    private fun app(
+        runtime: RateLimitRuntime,
+        policies: ServerRateLimitPolicies = ServerRateLimitPolicies(),
+        auth: AuthenticationService = AuthenticationService(InMemoryAuthRepository()),
+        engine: GameEngine = GameEngine()
+    ) =
+        embeddedServer(Netty, host = "127.0.0.1", port = 0) { gameModule(engine = engine, rateLimiter = runtime, rateLimitPolicies = policies, authService = auth,
             adminService = AdminService(InMemoryAdminRepository(), AdminConfiguration("http://localhost", false), passwordHasher = PasswordHasher(iterations = 1000), rateLimiter = runtime)) }.start()
     private suspend fun port(server: EmbeddedServer<*, *>) = server.engine.resolvedConnectors().single().port
     private fun client() = HttpClient(OkHttp) { install(WebSockets) }
@@ -143,6 +153,123 @@ class RedisNettyAcceptanceTest {
                 } finally { socket.close(); peer.close() }
             } finally { client.close(); server.stop() }
         } }
+    }
+
+    @Test fun `match finishes and persists one reward while Redis is unavailable`() = runBlocking {
+        val rateUrl = fixture()
+        val presenceUrl = System.getenv("FASTTOWIN_TEST_PRESENCE_REDIS_URL")
+        val databaseUrl = System.getenv("TEST_DATABASE_URL")
+        assumeTrue(!presenceUrl.isNullOrBlank() && !databaseUrl.isNullOrBlank(), "Redis presence and PostgreSQL fixtures required")
+        require(Regex("""jdbc:postgresql://127\.0\.0\.1:\d+/admin_test""").matches(requireNotNull(databaseUrl)))
+        val schemaName = "redis_finish_${UUID.randomUUID().toString().replace("-", "")}"
+        HikariDataSource(HikariConfig().apply {
+            jdbcUrl = databaseUrl
+            username = System.getenv("TEST_DATABASE_USER") ?: "fasttowin"
+            password = System.getenv("TEST_DATABASE_PASSWORD") ?: "fasttowin"
+            schema = schemaName
+        }).use { dataSource ->
+            val migrations = Flyway.configure().dataSource(dataSource)
+                .schemas(schemaName).defaultSchema(schemaName).cleanDisabled(false).load()
+            try {
+                migrations.migrate()
+                verifyMatchSettlement(rateUrl, requireNotNull(presenceUrl), dataSource)
+            } finally {
+                migrations.clean()
+            }
+        }
+    }
+
+    private suspend fun verifyMatchSettlement(rateUrl: String, presenceUrl: String, dataSource: HikariDataSource) {
+        val auth = AuthenticationService(PostgresAuthRepository(dataSource), PasswordHasher(1000))
+        val host = auth.registerVerified("finish-host@example.invalid", "fixture-password-123", "Host")
+        val guest = auth.registerVerified("finish-guest@example.invalid", "fixture-password-123", "Guest")
+        val profiles = PostgresPlayerProfileRepository(dataSource)
+        RedisFaultProxy(rateUrl).use { rateProxy ->
+            RedisFaultProxy(presenceUrl).use { presenceProxy ->
+                openRateLimitRuntime(settings(rateProxy.proxyUrl, namespace())).use { runtime ->
+                    RedisPresenceStore(PresenceConfiguration(presenceProxy.proxyUrl, namespace())).use { presence ->
+                        val engine = GameEngine(
+                            matchResultRepository = PostgresMatchResultRepository(dataSource),
+                            playerProfileRepository = profiles,
+                            presenceStore = presence,
+                            productionPresenceFailClosed = true
+                        )
+                        val server = app(runtime, auth = auth, engine = engine)
+                        try {
+                            client().use { client ->
+                                val baseUrl = "http://127.0.0.1:${port(server)}"
+                                val gameUrl = "ws://127.0.0.1:${port(server)}/game"
+                                client.webSocketSession(gameUrl).useMatchSocket { hostSocket ->
+                                    client.webSocketSession(gameUrl).useMatchSocket { guestSocket ->
+                                        hostSocket.sendMessage(ClientMessage.ConnectAccount(host.accessToken))
+                                        hostSocket.receiveMessage<ServerMessage.SessionReady>()
+                                        guestSocket.sendMessage(ClientMessage.ConnectAccount(guest.accessToken))
+                                        guestSocket.receiveMessage<ServerMessage.SessionReady>()
+                                        hostSocket.sendMessage(ClientMessage.CreateRoom("Redis outage", "", ProtocolGameMode.ORDER))
+                                        val room = hostSocket.receiveMessage<ServerMessage.RoomCreated>().game
+                                        guestSocket.sendMessage(ClientMessage.JoinRoom(room.roomId, ""))
+                                        guestSocket.receiveMessage<ServerMessage.RoomUpdated>()
+                                        hostSocket.sendMessage(ClientMessage.SetReady(room.roomId, true))
+                                        hostSocket.receiveMessage<ServerMessage.RoomUpdated>()
+                                        guestSocket.sendMessage(ClientMessage.SetReady(room.roomId, true))
+                                        val started = hostSocket.receiveMessage<ServerMessage.GameStarted>().game
+                                        guestSocket.receiveMessage<ServerMessage.GameStarted>()
+                                        withTimeout(5_000) {
+                                            while (presence.read(listOf(host.userId))?.get(host.userId) != FriendPresence.PLAYING) {
+                                                delay(20)
+                                            }
+                                        }
+                                        assertNull(profiles.findMatchDetail(guest.userId, started.matchId))
+
+                                        for (proxy in listOf(rateProxy, presenceProxy)) {
+                                            proxy.mode = RedisFaultProxy.Mode.DROP
+                                            proxy.disconnect()
+                                        }
+                                        val login = client.post("$baseUrl/auth/login") {
+                                            contentType(ContentType.Application.Json)
+                                            setBody("""{"email":"unavailable@example.invalid","password":"fixture-password-123"}""")
+                                        }
+                                        assertEquals(HttpStatusCode.ServiceUnavailable, login.status)
+                                        assertContains(login.bodyAsText(), "RATE_LIMIT_UNAVAILABLE")
+                                        assertNull(presence.read(listOf(host.userId)))
+
+                                        hostSocket.sendMessage(ClientMessage.LeaveRoom(room.roomId))
+                                        val finished = hostSocket.receiveMessage<ServerMessage.GameFinished>().game
+                                        assertEquals(finished, guestSocket.receiveMessage<ServerMessage.GameFinished>().game)
+                                        assertEquals(started.matchId, finished.matchId)
+                                        assertEquals(RoomPhase.FINISHED, finished.phase)
+                                        assertEquals(guest.userId, finished.winnerPlayerId)
+                                        assertEquals(MatchForfeitSnapshot(host.userId, MatchForfeitReason.VOLUNTARY_LEAVE), finished.forfeit)
+
+                                        // Repeating LeaveRoom after settlement exits the result screen.
+                                        hostSocket.sendMessage(ClientMessage.LeaveRoom(room.roomId))
+                                        assertEquals("RESULTS_LEFT", hostSocket.receiveMessage<ServerMessage.RoomClosed>().code)
+                                        assertEquals(MatchHistoryOutcome.WIN, profiles.findMatchDetail(guest.userId, finished.matchId)?.summary?.outcome)
+                                        assertEquals(MatchHistoryOutcome.LOSS, profiles.findMatchDetail(host.userId, finished.matchId)?.summary?.outcome)
+                                        val winnerReward = profiles.loadWalletHistory(guest.userId)
+                                            .single { it.sourceType == "MATCH" && it.sourceId == finished.matchId }
+                                        assertEquals(80, winnerReward.goldDelta)
+                                        assertEquals(24, winnerReward.xpDelta)
+                                        assertTrue(profiles.loadWalletHistory(host.userId)
+                                            .none { it.sourceType == "MATCH" && it.sourceId == finished.matchId })
+                                    }
+                                }
+                            }
+                        } finally {
+                            server.stop()
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    private suspend fun DefaultClientWebSocketSession.useMatchSocket(block: suspend (DefaultClientWebSocketSession) -> Unit) {
+        try {
+            block(this)
+        } finally {
+            close()
+        }
     }
 
     @Test fun `two applications share admin login and room entry limits`() = runBlocking {

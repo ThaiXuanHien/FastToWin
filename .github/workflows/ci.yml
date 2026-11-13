@@ -73,6 +73,7 @@ jobs:
           :shared:testAndroidHostTest
           :app:compileDevDebugAndroidTestKotlin
           :app:assembleDevDebug
+          :app:assembleProdDebug
           :webApp:compileKotlinWasmJs
           --no-daemon
           --no-configuration-cache
@@ -134,6 +135,13 @@ jobs:
         with:
           name: fast-to-win-dev-apk
           path: app/build/outputs/apk/dev/debug/app-dev-debug.apk
+          if-no-files-found: error
+
+      - name: Upload production QA APK
+        uses: actions/upload-artifact@v7
+        with:
+          name: fast-to-win-prod-qa-apk
+          path: app/build/outputs/apk/prod/debug/app-prod-debug.apk
           if-no-files-found: error
 
       - name: Upload test reports

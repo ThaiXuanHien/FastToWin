@@ -2,6 +2,7 @@ import org.jetbrains.kotlin.gradle.ExperimentalWasmDsl
 import org.jetbrains.kotlin.gradle.targets.js.webpack.KotlinWebpackConfig
 import org.jetbrains.kotlin.gradle.targets.js.ir.KotlinJsIrLink
 import org.jetbrains.compose.web.tasks.WebCompatibilityTask
+import java.security.MessageDigest
 
 plugins {
     alias(libs.plugins.kotlin.multiplatform)
@@ -87,10 +88,22 @@ tasks.withType<WebCompatibilityTask>().configureEach {
             "Update the platform loader when the Web bundle names change"
         }
         val distribution = outputDir.get().asFile
-        check(distribution.resolve("originJsFast-to-win.js").isFile &&
-            distribution.resolve("originWasmFast-to-win.js").isFile) {
+        val jsBundle = distribution.resolve("originJsFast-to-win.js")
+        val wasmBundle = distribution.resolve("originWasmFast-to-win.js")
+        check(jsBundle.isFile && wasmBundle.isFile) {
             "Both Web runtimes must be present before installing the platform loader"
         }
         distribution.resolve("fast-to-win.js").writeBytes(platformLoader.asFile.readBytes())
+
+        // Stable loader filenames otherwise let returning browsers reuse an older runtime.
+        val digest = MessageDigest.getInstance("SHA-256")
+        digest.update(platformLoader.asFile.readBytes())
+        digest.update(jsBundle.readBytes())
+        val version = digest.digest(wasmBundle.readBytes()).joinToString("") { "%02x".format(it) }
+        val index = distribution.resolve("index.html")
+        val html = index.readText()
+        val loaderTag = "<script src=\"/fast-to-win.js\"></script>"
+        check(loaderTag in html) { "Update the runtime versioning when the loader tag changes" }
+        index.writeText(html.replace(loaderTag, "<script src=\"/fast-to-win.js?v=$version\"></script>"))
     }
 }

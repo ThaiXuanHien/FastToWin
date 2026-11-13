@@ -6,6 +6,7 @@ import com.hienthai.fastowin.protocol.LeaderboardSnapshot
 import com.hienthai.fastowin.protocol.FriendsSnapshot
 import com.hienthai.fastowin.protocol.ServerMessage
 import com.hienthai.fastowin.protocol.MatchDetailSnapshot
+import com.hienthai.fastowin.protocol.MatchForfeitReason
 import com.hienthai.fastowin.protocol.MatchType
 import com.hienthai.fastowin.protocol.TournamentHubSnapshot
 import com.hienthai.fastowin.protocol.TournamentInvitationSnapshot
@@ -186,6 +187,7 @@ data class GameState(
     val pendingClanJoinIds: Set<String> = emptySet(),
     val currentClan: com.hienthai.fastowin.protocol.ClanSnapshot? = null,
     val clanNotice: String? = null,
+    val clanLoadError: String? = null,
     val donatingClanRequestId: String? = null,
     val clanDonationResult: com.hienthai.fastowin.protocol.ServerMessage.ClanDonationResult? = null,
     val profileNotice: String? = null,
@@ -341,7 +343,9 @@ internal fun GameState.applyAuthoritativeSnapshot(game: GameSnapshot, playerId: 
         currentTournamentRound = game.tournamentRound,
         winnerPlayerId = game.winnerPlayerId,
         winnerTeamId = game.winnerTeamId,
-        didForfeitLastMatch = false,
+        didForfeitLastMatch = finished && game.forfeit?.let {
+            it.playerId == playerId && it.reason == MatchForfeitReason.VOLUNTARY_LEAVE
+        } == true,
         isRematchRequestedByMe = playerId in game.rematchRequestedPlayerIds,
         isRematchRequestedByOpponent = game.rematchRequestedPlayerIds.any { it != playerId },
         isRematchActionPending = false,

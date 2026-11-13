@@ -3,6 +3,7 @@ package com.hienthai.fastowin.state
 import com.hienthai.fastowin.localization.AppLanguage
 import com.hienthai.fastowin.localization.LocalizationService
 import com.hienthai.fastowin.localization.LocalizedMessageMapper
+import com.hienthai.fastowin.localization.TextKey
 import com.hienthai.fastowin.data.network.toAvatarImageUrl
 import com.hienthai.fastowin.data.network.InMemoryResumeTokenStore
 import com.hienthai.fastowin.data.network.SocketSession
@@ -543,6 +544,72 @@ class GameStateTest {
                 )
                 assertFalse(fixture.controller.uiState.value.isProfileSaving)
             }
+        } finally { fixture.controller.close() }
+    }
+
+    @Test
+    fun `recovering a finished match does not replace its result with an expired loss`() = runTest {
+        val result = recoverFinishedMatch(winner = "player-1")
+        assertTrue(result.isGameOver)
+        assertEquals("player-1", result.winnerPlayerId)
+        assertNull(result.message)
+    }
+
+    @Test
+    fun `recovering a voluntary forfeit preserves the reason for the player who left`() = runTest {
+        val result = recoverFinishedMatch(
+            winner = "opponent", forfeit = MatchForfeitSnapshot("player-1", MatchForfeitReason.VOLUNTARY_LEAVE)
+        )
+        assertEquals("opponent", result.winnerPlayerId)
+        assertTrue(result.didForfeitLastMatch)
+        assertNull(result.message)
+    }
+
+    @Test
+    fun `disconnect expiry notice is shown to the disconnected player`() = runTest {
+        val loser = recoverFinishedMatch(
+            winner = "opponent", forfeit = MatchForfeitSnapshot("player-1", MatchForfeitReason.DISCONNECT_TIMEOUT)
+        )
+        assertEquals(LocalizationService(AppLanguage.VIETNAMESE).text(TextKey.MatchExpiredOfficialLoss), loser.message)
+        assertFalse(loser.didForfeitLastMatch)
+    }
+
+    @Test
+    fun `winner does not see the opponent's disconnect expiry notice`() = runTest {
+        val winner = recoverFinishedMatch(
+            winner = "player-1", forfeit = MatchForfeitSnapshot("opponent", MatchForfeitReason.DISCONNECT_TIMEOUT)
+        )
+        assertNull(winner.message)
+        assertFalse(winner.didForfeitLastMatch)
+    }
+
+    private suspend fun TestScope.recoverFinishedMatch(
+        winner: String,
+        forfeit: MatchForfeitSnapshot? = null
+    ): GameState {
+        val fixture = publicTournamentFixture()
+        val game = GameSnapshot(
+            roomId = "reconnect-room", roomName = "Reconnect room", hostId = "player-1",
+            gameMode = ProtocolGameMode.ORDER, phase = RoomPhase.PLAYING,
+            players = listOf(PlayerSnapshot("player-1", "Tester", 0), PlayerSnapshot("opponent", "Opponent", 0)),
+            sequence = 4
+        )
+        try {
+            fixture.session.server(ServerMessage.SessionReady("player-1", currentGame = game))
+            runCurrent()
+            assertTrue(fixture.controller.uiState.value.isMatchStarted)
+
+            fixture.session.close()
+            runCurrent()
+            advanceTimeBy(1_000)
+            runCurrent()
+            fixture.transport.sessions.last().server(ServerMessage.SessionReady(
+                "player-1", currentGame = game.copy(
+                    phase = RoomPhase.FINISHED, winnerPlayerId = winner, sequence = 5, forfeit = forfeit
+                )
+            ))
+            runCurrent()
+            return fixture.controller.uiState.value
         } finally { fixture.controller.close() }
     }
 

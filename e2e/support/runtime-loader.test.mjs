@@ -8,15 +8,16 @@ const source = readFileSync(process.env.FASTTOWIN_LOADER_UNDER_TEST ||
   new URL('../../webApp/src/compatibility/runtime-loader.js', import.meta.url), 'utf8');
 const iphone = 'Mozilla/5.0 (iPhone; CPU iPhone OS 18_7 like Mac OS X) AppleWebKit/605.1.15 Version/27.2 Mobile/15E148 Safari/604.1';
 
-function run({ userAgent = '', platform = '', touchPoints = 0, wasm = true, readyState = 'complete' } = {}) {
+function run({ userAgent = '', platform = '', touchPoints = 0, wasm = true, readyState = 'complete', version = '' } = {}) {
   const scripts = [], listeners = [];
   const document = {
+    currentScript: { src: 'https://example.test/fast-to-win.js' + version },
     readyState,
     body: { appendChild: element => scripts.push(element) },
     createElement: tag => { assert.equal(tag, 'script'); return {}; },
     addEventListener: (name, callback, options) => listeners.push({ name, callback, options }),
   };
-  const context = { document, navigator: { userAgent, platform, maxTouchPoints: touchPoints }, Uint8Array, WebAssembly: undefined };
+  const context = { document, navigator: { userAgent, platform, maxTouchPoints: touchPoints }, URL, Uint8Array, WebAssembly: undefined };
   if (wasm !== 'missing') context.WebAssembly = { validate: bytes => {
     if (wasm === 'throws') throw new Error('Validation unavailable');
     return wasm === true ? WebAssembly.validate(bytes) : wasm;
@@ -45,11 +46,16 @@ for (const [name, settings, expected] of [
 }
 
 test('loader waits until DOM content is ready before attaching one runtime', () => {
-  const { scripts, listeners } = run({ userAgent: iphone, readyState: 'loading' });
+  const { scripts, listeners } = run({ userAgent: iphone, readyState: 'loading', version: '?v=current-build' });
   assert.equal(scripts.length, 0);
   assert.equal(listeners.length, 1);
   assert.equal(listeners[0].name, 'DOMContentLoaded');
   listeners[0].callback();
   assert.equal(scripts.length, 1);
-  assert.equal(scripts[0].src, 'originJsFast-to-win.js');
+  assert.equal(scripts[0].src, 'originJsFast-to-win.js?v=current-build');
+});
+
+test('Wasm runtime uses the bootstrap cache version', () => {
+  const { scripts } = run({ version: '?v=current-build' });
+  assert.equal(scripts[0].src, 'originWasmFast-to-win.js?v=current-build');
 });

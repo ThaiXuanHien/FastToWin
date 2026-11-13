@@ -14,6 +14,7 @@ import com.hienthai.fastowin.protocol.ServerMessage
 import com.hienthai.fastowin.server.presence.PresenceConfiguration
 import com.hienthai.fastowin.server.presence.PresenceStore
 import com.hienthai.fastowin.server.presence.RedisPresenceStore
+import com.hienthai.fastowin.server.ratelimit.RedisFaultProxy
 import io.ktor.client.HttpClient
 import io.ktor.client.engine.okhttp.OkHttp
 import io.ktor.client.plugins.websocket.DefaultClientWebSocketSession
@@ -239,11 +240,15 @@ class RedisPresenceNettyTest {
         assumeTrue(!url.isNullOrBlank(), "Isolated Redis presence fixture required")
         val config = PresenceConfiguration(requireNotNull(url), "t" + UUID.randomUUID().toString().replace("-", ""))
         RedisPresenceStore(config).use { first ->
-            RedisPresenceStore(config).use { second -> verifyTwoServers(first, second) }
+            RedisFaultProxy(url).use { proxy ->
+                RedisPresenceStore(PresenceConfiguration(proxy.proxyUrl, config.namespace)).use { second ->
+                    verifyTwoServers(first, second, proxy)
+                }
+            }
         }
     }
 
-    private suspend fun verifyTwoServers(first: PresenceStore, second: PresenceStore) {
+    private suspend fun verifyTwoServers(first: PresenceStore, second: PresenceStore, proxy: RedisFaultProxy? = null) {
         val auth = AuthenticationService(InMemoryAuthRepository())
         val alice = auth.verifiedPresenceAccount("alice")
         val bob = auth.verifiedPresenceAccount("bob")
@@ -266,7 +271,8 @@ class RedisPresenceNettyTest {
             ))
         }
         fun app(store: PresenceStore) = embeddedServer(Netty, host = "127.0.0.1", port = 0) {
-            gameModule(engine = GameEngine(friendRepository = friends, clanRepository = clans, presenceStore = store), authService = auth)
+            gameModule(engine = GameEngine(friendRepository = friends, clanRepository = clans, presenceStore = store,
+                productionPresenceFailClosed = true), authService = auth)
         }.start()
 
         val a = app(first)
@@ -311,6 +317,27 @@ class RedisPresenceNettyTest {
                 bobSocket.sendMessage(ClientMessage.SetReady(roomId, true))
                 charlieSocket.sendMessage(ClientMessage.SetReady(roomId, true))
                 assertVisible(FriendPresence.PLAYING)
+                if (proxy != null) {
+                    proxy.mode = RedisFaultProxy.Mode.DROP
+                    try {
+                        aliceSocket.sendMessage(ClientMessage.GetFriends)
+                        val friendsError = aliceSocket.receiveMessage<ServerMessage.Error> {
+                            it.code == "FRIENDS_PRESENCE_UNAVAILABLE"
+                        }
+                        assertEquals("ServerUnavailable", friendsError.messageKey)
+                        aliceSocket.sendMessage(ClientMessage.GetClanInfo(clan.id))
+                        val clanError = aliceSocket.receiveMessage<ServerMessage.Error> {
+                            it.code == "CLAN_PRESENCE_UNAVAILABLE"
+                        }
+                        assertEquals(clan.id, clanError.requestId)
+                        bobSocket.sendMessage(ClientMessage.SelectNumber(roomId, 1, "presence-outage-selection"))
+                        bobSocket.receiveMessage<ServerMessage.GameStateUpdated>()
+                        charlieSocket.receiveMessage<ServerMessage.GameStateUpdated>()
+                    } finally {
+                        proxy.release()
+                    }
+                    assertVisible(FriendPresence.PLAYING)
+                }
                 val bobReplacement = client.webSocketSession("ws://127.0.0.1:${b.engine.resolvedConnectors().single().port}/game")
                 try {
                     bobReplacement.sendMessage(ClientMessage.ConnectAccount(bob.accessToken))

@@ -1,4 +1,6 @@
 (function () {
+    const runtimeVersion = new URL(document.currentScript.src).search;
+
     function prefersJavaScript() {
         // iOS may validate the Wasm feature probe yet leave the Compose canvas blank.
         // iPadOS desktop mode identifies itself as a Mac with multiple touch points.
@@ -27,9 +29,10 @@
 
     function loadApp() {
         const script = document.createElement('script');
-        script.src = prefersJavaScript() || !supportsWasm()
+        const runtime = prefersJavaScript() || !supportsWasm()
             ? 'originJsFast-to-win.js'
             : 'originWasmFast-to-win.js';
+        script.src = runtime + runtimeVersion;
         script.type = 'application/javascript';
         document.body.appendChild(script);
     }
