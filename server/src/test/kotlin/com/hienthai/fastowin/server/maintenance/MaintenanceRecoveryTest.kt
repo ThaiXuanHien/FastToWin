@@ -290,7 +290,10 @@ class MaintenanceRecoveryTest {
         runtime.observe(); assertTrue(engine.newIntentAllowed())
         clock = 4000; runtime.fenceStaleObservation()
         assertFalse(engine.newIntentAllowed()); error(503) { runtime.publicStatus() }
+        val unknown = f.service.read(f.owner).runtime
+        assertFalse(unknown.available); assertNull(unknown.activeMatches)
         runtime.observe(); assertTrue(engine.newIntentAllowed())
+        assertTrue(f.service.read(f.owner).runtime.available)
         f.service.update(f.owner, f.request().copy(mode = MaintenanceMode.EMERGENCY)); runtime.observe()
         clock += 4000; runtime.fenceStaleObservation()
         assertTrue(engine.gameConnectionsClosed())

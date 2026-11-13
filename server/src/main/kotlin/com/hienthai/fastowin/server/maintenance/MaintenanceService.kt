@@ -91,7 +91,7 @@ class MaintenanceService(
     /** Caller must apply drain/admission blocking before sampling a trusted active-match count.
      * Publishing happens only after commit. Observation is not confirmation of socket closure.
      */
-    suspend fun refresh(activeMatches:Int, allowEmptyDrain:Boolean=true):MaintenancePolicy=refreshMutex.withLock {
+    suspend fun refresh(activeMatches:Int, allowEmptyDrain:Boolean=true, trustedWorkCount:Boolean=true):MaintenancePolicy=refreshMutex.withLock {
         if (activeMatches<0) invalid()
         storage {
             val snapshot=repository.observationTransaction {
@@ -104,14 +104,15 @@ class MaintenanceService(
                 }
                 if (value.state==MaintenanceState.ANNOUNCING && now>=value.transitionAtEpochMillis!!) advance(MaintenanceState.DRAINING)
                 if (value.state==MaintenanceState.DRAINING) {
-                    val emptyDrain=allowEmptyDrain && activeMatches==0
+                    val emptyDrain=allowEmptyDrain && trustedWorkCount && activeMatches==0
                     // Planned maintenance waits for admitted work, even after its drain target.
                     val forcedDeadline=value.mode!=MaintenanceMode.PLANNED && now>=value.drainDeadlineEpochMillis!!
                     if (emptyDrain || forcedDeadline) advance(MaintenanceState.MAINTENANCE)
                 }
                 value
             }
-            observations.publish(MaintenanceObservation(snapshot.policy(),MaintenanceRuntimeObservation(snapshot.version,validNow(),activeMatches,true)))
+            observations.publish(MaintenanceObservation(snapshot.policy(),MaintenanceRuntimeObservation(snapshot.version,validNow(),
+                activeMatches.takeIf { trustedWorkCount },trustedWorkCount)))
             effectivePolicy()
         }
     }
@@ -134,6 +135,10 @@ class MaintenanceService(
         catch (error:AdminException) { if(error.status==503) markUnavailable(); throw error }
         catch (_:SQLException) { markUnavailable(); unavailable() }
         catch (_:Exception) { markUnavailable(); unavailable() }
+    /** Runtime cannot expose a partial, failed or expired global work sample as a trusted zero. */
+    internal fun invalidateRuntimeObservation() {
+        observations.transform { it.copy(runtime=it.runtime.copy(activeMatches=null,available=false)) }
+    }
     private fun markUnavailable() {
         observations.transform(MaintenanceObservation::unavailable)
     }

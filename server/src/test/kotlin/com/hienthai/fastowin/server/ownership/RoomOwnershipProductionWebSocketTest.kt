@@ -2,6 +2,7 @@ package com.hienthai.fastowin.server.ownership
 
 import com.hienthai.fastowin.protocol.*
 import com.hienthai.fastowin.server.*
+import com.hienthai.fastowin.server.maintenance.*
 import com.hienthai.fastowin.server.presence.PresenceConfiguration
 import com.hienthai.fastowin.server.presence.PresenceStore
 import com.hienthai.fastowin.server.presence.RedisPresenceStore
@@ -383,6 +384,110 @@ class RoomOwnershipProductionWebSocketTest {
         }
     }
 
+
+    @Test
+    fun `planned global maintenance waits for worker match and held settlement after legacy is empty`() = runBlocking {
+        val maintenance = MaintenanceFixture().also { it.initialize() }
+        fixture(maintenanceService = maintenance.service) { f ->
+            val host = f.connect(f.aPort, f.tokens[0])
+            val guest = f.connect(f.aPort, f.tokens[1])
+            try {
+                host.sendMessage(ClientMessage.CreateRoom("Maintenance worker", "private", ProtocolGameMode.ORDER))
+                val room = host.receiveMessage<ServerMessage.RoomCreated>().game
+                guest.sendMessage(ClientMessage.JoinRoom(room.roomId, "private"))
+                guest.receiveMessage<ServerMessage.RoomUpdated>()
+                host.sendMessage(ClientMessage.SetReady(room.roomId, true))
+                host.receiveMessage<ServerMessage.RoomUpdated>()
+                guest.sendMessage(ClientMessage.SetReady(room.roomId, true))
+                host.receiveMessage<ServerMessage.GameStarted>()
+                guest.receiveMessage<ServerMessage.GameStarted>()
+                maintenance.service.update(maintenance.owner, maintenance.request().copy(warningMinutes = 0, drainMinutes = 1))
+                maintenance.now += 120_000
+                f.maintenance.observe()
+                assertEquals(0, f.engine.activeMaintenanceMatchCount())
+                assertFalse(f.maintenance.publicStatus().maintenance)
+                val policy = assertNotNull(PostgresOwnedAdmissionRepository(f.source).observe())
+                assertEquals(OwnedAdmissionState.STOP_NEW, policy.state)
+                val blocked = assertIs<OwnedRoomReply.Retryable>(f.pilot.onMessage(SocketFence(f.accounts[1], 1),
+                    ClientMessage.SetReady(room.roomId, true)))
+                assertEquals("MAINTENANCE", blocked.publicMessage.code)
+                host.sendMessage(ClientMessage.SelectNumber(room.roomId, 1, "during-global-drain"))
+                host.receiveMessage<ServerMessage.GameStateUpdated>()
+                f.source.connection.use { c -> c.createStatement().use {
+                    it.execute("CREATE FUNCTION hold_owned_settlement() RETURNS trigger LANGUAGE plpgsql AS 'BEGIN RAISE EXCEPTION ''held test settlement''; END;'")
+                    it.execute("CREATE TRIGGER hold_owned_settlement BEFORE INSERT ON room_ownership_pilot_settlements FOR EACH ROW EXECUTE FUNCTION hold_owned_settlement()")
+                } }
+                try {
+                    host.sendMessage(ClientMessage.LeaveRoom(room.roomId))
+                    host.receiveMessage<ServerMessage.GameFinished>()
+                    guest.receiveMessage<ServerMessage.GameFinished>()
+                    host.sendMessage(ClientMessage.LeaveRoom(room.roomId))
+                    host.receiveMessage<ServerMessage.RoomClosed>()
+                    guest.sendMessage(ClientMessage.LeaveRoom(room.roomId))
+                    guest.receiveMessage<ServerMessage.RoomClosed>()
+                    assertNotNull(f.rooms.read(UUID.fromString(room.roomId))?.snapshot?.pendingCompletedMatch)
+                    f.maintenance.observe()
+                    assertFalse(f.maintenance.publicStatus().maintenance)
+                    assertTrue(maintenance.service.read(maintenance.owner).runtime.activeMatches!! > 0)
+                } finally {
+                    f.source.connection.use { c -> c.createStatement().use {
+                        it.execute("DROP TRIGGER hold_owned_settlement ON room_ownership_pilot_settlements")
+                    } }
+                }
+                withTimeout(8_000) {
+                    while (PostgresRoomOwnershipRepository(f.source).durableSnapshot().let {
+                        it.remainingOpenRooms != 0 || it.pendingSettlements != 0
+                    }) delay(25)
+                }
+                f.maintenance.observe()
+                assertTrue(f.maintenance.publicStatus().maintenance)
+                assertEquals(1, f.source.connection.use { c -> c.createStatement().use {
+                    it.executeQuery("SELECT count(*) FROM room_ownership_pilot_settlements").use { rows -> rows.next(); rows.getInt(1) }
+                } })
+            } finally { guest.close(); host.close() }
+        }
+    }
+
+
+    @Test
+    fun `late prepared create and signed worker join are fenced by global maintenance`() = runBlocking {
+        val maintenance = MaintenanceFixture().also { it.initialize() }
+        fixture(maintenanceService = maintenance.service) { f ->
+            val host = f.connect(f.aPort, f.tokens[0])
+            val guest = f.connect(f.aPort, f.tokens[1])
+            try {
+                host.sendMessage(ClientMessage.CreateRoom("Waiting drain", "private", ProtocolGameMode.ORDER))
+                val room = host.receiveMessage<ServerMessage.RoomCreated>().game
+                val before = assertNotNull(f.rooms.read(UUID.fromString(room.roomId)))
+                val pending = assertIs<OwnedCreatePreparation.Ready>(f.pilot.prepareOwnedCreate(SocketFence(f.accounts[1], 1),
+                    ClientMessage.CreateRoom("Prepared before drain", "private", ProtocolGameMode.ORDER))).request
+                maintenance.service.update(maintenance.owner, maintenance.request().copy(warningMinutes = 0))
+                f.maintenance.observe()
+                assertFalse(f.maintenance.publicStatus().maintenance, "The open WAITING room still counts as owned work")
+                assertIs<OwnedCreateResult.AttemptRejected>(f.pilot.createOwned(pending))
+                val join = assertIs<OwnedRoomReply.Rejected>(f.forwardPeer(OwnerCommandRequest(
+                    room.roomId, before.fence.epoch, f.accounts[1].toString(), 1, OwnerOperation.COMMAND,
+                    ClientMessage.JoinRoom(room.roomId, "private"), before.fence.instanceId.toString(), pending.policy)))
+                assertEquals("OWNED_ADMISSION_STOPPED", join.publicMessage.code)
+                val ready = assertIs<OwnedRoomReply.Rejected>(f.forwardPeer(OwnerCommandRequest(
+                    room.roomId, before.fence.epoch, f.accounts[0].toString(), 1, OwnerOperation.COMMAND,
+                    ClientMessage.SetReady(room.roomId, true), before.fence.instanceId.toString(), pending.policy)))
+                assertEquals("OWNED_ADMISSION_STOPPED", ready.publicMessage.code)
+                assertNull(f.rooms.lookupRoom(f.accounts[1]))
+                val retained = assertNotNull(f.rooms.read(UUID.fromString(room.roomId)))
+                assertNull(retained.snapshot.guest)
+                assertEquals(RoomPhase.WAITING, retained.snapshot.phase)
+                assertNull(retained.snapshot.startedAtEpochMillis)
+                val version = maintenance.service.read(maintenance.owner).persisted.version
+                maintenance.service.update(maintenance.owner, maintenance.request().copy(expectedVersion = version, enabled = false))
+                f.maintenance.observe()
+                assertTrue(f.engine.newIntentAllowed(), "Global maintenance cancellation reopens legacy service")
+                assertEquals(OwnedAdmissionState.STOP_NEW, PostgresOwnedAdmissionRepository(f.source).observe()?.state,
+                    "Global maintenance cancellation must not implicitly resume ownership rollout")
+            } finally { guest.close(); host.close() }
+        }
+    }
+
     private suspend fun presenceFixture(block: suspend (Fixture, PresenceStore, RedisFaultProxy) -> Unit) {
         val redis = System.getenv("FASTTOWIN_TEST_PRESENCE_REDIS_URL")
         assumeTrue(!redis.isNullOrBlank(), "Isolated Redis required")
@@ -411,7 +516,7 @@ class RoomOwnershipProductionWebSocketTest {
         expected.forEach { (id, state) -> assertEquals(state, clan.clan.members.single { it.userId == id }.presence) }
     }
 
-    private suspend fun fixture(rateLimiter: RateLimiter = InMemoryRateLimiter(), presenceStore: PresenceStore? = null, block: suspend (Fixture) -> Unit) {
+    private suspend fun fixture(rateLimiter: RateLimiter = InMemoryRateLimiter(), presenceStore: PresenceStore? = null, maintenanceService: MaintenanceService? = null, block: suspend (Fixture) -> Unit) {
         val url = System.getenv("TEST_DATABASE_URL")
         if (System.getenv("FASTTOWIN_TEST_ROOM_OWNERSHIP") == "true") requireNotNull(url)
         assumeTrue(url != null, "Isolated PostgreSQL required")
@@ -489,8 +594,10 @@ class RoomOwnershipProductionWebSocketTest {
                         val engine = GameEngine(playerProfileRepository = PostgresPlayerProfileRepository(a),
                             friendRepository = friends, clanRepository = clans, presenceStore = presenceStore,
                             productionPresenceFailClosed = true)
+                        val maintenanceRuntime = MaintenanceRuntime(engine, maintenanceService, ownedWorkCount = pa::maintenanceWorkCount)
                         val sa = embeddedServer(Netty, host = "127.0.0.1", port = aPort) {
-                            gameModule(engine = engine, rateLimiter = rateLimiter, authService = authA, roomOwnershipPilot = pa)
+                            gameModule(engine = engine, rateLimiter = rateLimiter, authService = authA, roomOwnershipPilot = pa,
+                                maintenanceRuntime = maintenanceRuntime)
                         }
                         val sb = embeddedServer(Netty, host = "127.0.0.1", port = bPort) {
                             ownedWorkerModule(pb)
@@ -502,7 +609,8 @@ class RoomOwnershipProductionWebSocketTest {
                             br.close(); sb.start(wait = false)
                             HttpClient(OkHttp) { install(WebSockets) }.use { client ->
                                 block(Fixture(client, aPort, sessions.map { it.accessToken }, ids,
-                                    PostgresRoomOwnershipRepository(a), a, bId, engine, pa, clan.id, ::stopWorker))
+                                    PostgresRoomOwnershipRepository(a), a, bId, engine, pa, clan.id, ::stopWorker, maintenanceRuntime,
+                                    { request -> OwnerPeerTransport(ca.nodeId, ca.peerId, ca.peerUri, ca.peerSecret).forward(request) }))
                             }
                         } finally { stopWorker(); sa.stop(0, 2000) }
                     } }
@@ -515,7 +623,7 @@ class RoomOwnershipProductionWebSocketTest {
 
     private data class Fixture(val client: HttpClient, val aPort: Int, val tokens: List<String>,
         val accounts: List<UUID>, val rooms: RoomOwnershipRepository, val source: HikariDataSource, val workerId: UUID,
-        val engine: GameEngine, val pilot: RoomOwnershipPilot, val clanId: String, val stopWorker: () -> Unit) {
+        val engine: GameEngine, val pilot: RoomOwnershipPilot, val clanId: String, val stopWorker: () -> Unit, val maintenance: MaintenanceRuntime, val forwardPeer: suspend (OwnerCommandRequest) -> OwnedRoomReply?) {
         suspend fun awaitDatabaseWaiter(blocker: Int): Int = withTimeout(2_000) {
             var waiter: Int? = null
             while (waiter == null) {

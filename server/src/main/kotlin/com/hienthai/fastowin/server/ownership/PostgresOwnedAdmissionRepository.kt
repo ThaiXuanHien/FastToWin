@@ -50,6 +50,21 @@ internal class PostgresOwnedAdmissionRepository(private val source: DataSource) 
             OwnedAdmissionBinding(requireNotNull(previous.topologySha256), requireNotNull(previous.policySha256)))
     }
 
+    /** Sample only after the caller has acknowledged a committed stop. Hold its generation while counting. */
+    suspend fun maintenanceWorkCount(expected: OwnedAdmissionPolicy, binding: OwnedAdmissionBinding): Int = transaction {
+        val actual = lock(this, update = false)
+        if (actual != expected || actual.state == OwnedAdmissionState.ACTIVE ||
+            actual.topologySha256 != binding.topologySha256 || actual.policySha256 != binding.policySha256
+        ) throw OwnedAdmissionRejected("Owned maintenance sample requires a current stopped policy")
+        createStatement().use { statement ->
+            statement.executeQuery("""
+                SELECT count(*) FROM room_ownership_pilot_rooms
+                WHERE closed_at IS NULL OR
+                    (snapshot->'pendingCompletedMatch' IS NOT NULL AND snapshot->'pendingCompletedMatch' <> 'null'::jsonb)
+            """.trimIndent()).use { rows -> check(rows.next()); rows.getInt(1) }
+        }
+    }
+
     fun requireNewIntent(connection: Connection, expected: OwnedAdmissionPolicy, binding: OwnedAdmissionBinding) {
         requireOwnedNewIntent(lock(connection, update = false), expected, binding)
     }

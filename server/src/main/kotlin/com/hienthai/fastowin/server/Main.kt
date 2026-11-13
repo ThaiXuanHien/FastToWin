@@ -145,7 +145,8 @@ private fun startIngressServer(environment: String, ownershipConfig: RoomOwnersh
             adminService, environmentOverride = environmentStatus.maintenance,
             environmentMessageVi = environmentStatus.message, environmentMessageEn = environmentStatus.message)
         // Memory/dev operation still uses environment policy; durable admin controls explicitly return 503.
-        val maintenanceRuntime = MaintenanceRuntime(engine, maintenanceService.takeIf { database != null }, ::serviceStatusFromEnvironment)
+        val maintenanceRuntime = MaintenanceRuntime(engine, maintenanceService.takeIf { database != null }, ::serviceStatusFromEnvironment,
+            ownedWorkCount = { ownershipPilot?.maintenanceWorkCount() ?: 0 })
 
         val emailDelivery = if (authEmailSender.isConfigured) configuredAuthEmailProvider().name.lowercase() else "disabled"
         println(

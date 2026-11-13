@@ -21,6 +21,30 @@ import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
 class PostgresOwnedAdmissionTest {
+
+    @Test
+    fun `maintenance work sample requires committed STOP_NEW and includes closed pending and expired open rooms`() = runBlocking {
+        withAdmissionFixture { f ->
+            val active = f.activate()
+            assertFailsWith<OwnedAdmissionRejected> { f.authority.maintenanceWorkCount(active, f.binding) }
+            val socket = f.rooms.bindSocket(ADMISSION_HOST)
+            val room = assertIs<FencedResult.Committed>(f.rooms.createRoom(f.instance, socket, f.snapshot(),
+                admissionPolicy = active)).state
+            val stopped = f.authority.stopNew(active.generation)
+            assertFailsWith<OwnedAdmissionRejected> { f.authority.maintenanceWorkCount(stopped, f.binding.copy(policySha256 = "0".repeat(64))) }
+            assertEquals(1, f.authority.maintenanceWorkCount(stopped, f.binding))
+            f.execute("UPDATE room_ownership_pilot_rooms SET lease_until=clock_timestamp()-interval '1 second'")
+            assertEquals(1, f.authority.maintenanceWorkCount(stopped, f.binding))
+            f.execute("UPDATE room_ownership_pilot_rooms SET closed_at=clock_timestamp(), snapshot=jsonb_set(snapshot, '{pendingCompletedMatch}', '{}'::jsonb)")
+            assertEquals(1, f.authority.maintenanceWorkCount(stopped, f.binding))
+            f.execute("UPDATE room_ownership_pilot_rooms SET snapshot=snapshot-'pendingCompletedMatch'")
+            assertEquals(0, f.authority.maintenanceWorkCount(stopped, f.binding))
+            val resumed = f.authority.resume(stopped.generation, f.binding)
+            assertTrue(resumed.generation > stopped.generation)
+            assertFailsWith<OwnedAdmissionRejected> { f.authority.maintenanceWorkCount(stopped, f.binding) }
+        }
+    }
+
     @Test
     fun `connection scoped guard refuses autocommit and bootstrap rolls back with the caller`() = runBlocking {
         withAdmissionFixture { f ->

@@ -70,6 +70,23 @@ internal class RoomOwnershipPilot private constructor(
         OwnedPresenceRead.Unavailable
     }
 
+    /** Sole ingress coordinates global maintenance; worker readiness only observes admission. */
+    suspend fun maintenanceWorkCount(): Int {
+        if (!isProductionMode) {
+            val snapshot = rooms.durableSnapshot()
+            return Math.addExact(snapshot.remainingOpenRooms, snapshot.pendingSettlements)
+        }
+        check(config.runtimeRole == RoomOwnershipRuntimeRole.INGRESS)
+        val authority = checkNotNull(admissionAuthority)
+        val observed = authority.observe() ?: throw OwnedAdmissionRejected("Missing owned admission authority")
+        val binding = checkNotNull(admissionBinding)
+        if (observed.topologySha256 != binding.topologySha256 || observed.policySha256 != binding.policySha256) {
+            throw OwnedAdmissionRejected("Owned maintenance configuration does not match admission authority")
+        }
+        val stopped = if (observed.state == OwnedAdmissionState.ACTIVE) authority.stopNew(observed.generation) else observed
+        return authority.maintenanceWorkCount(stopped, binding)
+    }
+
     suspend fun ownedRoom(playerId: UUID): UUID? = rooms.lookupRoom(playerId)
 
     /** Every authenticated production connect uses this, including accounts outside the owned slice. */

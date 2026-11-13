@@ -13,7 +13,8 @@ class MaintenanceRuntime(
     private val engine: GameEngine,
     private val service: MaintenanceService? = null,
     private val environmentStatus: () -> ServiceStatusResponse = { ServiceStatusResponse(false) },
-    private val monotonicMillis: () -> Long = { System.nanoTime() / 1_000_000 }
+    private val monotonicMillis: () -> Long = { System.nanoTime() / 1_000_000 },
+    private val ownedWorkCount: suspend () -> Int = { 0 }
 ) {
     private val observationMutex = Mutex()
     @Volatile private var observedAt = monotonicMillis()
@@ -27,6 +28,7 @@ class MaintenanceRuntime(
     fun fenceStaleObservation() {
         if (monotonicMillis() - observedAt >= 4_000) {
             stale = true
+            service?.invalidateRuntimeObservation()
             engine.publishMaintenancePolicy(lastKnownPolicy.copy(available = false))
         }
     }
@@ -38,11 +40,16 @@ class MaintenanceRuntime(
                 lastKnownPolicy = MaintenancePolicy(if (status.maintenance) MaintenanceState.MAINTENANCE else status.state ?: MaintenanceState.ACTIVE,
                     source = MaintenanceSource.ENVIRONMENT)
                 engine.publishMaintenancePolicy(lastKnownPolicy)
+                if (lastKnownPolicy.blocksNewIntent) require(ownedWorkCount() >= 0)
             } else {
-                val observed = service.refresh(engine.activeMaintenanceMatchCount(), allowEmptyDrain = false)
+                val observed = service.refresh(engine.activeMaintenanceMatchCount(), allowEmptyDrain = false, trustedWorkCount = false)
                 lastKnownPolicy = observed
                 engine.publishMaintenancePolicy(observed)
-                val next = service.refresh(engine.activeMaintenanceMatchCount(), allowEmptyDrain = observed.blocksNewIntent)
+                // Publish legacy admission blocking first. The owned counter must commit STOP_NEW
+                // before sampling global rooms and pending settlements; failure is never an empty drain.
+                val owned = if (observed.blocksNewIntent) ownedWorkCount().also { require(it >= 0) } else 0
+                val work = Math.addExact(engine.activeMaintenanceMatchCount(), owned)
+                val next = service.refresh(work, allowEmptyDrain = observed.blocksNewIntent)
                 lastKnownPolicy = next
                 engine.publishMaintenancePolicy(next)
             }
@@ -50,6 +57,7 @@ class MaintenanceRuntime(
         } catch (cancelled: CancellationException) { throw cancelled }
         catch (_: Exception) {
             stale = true
+            service?.invalidateRuntimeObservation()
             engine.publishMaintenancePolicy((service?.effectivePolicy() ?: lastKnownPolicy).copy(available = false))
         }
     }

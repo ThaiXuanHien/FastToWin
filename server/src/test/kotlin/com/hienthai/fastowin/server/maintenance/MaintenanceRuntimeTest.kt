@@ -3,10 +3,116 @@ package com.hienthai.fastowin.server.maintenance
 import com.hienthai.fastowin.protocol.*
 import com.hienthai.fastowin.server.*
 import kotlinx.coroutines.test.runTest
+import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.async
 import java.util.UUID
 import kotlin.test.*
 
 class MaintenanceRuntimeTest {
+
+    @Test fun adminCannotTreatAnInProgressOwnedSampleAsTrustedZero() = runTest {
+        val f = MaintenanceFixture(); f.initialize()
+        val entered = CompletableDeferred<Unit>()
+        val release = CompletableDeferred<Unit>()
+        val runtime = MaintenanceRuntime(GameEngine(), f.service, ownedWorkCount = {
+            entered.complete(Unit); release.await(); 1
+        })
+        runtime.observe()
+        f.service.update(f.owner, f.request().copy(warningMinutes = 0))
+        val observing = async { runtime.observe() }
+        try {
+            entered.await()
+            val unknown = f.service.read(f.owner).runtime
+            assertFalse(unknown.available)
+            assertNull(unknown.activeMatches)
+            assertFalse(runtime.publicStatus().maintenance)
+        } finally { release.complete(Unit) }
+        observing.await()
+        val confirmed = f.service.read(f.owner).runtime
+        assertTrue(confirmed.available)
+        assertEquals(1, confirmed.activeMatches)
+    }
+
+
+    @Test fun plannedMaintenanceWaitsForGlobalOwnedWorkAfterBlockingLegacyAdmission() = runTest {
+        val f = MaintenanceFixture(); f.initialize()
+        val engine = GameEngine()
+        var ownedWork = 1
+        var samples = 0
+        val runtime = MaintenanceRuntime(engine, f.service, ownedWorkCount = {
+            assertFalse(engine.newIntentAllowed(), "Legacy admission must be blocked before trusted owned sampling")
+            samples++
+            ownedWork
+        })
+        runtime.refresh()
+        assertEquals(0, samples)
+        f.service.update(f.owner, f.request().copy(warningMinutes = 0, drainMinutes = 1))
+        f.now += 120_000
+        assertFalse(runtime.refresh().closeSockets)
+        assertFalse(runtime.publicStatus().maintenance)
+        assertEquals(MaintenanceState.DRAINING, runtime.publicStatus().state)
+        assertEquals(0, engine.activeMaintenanceMatchCount())
+        assertEquals(1, f.service.read(f.owner).runtime.activeMatches)
+        ownedWork = 0
+        assertTrue(runtime.refresh().closeSockets)
+        assertTrue(runtime.publicStatus().maintenance)
+    }
+
+    @Test fun unavailableOwnedWorkNeverBecomesAnEmptyPlannedDrain() = runTest {
+        val f = MaintenanceFixture(); f.initialize()
+        val engine = GameEngine()
+        var unavailable = true
+        val runtime = MaintenanceRuntime(engine, f.service, ownedWorkCount = {
+            if (unavailable) throw java.sql.SQLException("Owned count unavailable")
+            0
+        })
+        runtime.refresh()
+        f.service.update(f.owner, f.request().copy(warningMinutes = 0))
+        runtime.refresh()
+        assertFalse(engine.newIntentAllowed())
+        error(503) { runtime.publicStatus() }
+        val unknown = f.service.read(f.owner).runtime
+        assertFalse(unknown.available)
+        assertNull(unknown.activeMatches)
+        assertEquals(MaintenanceState.DRAINING, f.service.effectivePolicy().state)
+        unavailable = false
+        assertTrue(runtime.refresh().closeSockets)
+        assertTrue(runtime.publicStatus().maintenance)
+    }
+
+    @Test fun announcingMaintenanceDoesNotStopOwnedAdmissionEarly() = runTest {
+        val f = MaintenanceFixture(); f.initialize()
+        var samples = 0
+        val engine = GameEngine()
+        val runtime = MaintenanceRuntime(engine, f.service, ownedWorkCount = { samples++; 1 })
+        runtime.refresh()
+        f.service.update(f.owner, f.request())
+        runtime.refresh()
+        assertEquals(MaintenanceState.ANNOUNCING, runtime.publicStatus().state)
+        assertTrue(engine.newIntentAllowed())
+        assertEquals(0, samples)
+    }
+
+    @Test fun emergencyClosureRetainsNonzeroOwnedWorkObservation() = runTest {
+        val f = MaintenanceFixture(); f.initialize()
+        val runtime = MaintenanceRuntime(GameEngine(), f.service, ownedWorkCount = { 2 })
+        runtime.refresh()
+        f.service.update(f.owner, f.request().copy(mode = MaintenanceMode.EMERGENCY))
+        assertTrue(runtime.refresh().closeSockets)
+        assertTrue(runtime.publicStatus().maintenance)
+        assertEquals(2, f.service.read(f.owner).runtime.activeMatches)
+    }
+
+    @Test fun environmentEmergencyStopsOwnedAdmissionWithoutWaitingForWorkToFinish() = runTest {
+        var samples = 0
+        val engine = GameEngine()
+        val runtime = MaintenanceRuntime(engine, environmentStatus = { ServiceStatusResponse(true) },
+            ownedWorkCount = { assertFalse(engine.newIntentAllowed()); samples++; 2 })
+        assertTrue(runtime.refresh().closeSockets)
+        assertEquals(1, samples)
+        assertTrue(runtime.publicStatus().maintenance)
+    }
+
     @Test fun nonSqlPolicyReadFailureAlsoBlocksNewIntent() = runTest {
         val f = MaintenanceFixture(); f.initialize(); var fail = false
         val service = MaintenanceService(object : MaintenanceRepository {
