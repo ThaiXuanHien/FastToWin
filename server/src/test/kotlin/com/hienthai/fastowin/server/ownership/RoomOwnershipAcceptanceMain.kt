@@ -371,9 +371,14 @@ internal class RoomAcceptanceFixture(val settings: RoomAcceptanceSettings, contr
                         socket.send(ClientMessage.ConnectAccount(account.accessToken))
                         socket.ready = socket.await(25_000, "SessionReady") { it is ServerMessage.SessionReady } as ServerMessage.SessionReady
                         publicSockets[node].incrementAndGet()
+                        return socket
                     } catch (failure: Throwable) { socket.closeGracefully(); throw failure }
                 } catch (failure: Exception) {
                     currentCoroutineContext().ensureActive()
+                    if (last == null) {
+                        Files.createDirectories(settings.receipts)
+                        Files.writeString(settings.receipts.resolve("connection-first-failure.json"), rehearsalFailureDiagnostic(failure))
+                    }
                     if (failure is AcceptanceRejected && failure.code !in RETRYABLE_CODES) throw failure
                     last = failure
                 }

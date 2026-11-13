@@ -233,6 +233,7 @@ fs.writeFileSync(path.join(directory,'runner.log'),lines.join('\n')+'\n')
 if(docker(['inspect','--format','{{.State.ExitCode}}',containers.runner])!=='0') {
     const diagnostic=path.join(directory,'failure-sites.json')
     try { docker(['cp',containers.runner+':/opt/runner/receipts/failure-sites.json',diagnostic]) } catch {}
+    try { docker(['cp',containers.runner+':/opt/runner/receipts/connection-first-failure.json',path.join(directory,'connection-first-failure.json')]) } catch {}
     try {
         fs.writeFileSync(path.join(directory,'failure.json'),readProductionReceipt(lines,'failure',profile,manifest,jar))
     } catch {}
