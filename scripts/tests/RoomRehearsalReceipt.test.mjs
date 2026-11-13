@@ -213,7 +213,7 @@ test('topology drain requires pending closed settlement, both process acknowledg
 test('held lane receipts require all four cases and actual fence advancement',()=>{
     const cases=Array.from({length:4},(_,index)=>({operation:index<2?'create':'join',
         transaction:index%2===0?'commit':'rollback',blockedTransactions:2,replyWithheld:true,generationBefore:3,generationAfter:4,
-        resumedOwnedRoom:index%2===0,legacyAdmitted:index%2!==0,lateWrites:0}))
+        resumedOwnedRoom:index%2===0,legacyAdmitted:index%2!==0,obsoleteSocketRejected:true,lateWrites:0}))
     const verify=payload=>{
         const value=envelope('topology-lanes','topology',payload)
         const lines=chunks(JSON.stringify(value),value.kind).map(line=>line.replace('FTW_REHEARSAL_','FTW_PRODUCTION_REHEARSAL_'))
@@ -221,7 +221,7 @@ test('held lane receipts require all four cases and actual fence advancement',()
     }
     assert.ok(verify({cases}))
     for(const change of [v=>v.pop(),v=>v[0].blockedTransactions=1,v=>v[1].resumedOwnedRoom=true,
-        v=>v[2].lateWrites=1,v=>v[3].generationAfter=3]) {
+        v=>v[2].lateWrites=1,v=>v[3].generationAfter=3,v=>v[0].obsoleteSocketRejected=false]) {
         const invalid=structuredClone(cases)
         change(invalid)
         assert.throws(()=>verify({cases:invalid}))

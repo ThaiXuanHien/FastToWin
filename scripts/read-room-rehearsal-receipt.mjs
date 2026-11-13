@@ -175,10 +175,10 @@ function validateTopologyLanes(p) {
     for(const [index,c] of p.cases.entries()) {
         const commit=index%2===0
         keys(c,['operation','transaction','blockedTransactions','replyWithheld','generationBefore','generationAfter',
-            'resumedOwnedRoom','legacyAdmitted','lateWrites'])
+            'resumedOwnedRoom','legacyAdmitted','obsoleteSocketRejected','lateWrites'])
         check(c.operation===(index<2?'create':'join') && c.transaction===(commit?'commit':'rollback') &&
             c.blockedTransactions===2 && c.replyWithheld===true && integer(c.generationBefore,1) && c.generationAfter===c.generationBefore+1 &&
-            c.resumedOwnedRoom===commit && c.legacyAdmitted===!commit && c.lateWrites===0)
+            c.resumedOwnedRoom===commit && c.legacyAdmitted===!commit && c.obsoleteSocketRejected===true && c.lateWrites===0)
     }
 }
 

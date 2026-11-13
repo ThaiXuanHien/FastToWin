@@ -2,8 +2,11 @@ package com.hienthai.fastowin.server.ownership
 
 import com.hienthai.fastowin.protocol.ClientMessage
 import com.hienthai.fastowin.protocol.ProtocolGameMode
+import com.hienthai.fastowin.protocol.ProtocolJson
 import com.hienthai.fastowin.protocol.ServerMessage
 import com.hienthai.fastowin.protocol.SESSION_REPLACED_CLOSE_REASON
+import io.ktor.websocket.Frame
+import io.ktor.websocket.readText
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.async
@@ -49,12 +52,15 @@ internal suspend fun productionLaneAcceptance(fixture: RoomAcceptanceFixture): J
                 OwnerCommandRequest(room.toString(), it.epoch, actor.userId, generation, OwnerOperation.COMMAND,
                     ClientMessage.JoinRoom(room.toString(), password), it.instanceId.toString(), policy)
             }
+            val obsoleteTitle = "Old lane ${UUID.randomUUID()}"
             val next = withLaneWriteHeld(fixture, room, player, create, commit, observe = { gate, discardReply ->
                 val worker = fixture.blockedLaneBackend(gate.pid(), if (create) "INSERT INTO room_ownership_pilot_rooms" else "UPDATE room_ownership_pilot_rooms")
                 val connection = async { fixture.connect(actor, 0, original.ready.resumeToken) }
                 try {
                     fixture.blockedLaneBackend(worker, "INSERT INTO room_ownership_pilot_sessions")
                     check(!connection.isCompleted)
+                    original.send(ClientMessage.CreateRoom(obsoleteTitle, "", ProtocolGameMode.ORDER))
+                    original.session.flush()
                     discardReply()
                     gate.rollback()
                     connection.await()
@@ -68,7 +74,15 @@ internal suspend fun productionLaneAcceptance(fixture: RoomAcceptanceFixture): J
             replacement = next
             check(next.ready.currentGame?.roomId == room.toString().takeIf { commit })
             check(fixture.number("SELECT generation FROM room_ownership_pilot_sessions WHERE player_id='$player'") == generation + 1)
-            check(withTimeout(5_000) { original.session.closeReason.await() }?.message == SESSION_REPLACED_CLOSE_REASON)
+            withTimeout(5_000) {
+                for (frame in original.session.incoming) {
+                    if (frame is Frame.Text) {
+                        check(ProtocolJson.decodeFromString<ServerMessage>(frame.readText()) !is ServerMessage.RoomCreated)
+                    }
+                }
+                check(original.session.closeReason.await()?.message == SESSION_REPLACED_CLOSE_REASON)
+            }
+            check(fixture.number("SELECT count(*) FROM active_room_snapshots WHERE state_json->>'roomName'='$obsoleteTitle'") == 0L)
             val held = fixture.laneCounts(room, player)
             check(held.first() == if (commit) 1L else 0L)
             check(held[2] == if (create && !commit) 0L else 1L)
@@ -107,6 +121,7 @@ internal suspend fun productionLaneAcceptance(fixture: RoomAcceptanceFixture): J
                 put("generationAfter", generation + 1)
                 put("resumedOwnedRoom", commit)
                 put("legacyAdmitted", !commit)
+                put("obsoleteSocketRejected", true)
                 put("lateWrites", 0)
             }
         } finally {
