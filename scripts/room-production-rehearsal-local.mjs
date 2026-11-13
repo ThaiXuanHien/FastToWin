@@ -30,6 +30,7 @@ const sourcePaths=[
     'scripts/room-production-rehearsal-local.ps1',
     'scripts/room-production-rehearsal-local.mjs',
     'scripts/read-room-rehearsal-receipt.mjs',
+    'scripts/verify-room-production-runs.mjs',
     'scripts/lib/room-production-supervisor.mjs',
     'scripts/lib/room-production-manifest.mjs',
     'scripts/lib/room-production-peer.mjs',
