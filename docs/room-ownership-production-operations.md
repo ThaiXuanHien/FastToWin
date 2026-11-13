@@ -6,6 +6,21 @@ The supported topology has one public ingress A and one private worker B. B has 
 
 Drain or stop the old A, verify it is stopped, and only then start the replacement. Keep the existing owned configuration and routes installed. When B's private address changes, A revalidates the full DNS answer set and replaces its pinned client. Wait for signed status and a successful B-owned create through A before accepting rejoin. Failed or mixed DNS answers make the peer unavailable until a valid private answer returns. Confirm both services run the same approved server JAR and ordered runtime distribution, with the intended node IDs, peer credentials, accounts, policy and topology. Do not use a prior candidate's fault/load receipts as acceptance of a new distribution.
 
+## Health and monitoring
+
+Set the public reverse proxy's `BACKEND_UPSTREAM` to A's private address. Use `/health`
+for the proxy and backend startup checks. Check `/ready` and signed status on both
+private services before opening owned admission. `/ready` can return 503 during an
+intentional stop or drain. Use `/health` for process liveness during those phases.
+
+Scrape `/internal/metrics` from A and B on the private network as job
+`fasttowin-server`, retaining their separate instance labels. The [Prometheus rules](../deploy/monitoring/alerts.yml) cover repeated unavailable routes, settlement failures, and a queued
+event age above 25 seconds for one minute. The backlog threshold uses the local
+acceptance bound for recovery. Validate the thresholds with Staging traffic
+before applying them in production. During drain, compare any settlement alert
+with the signed durable pending count before changing routes. Keep the existing
+public proxy block on `/internal/*`.
+
 ## Trusted B-local control
 
 Run each command inside the existing B service environment. The entrypoint uses B's configured peer credential and contacts A over the existing private authenticated control surface. It starts no server and exposes no new route. Use the **exact ordered classpath from the installed `bin/server` launcher**; do not replace it with `lib/*`, whose order is unspecified. For the standard trusted Gradle distribution in `/opt/fasttowin`, the following obtains the single generated classpath assignment from the installed launcher (inspect that assignment as part of distribution review):
