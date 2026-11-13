@@ -35,8 +35,8 @@ android {
         applicationId = "com.hienthai.fastowin"
         minSdk = 29
         targetSdk = 37
-        versionCode = 11
-        versionName = "1.0.10"
+        versionCode = 12
+        versionName = "1.0.11"
         buildConfigField("boolean", "AUTH_DIAGNOSTICS_ENABLED", (authDiagnosticsMode == "qa").toString())
         buildConfigField("String", "ADMOB_MODE", "\"$adMobMode\"")
         buildConfigField("String", "ADMOB_APP_ID", "\"$adMobAppId\"")

@@ -709,8 +709,18 @@ data class GameSnapshot(
     val tournamentMatchId: String? = null,
     val tournamentRound: Int? = null,
     val eventRewards: MatchRewardEventSnapshot? = null,
-    val rewardBreakdowns: Map<String, MatchRewardBreakdown> = emptyMap()
+    val rewardBreakdowns: Map<String, MatchRewardBreakdown> = emptyMap(),
+    val forfeit: MatchForfeitSnapshot? = null
 )
+
+@Serializable
+data class MatchForfeitSnapshot(val playerId: String, val reason: MatchForfeitReason)
+
+@Serializable
+enum class MatchForfeitReason {
+    VOLUNTARY_LEAVE,
+    DISCONNECT_TIMEOUT
+}
 
 @Serializable
 enum class RematchEvent {

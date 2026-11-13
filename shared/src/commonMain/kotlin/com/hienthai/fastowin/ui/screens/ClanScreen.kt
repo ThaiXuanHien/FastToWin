@@ -60,13 +60,16 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.semantics.LiveRegionMode
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.liveRegion
 import androidx.compose.ui.semantics.role
 import androidx.compose.ui.semantics.selected
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.hienthai.fastowin.protocol.CLAN_LOGOS
@@ -149,7 +152,8 @@ fun ClanScreen(
     onSendFriendRequest: (String) -> Unit = {},
     onRespondFriendRequest: (String, Boolean) -> Unit = { _, _ -> },
     isSocialReady: Boolean = true,
-    onRefreshSocial: () -> Unit = {}
+    onRefreshSocial: () -> Unit = {},
+    loadError: String? = null
 ) {
     SystemBackHandler(enabled = showBackButton, onBack = onBack)
 
@@ -202,6 +206,8 @@ fun ClanScreen(
                             currentUserId = currentUserId,
                             clan = currentClan,
                             notice = notice,
+                            loadError = loadError,
+                            onRetryLoad = { onViewClan(myClanId) },
                             onLeave = onLeaveClan,
                             onKickMember = onKickMember,
                             onRespondJoinRequest = onRespondJoinRequest,
@@ -227,7 +233,11 @@ fun ClanScreen(
 
                         else -> {
                             Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                                CircularProgressIndicator(color = ArcadePalette.Gold500)
+                                if (loadError == null) {
+                                    CircularProgressIndicator(color = ArcadePalette.Gold500)
+                                } else {
+                                    ClanLoadError(loadError, onRetry = { onViewClan(myClanId) })
+                                }
                             }
                             LaunchedEffect(myClanId) { onViewClan(myClanId) }
                         }
@@ -235,6 +245,27 @@ fun ClanScreen(
                 }
             }
         }
+    }
+}
+
+@Composable
+private fun ClanLoadError(message: String, onRetry: () -> Unit) {
+    Column(
+        modifier = Modifier.padding(horizontal = 16.dp),
+        verticalArrangement = Arrangement.spacedBy(12.dp),
+        horizontalAlignment = Alignment.CenterHorizontally
+    ) {
+        Text(
+            message,
+            modifier = Modifier.semantics { liveRegion = LiveRegionMode.Polite },
+            color = MaterialTheme.colorScheme.onSurface,
+            textAlign = TextAlign.Center
+        )
+        ArcadeActionButton(
+            label = localized(TextKey.Retry),
+            onClick = onRetry,
+            modifier = Modifier.testTag("clan_retry")
+        )
     }
 }
 
@@ -529,7 +560,9 @@ fun ClanDetailView(
     onSendFriendRequest: (String) -> Unit = {},
     onRespondFriendRequest: (String, Boolean) -> Unit = { _, _ -> },
     isSocialReady: Boolean = true,
-    onRefreshSocial: () -> Unit = {}
+    onRefreshSocial: () -> Unit = {},
+    loadError: String? = null,
+    onRetryLoad: () -> Unit = {}
 ) {
     var showLogoDialog by remember { mutableStateOf(false) }
     var showLeaveConfirmation by remember { mutableStateOf(false) }
@@ -564,6 +597,13 @@ fun ClanDetailView(
         }
 
         notice?.let { item(key = "clan_detail_notice") { ClanNotice(it) } }
+        loadError?.let { message ->
+            item(key = "clan_load_error") {
+                Box(Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
+                    ClanLoadError(message, onRetry = onRetryLoad)
+                }
+            }
+        }
 
         item(key = "clan_stats") { ClanStats(clan) }
 

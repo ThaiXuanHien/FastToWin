@@ -1839,6 +1839,7 @@ private fun GameContent(
                      pendingJoinClanIds = state.pendingClanJoinIds,
                      currentClan = state.currentClan,
                      notice = state.clanNotice ?: state.error,
+                    loadError = state.clanLoadError,
                     social = state.social,
                     isSocialLoading = state.isFriendsLoading,
                     socialNotice = state.socialNotice,
