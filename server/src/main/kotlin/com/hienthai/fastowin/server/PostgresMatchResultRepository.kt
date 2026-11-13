@@ -72,9 +72,9 @@ class PostgresMatchResultRepository(
         }
 
     private fun insertAndApplyMatch(connection: Connection, match: CompletedMatch): Boolean {
-        // Activity checkpoints lock registered identities in ascending UUID order. Acquire the
-        // same locks before any mission/admission lock or FK check so settlement cannot hold one
-        // player row while waiting for another in the opposite order under concurrent load.
+        // Profile and mission transactions acquire the catalog lock before touching player rows.
+        JdbcMissionStore(connection).lock()
+        // Lock identities in the same ascending UUID order as activity checkpoints, before FK checks.
         val playerIds = match.players.map { UUID.fromString(it.playerId) }.distinct()
         val playerArray = connection.createArrayOf("uuid", playerIds.toTypedArray())
         try {
@@ -89,7 +89,6 @@ class PostgresMatchResultRepository(
                 }
             }
         } finally { playerArray.free() }
-        JdbcMissionStore(connection).lock()
         if (!insertMatch(connection, match)) return false
         insertPlayers(connection, match)
         insertEvents(connection, match)

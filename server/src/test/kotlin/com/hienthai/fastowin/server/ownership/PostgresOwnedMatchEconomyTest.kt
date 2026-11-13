@@ -6,20 +6,24 @@ import com.hienthai.fastowin.protocol.RoomPhase
 import com.hienthai.fastowin.server.CompletedMatch
 import com.hienthai.fastowin.server.CompletedMatchPlayer
 import com.hienthai.fastowin.server.MatchOutcome
+import com.hienthai.fastowin.server.MatchWriteOutcome
 import com.hienthai.fastowin.server.PostgresGuestIdentityRepository
 import com.hienthai.fastowin.server.PostgresMatchResultRepository
 import com.hienthai.fastowin.server.PostgresPlayQuotaRepository
 import com.hienthai.fastowin.server.StoredActivePlayer
 import com.hienthai.fastowin.server.StoredActiveRoom
+import com.hienthai.fastowin.server.missions.JdbcMissionStore
 import com.zaxxer.hikari.HikariConfig
 import com.zaxxer.hikari.HikariDataSource
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.delay
-import kotlinx.coroutines.withContext
+import kotlinx.coroutines.withTimeout
 import org.flywaydb.core.Flyway
 import org.junit.jupiter.api.Assumptions.assumeTrue
+import org.postgresql.PGConnection
 import java.util.UUID
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -63,6 +67,61 @@ class PostgresOwnedMatchEconomyTest {
                     settlement.rollback()
                 }
             }
+        }
+    }
+
+    @Test
+    fun `settlement waiting for the mission catalog leaves player rows available to profile reads`() = runBlocking {
+        fixture { f ->
+            val pending = f.finish(f.repoA, f.start())
+            val match = assertNotNull(pending.snapshot.pendingCompletedMatch)
+            f.a.connection.use { profile ->
+                f.b.connection.use { settlement ->
+                    profile.autoCommit = false
+                    settlement.autoCommit = false
+                    val profilePid = profile.unwrap(PGConnection::class.java).backendPID
+                    val settlementPid = settlement.unwrap(PGConnection::class.java).backendPID
+                    JdbcMissionStore(profile).lock()
+                    profile.createStatement().use { it.execute("SET LOCAL lock_timeout = '500ms'") }
+                    settlement.createStatement().use { it.execute("SET LOCAL statement_timeout = '20s'") }
+                    coroutineScope {
+                        val save = async(Dispatchers.IO) {
+                            PostgresMatchResultRepository(f.b).saveMatch(settlement, match)
+                        }
+                        try {
+                            f.a.connection.use { monitor ->
+                                monitor.prepareStatement(
+                                    """
+                                    SELECT EXISTS (
+                                        SELECT 1 FROM pg_stat_activity
+                                        WHERE pid = ? AND wait_event_type = 'Lock' AND wait_event = 'advisory'
+                                            AND ? = ANY(pg_blocking_pids(pid))
+                                    )
+                                    """.trimIndent()
+                                ).use { waiting ->
+                                    waiting.setInt(1, settlementPid)
+                                    waiting.setInt(2, profilePid)
+                                    withTimeout(10_000) {
+                                        while (!waiting.executeQuery().use { rows -> rows.next() && rows.getBoolean(1) }) {
+                                            delay(10)
+                                        }
+                                    }
+                                }
+                            }
+                            // Profile mission reads take this lock while holding the catalog gate.
+                            profile.prepareStatement("SELECT id FROM users WHERE id = ? FOR KEY SHARE").use { player ->
+                                player.setObject(1, UUID.fromString(match.winnerPlayerId))
+                                player.executeQuery().use { rows -> assertTrue(rows.next()) }
+                            }
+                        } finally {
+                            profile.rollback()
+                        }
+                        assertEquals(MatchWriteOutcome.INSERTED, save.await())
+                    }
+                    settlement.commit()
+                }
+            }
+            assertEquals(1, f.matchCount(match.matchId))
         }
     }
 
