@@ -311,7 +311,10 @@ class RoomOwnershipProductionWebSocketTest {
                     viewer.sendMessage(ClientMessage.GetClanInfo(f.clanId))
                     assertEquals("CLAN_PRESENCE_UNAVAILABLE", viewer.receiveMessage<ServerMessage.Error>().code)
                     host.sendMessage(ClientMessage.SetReady(room.roomId, true))
-                    host.receiveMessage<ServerMessage.RoomUpdated>()
+                    host.receiveMessage<ServerMessage.RoomUpdated> { update ->
+                        update.game.roomId == room.roomId &&
+                            update.game.players.any { it.id == f.accounts[0].toString() && it.isReady }
+                    }
                     guest.sendMessage(ClientMessage.SetReady(room.roomId, true))
                     host.receiveMessage<ServerMessage.GameStarted>()
                     guest.receiveMessage<ServerMessage.GameStarted>()
