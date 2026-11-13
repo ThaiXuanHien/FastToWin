@@ -207,9 +207,7 @@ internal class OwnerPeerTransport(
         val auth = sign(Direction.REQUEST, nonce, payload, CONTROL_DOMAIN)
         val http = Request.Builder().url(controlEndpoint).post(OneShotBody(payload))
         auth.headers().forEach { (name, value) -> http.header(name, value) }
-        val client = peer?.client ?: return@withTimeoutOrNull null
-        val response = client.newBuilder().callTimeout(CONTROL_TIMEOUT_MILLIS, TimeUnit.MILLISECONDS).build()
-            .newCall(http.build()).readReply() ?: return@withTimeoutOrNull null
+        val response = readReply(http.build(), CONTROL_TIMEOUT_MILLIS) ?: return@withTimeoutOrNull null
         if (response.auth.nonce != nonce || !verify(Direction.REPLY, response.auth, response.payload, CONTROL_DOMAIN)) return@withTimeoutOrNull null
         decode<OwnedControlResponse>(response.payload)?.takeIf {
             it.operationId == request.operationId && it.operation == request.operation && it.generation == request.generation
@@ -236,8 +234,7 @@ internal class OwnerPeerTransport(
         val auth = sign(Direction.REQUEST, nonce, payload)
         val httpRequest = Request.Builder().url(endpoint).post(OneShotBody(payload))
         auth.headers().forEach { (name, value) -> httpRequest.header(name, value) }
-        val client = peer?.client ?: return@withTimeoutOrNull null
-        val response = client.newCall(httpRequest.build()).readReply() ?: return@withTimeoutOrNull null
+        val response = readReply(httpRequest.build()) ?: return@withTimeoutOrNull null
         if (response.auth.nonce != nonce || !verify(Direction.REPLY, response.auth, response.payload)) {
             return@withTimeoutOrNull null
         }
@@ -252,8 +249,7 @@ internal class OwnerPeerTransport(
         val auth = sign(Direction.REQUEST, nonce, payload, CREATE_DOMAIN)
         val httpRequest = Request.Builder().url(createEndpoint).post(OneShotBody(payload))
         auth.headers().forEach { (name, value) -> httpRequest.header(name, value) }
-        val client = peer?.client ?: return@withTimeoutOrNull null
-        val response = client.newCall(httpRequest.build()).readReply() ?: return@withTimeoutOrNull null
+        val response = readReply(httpRequest.build()) ?: return@withTimeoutOrNull null
         if (response.auth.nonce != nonce || !verify(Direction.REPLY, response.auth, response.payload, CREATE_DOMAIN)) {
             return@withTimeoutOrNull null
         }
@@ -310,6 +306,35 @@ internal class OwnerPeerTransport(
         }
         return auth to payload
     }
+
+    private suspend fun readReply(request: Request, timeoutMillis: Long = PEER_TIMEOUT_MILLIS): PeerReply? =
+        suspendCancellableCoroutine { continuation ->
+            // Retirement must see every admitted call, including control clients sharing the dispatcher.
+            // Only selection and enqueue hold the monitor; callbacks read the response asynchronously.
+            synchronized(peerLock) {
+                val pinned = peer
+                if (pinned == null) {
+                    continuation.resume(null)
+                    return@synchronized
+                }
+                val client = if (timeoutMillis == PEER_TIMEOUT_MILLIS) pinned.client else
+                    pinned.client.newBuilder().callTimeout(timeoutMillis, TimeUnit.MILLISECONDS).build()
+                val call = client.newCall(request)
+                continuation.invokeOnCancellation { call.cancel() }
+                call.enqueue(object : Callback {
+                    override fun onFailure(call: Call, e: IOException) = continuation.resume(null)
+
+                    override fun onResponse(call: Call, response: Response) {
+                        val reply = try {
+                            response.use { it.readOwnerReply() }
+                        } catch (_: IOException) {
+                            null
+                        }
+                        continuation.resume(reply)
+                    }
+                })
+            }
+        }
 
     private fun accepts(auth: PeerAuth): Boolean =
         auth.sender == peerId && auth.target == instanceId && auth.issuedAt.isFreshAt(clock.millis())
@@ -474,22 +499,6 @@ private inline fun <reified T> decode(payload: ByteArray): T? = try {
 }
 
 private data class PeerReply(val auth: PeerAuth, val payload: ByteArray)
-
-private suspend fun Call.readReply(): PeerReply? = suspendCancellableCoroutine { continuation ->
-    continuation.invokeOnCancellation { cancel() }
-    enqueue(object : Callback {
-        override fun onFailure(call: Call, e: IOException) = continuation.resume(null)
-
-        override fun onResponse(call: Call, response: Response) {
-            val reply = try {
-                response.use { it.readOwnerReply() }
-            } catch (_: IOException) {
-                null
-            }
-            continuation.resume(reply)
-        }
-    })
-}
 
 private fun Response.readOwnerReply(): PeerReply? {
     if (code != HttpStatusCode.OK.value) return null
