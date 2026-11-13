@@ -50,6 +50,16 @@ class AcceptanceSocketLifecycleTest {
             game.roomName, host, emptySet()))
     }
 
+    @Test fun `recycle leaves the room carried by SessionReady before creating a new one`() = runBlocking {
+        val old = GameSnapshot("previous-room", roomName = "Previous", hostId = "fixture-host",
+            gameMode = ProtocolGameMode.ORDER, phase = RoomPhase.FINISHED,
+            players = listOf(PlayerSnapshot("fixture-host", "Host", 0)))
+        withSocket("ROOM_RECOVERING") { socket, calls ->
+            withTimeout(5_000) { socket.releasePreviousRoom(old.roomId) }
+            assertEquals(2, calls.get())
+        }
+    }
+
     private suspend fun withSocket(code: String, block: suspend (AcceptanceSocket, AtomicInteger) -> Unit) {
         val calls = AtomicInteger()
         val server = embeddedServer(Netty, host = "127.0.0.1", port = 0) {

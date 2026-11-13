@@ -262,7 +262,7 @@ internal class RoomAcceptanceFixture(val settings: RoomAcceptanceSettings, contr
         val deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(25)
         var last: Throwable? = null
         while (System.nanoTime() < deadline) {
-            try { return createMatch(index) }
+            try { return createMatch(index, recycle = true) }
             catch (failure: Exception) {
                 currentCoroutineContext().ensureActive()
                 last = failure
@@ -272,7 +272,10 @@ internal class RoomAcceptanceFixture(val settings: RoomAcceptanceSettings, contr
         throw IllegalStateException("Fixture room creation did not recover in 25 seconds", last)
     }
 
-    suspend fun createMatch(index: Int, start: Boolean = true, targetOwner: Int? = null): AcceptanceMatch {
+    suspend fun createMatch(
+        index: Int, start: Boolean = true, targetOwner: Int? = null,
+        recycle: Boolean = false
+    ): AcceptanceMatch {
         val users = accounts()
         require(index * 2 + 1 < users.size)
         val backend = index % backendCount
@@ -289,6 +292,12 @@ internal class RoomAcceptanceFixture(val settings: RoomAcceptanceSettings, contr
         val previousRooms = listOfNotNull(host.ready.currentGame?.roomId, guest.ready.currentGame?.roomId).toSet()
         var createdRoomId = previousRooms.firstOrNull()
         try {
+            if (recycle && previousRooms.isNotEmpty()) {
+                host.ready.currentGame?.roomId?.let { host.releasePreviousRoom(it) }
+                guest.ready.currentGame?.roomId?.let { guest.releasePreviousRoom(it) }
+                check(awaitMembershipsCleared(pair.map { it.userId })) { "Previous match still holds fixture membership" }
+                createdRoomId = null
+            }
             val created = creationStep("create_room") {
                 val roomName = "Load $index ${UUID.randomUUID()}"
                 host.send(ClientMessage.CreateRoom(roomName, "PrivateAcceptance123!", ProtocolGameMode.ORDER))
@@ -352,10 +361,12 @@ internal class RoomAcceptanceFixture(val settings: RoomAcceptanceSettings, contr
                     }
                 }
             }
-            if (remaining == 0L) return@withTimeoutOrNull
+            if (remaining == 0L) return@withTimeoutOrNull true
             delay(50)
         }
-    }
+        @Suppress("UNREACHABLE_CODE")
+        false
+    } == true
 
     suspend fun connectPair(host: AcceptanceAccount, hostBackend: Int, guest: AcceptanceAccount, guestBackend: Int): List<AcceptanceSocket> {
         val first = connect(host, hostBackend)
@@ -618,6 +629,14 @@ internal class AcceptanceSocket(val session: DefaultClientWebSocketSession, val 
         }
         session.cancel()
     }
+    suspend fun releasePreviousRoom(roomId: String) {
+        try {
+            leaveRoom(roomId)
+        } catch (failure: AcceptanceRejected) {
+            if (failure.code != "ROOM_NOT_FOUND" && failure.code != "NOT_IN_ROOM") throw failure
+        }
+    }
+
     suspend fun leaveRoom(roomId: String) = withTimeout(25_000) {
         send(ClientMessage.LeaveRoom(roomId))
         while (true) {
