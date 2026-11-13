@@ -102,7 +102,7 @@ internal suspend fun productionDrainAcceptance(fixture: RoomAcceptanceFixture): 
                     observe = { gate, _ ->
                         val worker = fixture.blockedLaneBackend(gate.pid(), "INSERT INTO room_ownership_pilot_rooms")
                         val stop = async { control.mutate("stop_new", active) }
-                        fixture.blockedLaneBackend(worker, "UPDATE owned_admission_policy")
+                        fixture.blockedLaneBackend(worker, "FROM owned_admission_policy WHERE singleton FOR UPDATE")
                         check(!stop.isCompleted)
                         val play = async(start = kotlinx.coroutines.CoroutineStart.UNDISPATCHED) { playing.select(playing.nextNumber, concurrentSelection) }
                         gate.rollback()
