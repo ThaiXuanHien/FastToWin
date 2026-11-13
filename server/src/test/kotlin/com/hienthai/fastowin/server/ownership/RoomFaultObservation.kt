@@ -2,6 +2,8 @@ package com.hienthai.fastowin.server.ownership
 
 import kotlinx.serialization.json.*
 
+internal class TopologyPhaseFailure(val phase: String, failure: Throwable) : IllegalStateException("Topology preflight failed", failure)
+
 internal class LoadPhaseFailure(val phase: String, failure: Throwable) : IllegalStateException("Fixture load phase failed", failure)
 internal class ObservedSocketClose(val backend: Int, val code: Int, reason: String?) : IllegalStateException("Fixture websocket closed") {
     val classification = when (reason) {
@@ -39,7 +41,8 @@ internal fun rehearsalFailureDiagnostic(failure: Throwable): String {
         "RoomOwnershipFaultAcceptance.kt" to "fault",
         "RoomFaultControl.kt" to "control",
         "RailwayRoomRehearsal.kt" to "rehearsal",
-        "RehearsalReceipts.kt" to "projection"
+        "RehearsalReceipts.kt" to "projection",
+        "ProductionTopologyAcceptance.kt" to "topology"
     )
     return buildJsonArray {
         for (cause in generateSequence(failure) { it.cause }.take(8)) {
@@ -47,6 +50,19 @@ internal fun rehearsalFailureDiagnostic(failure: Throwable): String {
                 put("category", rehearsalFailureCategory(cause))
                 if (cause is LoadPhaseFailure && cause.phase in setOf("initial_create", "recreate", "command", "economy", "close")) {
                     put("phase", cause.phase)
+                }
+                if (cause is AcceptanceRejected) {
+                    val codes = setOf("ROOM_RECOVERING", "ROOM_NOT_FOUND", "RATE_LIMITED", "RATE_LIMIT_UNAVAILABLE",
+                        "UNAUTHORIZED", "INTERNAL_ERROR", "INVALID_ROOM_NAME", "MAINTENANCE", "ALREADY_IN_ROOM",
+                        "ROOM_DRAINING", "PILOT_ACCOUNT_REQUIRED", "INVALID_ACCESS_TOKEN", "AUTH_REQUIRED",
+                        "PLAY_QUOTA_EXHAUSTED", "ROOM_NOT_WAITING", "ROOM_NOT_PLAYING", "INVALID_NUMBER",
+                        "NOT_YOUR_TURN", "ACCOUNT_RESTRICTED", "INVALID_REQUEST_ID")
+                    put("protocolCode", cause.code.takeIf(codes::contains) ?: "unknown")
+                }
+                if (cause is TopologyPhaseFailure) {
+                    val phases = listOf("a", "b").flatMap { node -> listOf("connect_pair", "create_room", "join_room",
+                        "ready_host", "start_match", "select", "economy", "close", "membership-release").map { "golden-$node-$it" } }
+                    put("phase", cause.phase.takeIf(phases::contains) ?: "unknown")
                 }
                 if (cause is ObservedSocketClose) {
                     put("backend", cause.backend)

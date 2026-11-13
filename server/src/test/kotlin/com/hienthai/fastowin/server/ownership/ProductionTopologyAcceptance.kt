@@ -24,23 +24,37 @@ internal suspend fun runProductionTopologyPreflight(fixture: RoomAcceptanceFixtu
     check(routes.all { it.get == 404 && it.post == 404 }) { "Worker exposes a public application route" }
     val owners = mutableListOf<Int>()
     for (owner in 0..1) {
-        // Keep the fault pair and its production create limits independent of these probes.
-        val match = fixture.createMatch(18 + owner, targetOwner = owner)
+        val node = if (owner == 0) "a" else "b"
+        var phase = "golden-$node-connect_pair"
+        fixture.creationObserver = { step, _, _ -> phase = "golden-$node-$step" }
         try {
-            check(match.socket(0).backend == 0 && match.socket(1).backend == 0)
-            val before = fixture.snapshot(match.roomId)
-            owners += fixture.ownerFor(before)
-            val request = "topology-" + java.util.UUID.randomUUID()
-            match.select(match.nextNumber, request)
-            val committed = fixture.snapshot(match.roomId)
-            check(committed.snapshot.selectionEvents.count { it.requestId == request } == 1)
-            check(committed.instanceId == before.instanceId && committed.epoch == before.epoch &&
-                committed.revision > before.revision)
-            match.verifyEconomy()
-        } finally { match.close() }
-        withTimeout(25_000) {
-            while (fixture.number("SELECT count(*) FROM room_ownership_pilot_memberships WHERE room_id='${match.roomId}'") != 0L) delay(50)
-        }
+            // Keep the fault pair and its production create limits independent of these probes.
+            val match = fixture.createMatch(18 + owner, targetOwner = owner)
+            try {
+                check(match.socket(0).backend == 0 && match.socket(1).backend == 0)
+                val before = fixture.snapshot(match.roomId)
+                owners += fixture.ownerFor(before)
+                val request = "topology-" + java.util.UUID.randomUUID()
+                phase = "golden-$node-select"
+                match.select(match.nextNumber, request)
+                val committed = fixture.snapshot(match.roomId)
+                check(committed.snapshot.selectionEvents.count { it.requestId == request } == 1)
+                check(committed.instanceId == before.instanceId && committed.epoch == before.epoch &&
+                    committed.revision > before.revision)
+                phase = "golden-$node-economy"
+                match.verifyEconomy()
+            } catch (failure: Throwable) {
+                throw TopologyPhaseFailure(phase, failure)
+            } finally { match.close() }
+            phase = "golden-$node-membership-release"
+            withTimeout(25_000) {
+                while (fixture.number("SELECT count(*) FROM room_ownership_pilot_memberships WHERE room_id='${match.roomId}'") != 0L) delay(50)
+            }
+        } catch (failure: TopologyPhaseFailure) {
+            throw failure
+        } catch (failure: Throwable) {
+            throw TopologyPhaseFailure(phase, failure)
+        } finally { fixture.creationObserver = null }
     }
     return productionTopologyPreflightProjection(generation, fixture.publicSocketCounts(), owners, routes)
 }
