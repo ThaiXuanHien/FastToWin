@@ -68,13 +68,48 @@ class RoomOwnershipProductionSeedIntegrationTest {
         }
     }
 
-    private fun database(block: (PGSimpleDataSource, RoomOwnershipProductionSeedSettings) -> Unit) {
+    @Test
+    fun topologySeedsExactlyFourFriendEdgesAndFiveClanMembers() = database(topology = true) { source, settings ->
+        seedRoomOwnershipProductionAccounts(source, settings)
+        val players = settings.accounts.take(4).toSet()
+        val friendViewer = settings.accounts[4]
+        val clanViewer = settings.accounts[5]
+        source.connection.use { c ->
+            c.createStatement().use { s ->
+                s.executeQuery("SELECT requester_id, addressee_id, status FROM friendships").use { rows ->
+                    val observed = buildSet {
+                        while (rows.next()) {
+                            assertEquals(friendViewer, rows.getObject(2))
+                            assertEquals("ACCEPTED", rows.getString(3))
+                            add(rows.getObject(1, UUID::class.java))
+                        }
+                    }
+                    assertEquals(players, observed)
+                }
+                s.executeQuery("SELECT c.owner_id, m.user_id, m.role FROM clans c JOIN clan_members m ON m.clan_id=c.id").use { rows ->
+                    val observed = buildMap {
+                        while (rows.next()) {
+                            assertEquals(clanViewer, rows.getObject(1))
+                            put(rows.getObject(2, UUID::class.java), rows.getString(3))
+                        }
+                    }
+                    assertEquals(players.associateWith { "MEMBER" } + (clanViewer to "LEADER"), observed)
+                }
+            }
+        }
+        assertFailsWith<IllegalArgumentException> { seedRoomOwnershipProductionAccounts(source, settings) }
+    }
+
+    private fun database(topology: Boolean = false, block: (PGSimpleDataSource, RoomOwnershipProductionSeedSettings) -> Unit) {
         val rawUrl = System.getenv("TEST_DATABASE_URL")
         assumeTrue(!rawUrl.isNullOrBlank(), "Isolated PostgreSQL is required")
         val uri = URI(requireNotNull(rawUrl).removePrefix("jdbc:"))
         require(uri.host in setOf("localhost", "127.0.0.1") && uri.port in 1..65535)
         val settings = RoomOwnershipProductionSeedSettings.fromEnvironment(
-            RoomOwnershipProductionSeedTest.values(UUID.randomUUID())
+            RoomOwnershipProductionSeedTest.values(UUID.randomUUID()) + if (topology) mapOf(
+                "FTW_REHEARSAL_PROFILE" to "topology",
+                "FASTTOWIN_ROOM_OWNERSHIP_ACCOUNTS" to List(40) { UUID.randomUUID() }.joinToString(",")
+            ) else emptyMap()
         )
         val name = settings.databaseName
         require(name.matches(Regex("room_rehearsal_[a-f0-9]{12}")))

@@ -18,6 +18,7 @@ internal class RoomOwnershipProductionSeedSettings private constructor(
     val password: String,
     val runId: UUID,
     val manifestSha256: String,
+    val topologySocial: Boolean,
     val admissionBinding: OwnedAdmissionBinding
 ) {
     val scope = "room-ownership-production"
@@ -61,14 +62,61 @@ internal class RoomOwnershipProductionSeedSettings private constructor(
             val accounts = requireNotNull(values["FASTTOWIN_ROOM_OWNERSHIP_ACCOUNTS"])
                 .split(',').map { requireNotNull(parsePilotUuid(it)) }
             require(accounts.size in 2..256 && accounts.toSet().size == accounts.size)
+            val topologySocial = values["FTW_REHEARSAL_PROFILE"] == "topology"
+            if (topologySocial) require(accounts.size == 40)
             val password = requireNotNull(values["FASTTOWIN_ROOM_OWNERSHIP_REHEARSAL_PASSWORD"])
             require(password.matches(Regex("Rehearsal1![a-f0-9]{64}")))
             val policy = requireNotNull(RoomOwnershipProductionPolicy.fromEnvironment(values))
             require(policy.runtimeRole == RoomOwnershipRuntimeRole.INGRESS) { "Seeder requires the manifest ingress topology" }
             return RoomOwnershipProductionSeedSettings(
                 requireNotNull(DatabaseSettings.fromEnvironment("prod", values)), database, host,
-                accounts, password, runId, manifest, OwnedAdmissionBinding.from(policy)
+                accounts, password, runId, manifest, topologySocial, OwnedAdmissionBinding.from(policy)
             )
+        }
+    }
+}
+
+private fun seedTopologySocial(c: java.sql.Connection, settings: RoomOwnershipProductionSeedSettings) {
+    val players = settings.accounts.take(4)
+    val friendViewer = settings.accounts[4]
+    val clanViewer = settings.accounts[5]
+    val clan = UUID.randomUUID()
+    c.prepareStatement("""
+        INSERT INTO friendships(id,requester_id,addressee_id,status,created_at,updated_at)
+        VALUES(?,?,?,'ACCEPTED',CURRENT_TIMESTAMP,CURRENT_TIMESTAMP)
+    """.trimIndent()).use { s ->
+        for (player in players) {
+            s.setObject(1, UUID.randomUUID()); s.setObject(2, player); s.setObject(3, friendViewer)
+            check(s.executeUpdate() == 1)
+        }
+    }
+    c.prepareStatement("INSERT INTO clans(id,name,owner_id,created_at) VALUES(?,?,?,CURRENT_TIMESTAMP)").use { s ->
+        s.setObject(1, clan); s.setString(2, "Topology " + settings.runId.toString().take(12)); s.setObject(3, clanViewer)
+        check(s.executeUpdate() == 1)
+    }
+    val roles = players.associateWith { "MEMBER" } + (clanViewer to "LEADER")
+    c.prepareStatement("INSERT INTO clan_members(clan_id,user_id,role,joined_at) VALUES(?,?,?,CURRENT_TIMESTAMP)").use { s ->
+        for ((user, role) in roles) {
+            s.setObject(1, clan); s.setObject(2, user); s.setString(3, role); check(s.executeUpdate() == 1)
+        }
+    }
+    c.createStatement().use { s ->
+        s.executeQuery("SELECT count(*) FROM profiles").use { r -> check(r.next() && r.getInt(1) == 40) }
+        s.executeQuery("SELECT requester_id,addressee_id,status FROM friendships").use { r ->
+            val observed = mutableListOf<UUID>()
+            while (r.next()) {
+                check(r.getObject(2) == friendViewer && r.getString(3) == "ACCEPTED")
+                observed += r.getObject(1, UUID::class.java)
+            }
+            check(observed.size == 4 && observed.toSet() == players.toSet())
+        }
+        s.executeQuery("SELECT c.id,c.owner_id,m.user_id,m.role FROM clans c JOIN clan_members m ON c.id=m.clan_id").use { r ->
+            val actual = mutableMapOf<UUID,String>()
+            while (r.next()) {
+                check(r.getObject(1) == clan && r.getObject(2) == clanViewer)
+                check(actual.put(r.getObject(3, UUID::class.java), r.getString(4)) == null)
+            }
+            check(actual == roles)
         }
     }
 }
@@ -134,6 +182,7 @@ internal fun seedRoomOwnershipProductionAccounts(
                 }
                 statement.executeBatch()
             }
+            if (settings.topologySocial) seedTopologySocial(connection, settings)
             // Accounts, profiles and ACTIVE binding commit atomically on this existing seed connection.
             // Flyway has already committed the initial unbound STOP_NEW row; failure here leaves it stopped.
             val authority = PostgresOwnedAdmissionRepository(dataSource)

@@ -61,6 +61,13 @@ class RoomOwnershipProductionSeedTest {
         }
     }
 
+    @Test
+    fun topologySeedRequiresFortyDistinctAccounts() {
+        assertFailsWith<IllegalArgumentException> {
+            RoomOwnershipProductionSeedSettings.fromEnvironment(values() + ("FTW_REHEARSAL_PROFILE" to "topology"))
+        }
+    }
+
     companion object {
         fun values(id: UUID = UUID.fromString("12345678-1234-4234-8234-123456789abc")): Map<String, String> {
             val suffix = id.toString().replace("-", "").take(12)
