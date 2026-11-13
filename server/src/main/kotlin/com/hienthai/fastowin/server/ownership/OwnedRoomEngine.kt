@@ -169,6 +169,15 @@ internal class OwnedRoomEngine(
         }
     }
 
+    /** Close only locally fenced waiting rooms under the current stopped policy. */
+    suspend fun closeWaitingForDrain(generation: Long) {
+        for (fence in rooms.ownedFences(instanceId)) {
+            val room = rooms.read(fence.roomId) ?: continue
+            if (!room.closed && room.fence == fence && room.snapshot.phase == RoomPhase.WAITING) {
+                rooms.closeWaitingForDrain(fence, room.revision, generation)
+            }
+        }
+    }
     /** A hint only: the periodic recovery scan remains authoritative after any lost wakeup. */
     suspend fun settlePending() {
         for (id in pendingSettlements.toList()) {

@@ -144,7 +144,7 @@ internal class PostgresRoomOwnershipRepository(
         }
     }
 
-    suspend fun ownedFences(instanceId: UUID): List<OwnerFence> = transaction(singleRead = true) {
+    override suspend fun ownedFences(instanceId: UUID): List<OwnerFence> = transaction(singleRead = true) {
         query(
             """
             SELECT room_id, owner_epoch FROM room_ownership_pilot_rooms
@@ -479,6 +479,22 @@ internal class PostgresRoomOwnershipRepository(
         }
     }
 
+    override suspend fun closeWaitingForDrain(fence: OwnerFence, revision: Long, generation: Long): FencedResult =
+        withFencedRoom(fence, revision, null) { connection, room ->
+            val policy = (connection as TransactionConnection).lockedAdmission
+            val binding = admission
+            if (binding == null || policy?.generation != generation || policy.state != OwnedAdmissionState.STOP_NEW ||
+                policy.topologySha256 != binding.topologySha256 || policy.policySha256 != binding.policySha256
+            ) RoomMutation.Reject("OWNED_DRAIN_STALE")
+            else if (room.snapshot.phase != RoomPhase.WAITING || room.snapshot.pendingCompletedMatch != null) RoomMutation.Unchanged
+            else {
+                val notice = com.hienthai.fastowin.protocol.ServerMessage.RoomClosed(
+                    room.snapshot.roomId, com.hienthai.fastowin.server.legacyFallback("Phòng đã đóng để bảo trì."),
+                    code = "ROOM_DRAINING")
+                RoomMutation.Change(room.snapshot.copy(sequence = room.snapshot.sequence + 1),
+                    listOf(RoomOwnershipEvent(room.snapshot.activePlayers(), notice)), close = true)
+            }
+        }
     private fun Connection.applyChange(
         state: OwnedRoomState, mutation: RoomMutation.Change, admissionPolicy: OwnedAdmissionPolicy?
     ): FencedResult {

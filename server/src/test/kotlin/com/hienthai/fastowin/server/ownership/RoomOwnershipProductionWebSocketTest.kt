@@ -176,6 +176,34 @@ class RoomOwnershipProductionWebSocketTest {
     }
 
     @Test
+    fun `owned zero drain preserves an active public legacy order match`() = runBlocking {
+        fixture { f ->
+            val host = f.connect(f.aPort, f.tokens[0])
+            val guest = f.connect(f.aPort, f.tokens[2])
+            try {
+                host.sendMessage(ClientMessage.CreateRoom("Legacy public", "", ProtocolGameMode.ORDER))
+                val room = host.receiveMessage<ServerMessage.RoomCreated>().game
+                guest.sendMessage(ClientMessage.JoinRoom(room.roomId, ""))
+                guest.receiveMessage<ServerMessage.RoomUpdated>()
+                host.receiveMessage<ServerMessage.RoomUpdated>()
+                host.sendMessage(ClientMessage.SetReady(room.roomId, true))
+                host.receiveMessage<ServerMessage.RoomUpdated>()
+                guest.sendMessage(ClientMessage.SetReady(room.roomId, true))
+                host.receiveMessage<ServerMessage.GameStarted>()
+                guest.receiveMessage<ServerMessage.GameStarted>()
+                val active = assertNotNull(PostgresOwnedAdmissionRepository(f.source).observe())
+                val stop = assertNotNull(f.control("stop_new", active.generation))
+                val stopped = assertNotNull(stop.policy)
+                val done = assertNotNull(f.control("step", stopped.generation))
+                assertEquals("completed", done.outcome)
+                host.sendMessage(ClientMessage.LeaveRoom(room.roomId))
+                host.receiveMessage<ServerMessage.GameFinished>()
+                guest.receiveMessage<ServerMessage.GameFinished>()
+            } finally { guest.close(); host.close() }
+        }
+    }
+
+    @Test
     fun `production owns only private casual order with both public sockets on ingress`() = runBlocking {
         fixture { f ->
             val host = f.connect(f.aPort, f.tokens[0])
@@ -426,6 +454,9 @@ class RoomOwnershipProductionWebSocketTest {
                     guest.sendMessage(ClientMessage.LeaveRoom(room.roomId))
                     guest.receiveMessage<ServerMessage.RoomClosed>()
                     assertNotNull(f.rooms.read(UUID.fromString(room.roomId))?.snapshot?.pendingCompletedMatch)
+                    val held = assertNotNull(f.control("step", policy.generation))
+                    assertEquals("pending", held.outcome)
+                    assertEquals(OwnedAdmissionState.STOP_NEW, assertNotNull(PostgresOwnedAdmissionRepository(f.source).observe()).state)
                     f.maintenance.observe()
                     assertFalse(f.maintenance.publicStatus().maintenance)
                     assertTrue(maintenance.service.read(maintenance.owner).runtime.activeMatches!! > 0)
@@ -439,6 +470,8 @@ class RoomOwnershipProductionWebSocketTest {
                         it.remainingOpenRooms != 0 || it.pendingSettlements != 0
                     }) delay(25)
                 }
+                val finished = assertNotNull(f.control("step", policy.generation))
+                assertEquals("completed", finished.outcome)
                 f.maintenance.observe()
                 assertTrue(f.maintenance.publicStatus().maintenance)
                 assertEquals(1, f.source.connection.use { c -> c.createStatement().use {
@@ -575,8 +608,9 @@ class RoomOwnershipProductionWebSocketTest {
                         val cb = config(RoomOwnershipRuntimeRole.OWNED_WORKER, ar.localPort)
                         val authority = PostgresOwnedAdmissionRepository(a)
                         authority.bootstrap(assertNotNull(authority.observe()).generation, OwnedAdmissionBinding.from(ca))
-                        val pa = RoomOwnershipPilot.open(ca, a, lookup, wakeups = emptyFlow())
-                        val pb = RoomOwnershipPilot.open(cb, b, lookup, wakeups = emptyFlow())
+                        val testIdentity = OwnedCandidateIdentity("a".repeat(64), "b".repeat(64), "c".repeat(64))
+                        val pa = RoomOwnershipPilot.open(ca, a, lookup, wakeups = emptyFlow(), candidateIdentity = { testIdentity })
+                        val pb = RoomOwnershipPilot.open(cb, b, lookup, wakeups = emptyFlow(), candidateIdentity = { testIdentity })
                         val aPort = ar.localPort
                         val bPort = br.localPort
                         val clan = ClanSnapshot(UUID.randomUUID().toString(), "Owned social", "", sessions[0].userId,
@@ -610,7 +644,9 @@ class RoomOwnershipProductionWebSocketTest {
                             HttpClient(OkHttp) { install(WebSockets) }.use { client ->
                                 block(Fixture(client, aPort, sessions.map { it.accessToken }, ids,
                                     PostgresRoomOwnershipRepository(a), a, bId, engine, pa, clan.id, ::stopWorker, maintenanceRuntime,
-                                    { request -> OwnerPeerTransport(ca.nodeId, ca.peerId, ca.peerUri, ca.peerSecret).forward(request) }))
+                                    { request -> OwnerPeerTransport(ca.nodeId, ca.peerId, ca.peerUri, ca.peerSecret).forward(request) },
+                                    { operation, generation -> OwnerPeerTransport(cb.nodeId, cb.peerId, cb.peerUri, cb.peerSecret).forwardControl(
+                                        OwnedControlRequest(UUID.randomUUID().toString(), operation, generation, candidateSha256 = testIdentity.candidateSha256, topologySha256 = OwnedAdmissionBinding.from(ca).topologySha256)) }))
                             }
                         } finally { stopWorker(); sa.stop(0, 2000) }
                     } }
@@ -623,7 +659,7 @@ class RoomOwnershipProductionWebSocketTest {
 
     private data class Fixture(val client: HttpClient, val aPort: Int, val tokens: List<String>,
         val accounts: List<UUID>, val rooms: RoomOwnershipRepository, val source: HikariDataSource, val workerId: UUID,
-        val engine: GameEngine, val pilot: RoomOwnershipPilot, val clanId: String, val stopWorker: () -> Unit, val maintenance: MaintenanceRuntime, val forwardPeer: suspend (OwnerCommandRequest) -> OwnedRoomReply?) {
+        val engine: GameEngine, val pilot: RoomOwnershipPilot, val clanId: String, val stopWorker: () -> Unit, val maintenance: MaintenanceRuntime, val forwardPeer: suspend (OwnerCommandRequest) -> OwnedRoomReply?, val control: suspend (String, Long) -> OwnedControlResponse?) {
         suspend fun awaitDatabaseWaiter(blocker: Int): Int = withTimeout(2_000) {
             var waiter: Int? = null
             while (waiter == null) {

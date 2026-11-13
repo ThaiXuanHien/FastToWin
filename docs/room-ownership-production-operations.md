@@ -1,0 +1,34 @@
+# Room ownership production operations
+
+The supported topology has one public ingress A and one private worker B. B has no public application handlers. A is a single point of failure: an A outage interrupts public connections. Never overlap two A instances; stop the previous A before starting its replacement, because legacy state has one authority.
+
+## Before a replacement
+
+Drain or stop the old A, verify it is stopped, and only then start the replacement. Keep the existing owned configuration and routes installed. If B's private address changes, restart the peer transport and repeat exclusive-private DNS validation before marking the peer ready; an old process pins its resolved addresses. Confirm both services run the same approved server JAR and ordered runtime distribution, with the intended node IDs, peer credentials, accounts, policy and topology. Do not use a prior candidate's fault/load receipts as acceptance of a new distribution.
+
+## Trusted B-local control
+
+Run each command inside the existing B service environment. The entrypoint uses B's configured peer credential and contacts A over the existing private authenticated control surface. It starts no server and exposes no new route. Use the **exact ordered classpath from the installed `bin/server` launcher**; do not replace it with `lib/*`, whose order is unspecified. For the standard trusted Gradle distribution in `/opt/fasttowin`, the following obtains the single generated classpath assignment from the installed launcher (inspect that assignment as part of distribution review):
+
+```sh
+cd /opt/fasttowin
+APP_HOME=$PWD
+line=$(sed -n '/^CLASSPATH=/p' bin/server)
+[ "$(printf '%s\n' "$line" | wc -l)" -eq 1 ] || exit 1
+eval "$line"
+java -cp "$CLASSPATH" com.hienthai.fastowin.server.ownership.OwnedClusterControlMainKt status "$OPERATION_ID" "$GENERATION"
+```
+
+The CLI accepts `status`, `stop_new`, `step`, or `resume`, followed by an operation UUID and expected generation; mutations additionally require A's current process UUID from a fresh signed `status` response. For example, replace the final line above with `java -cp "$CLASSPATH" com.hienthai.fastowin.server.ownership.OwnedClusterControlMainKt step "$OPERATION_ID" "$GENERATION" "$PROCESS_ID"`. Never pass secrets as arguments or substitute a caller-supplied candidate hash. The process hashes its actual server code source and ordered runtime JAR contents. Each individual request has a 15-second transport bound. The optional `await <operation-uuid> <generation> <deadline-millis>` command performs bounded status/stop/step progress (maximum deadline 3,600,000 milliseconds) and returns a JSON outcome of `completed`, `deadline`, or `unavailable` with its last verified status when one exists. On deadline or unavailable, reconcile fresh status before a new operation; the last status predates any ambiguous in-flight request. Identical pending steps reuse their request identity, and a changed process, phase or generation gets a new identity. The other commands execute one request and exit. The coordinator retains at most 128 distinct mutation fingerprints per process; if this bound is reached it returns unavailable. Preserve the non-admitting phase, follow the sole-A replacement procedure, and reconcile fresh status before retrying.
+
+## Stop and drain
+
+1. Obtain a fresh signed status for the current generation. If it is stale, use the returned policy generation and repeat status. Record the candidate, topology, A process ID, operation UUID and policy. Stop if identity or configuration differs from the approved deployment.
+2. Send `stop_new` with that generation and A process ID. Record the returned STOP_NEW generation. On a lost response, get fresh signed status; do not infer success from a timeout. Reuse an identical request only while its process identity and policy remain current; after restart reconcile the authoritative status and start a new operation UUID.
+3. Until an operator-chosen deadline, request `step` for the latest observed generation and current process ID. A pending or unavailable response is incomplete. Re-observe status after a timeout, restart, stale response or phase change before issuing another bounded step; use a new operation UUID when the request fingerprint changes. STOP_NEW closes waiting owned rooms and waits for all active games, settlement and lease work. QUIESCING drains both processes. Keep owned routes installed throughout. Do not disable routing, clear journals, force zero, or automatically resume on deadline or storage/peer failure.
+4. Accept only a transport-verified `completed` proof with the approved candidate and topology, both configured node IDs and fresh process IDs, matching acknowledged and disabled policy generations, and zero open rooms, pending settlements and live leases. `INITIAL_DRAIN` binds the quiescing and disabled generations. A lost proof after coordinator restart is not replayed as current: with DISABLED still authoritative, get fresh status and issue a new `step` using a new UUID; a `REVALIDATION` proof binds newly quiesced current processes and a newly checked zero to that exact disabled generation. Do not mistake it for the old proof.
+5. Only after inspecting the current proof and confirming the intended one-backend configuration may operators remove owned routing and return to a single legacy backend. A stays the only public ingress; B never accepts users. Store the verified response and operational observations with the rollout record.
+
+## Explicitly resume owned admissions
+
+There is no automatic ACTIVE transition. If the policy is STOP_NEW, verify both current nodes are accepting and use a fresh status and explicit `resume`. A process that has begun draining cannot be reopened: after QUIESCING or DISABLED, stop the old processes and start fresh A and B instances, honoring the sole-A no-overlap rule and private-address revalidation. Confirm the actual candidate/topology, fresh process IDs and accepting state, then explicitly `resume` with the current generation and A process ID. The coordinator checks both current gates, the exact authority and durable global zero for recovery and allocates a new ACTIVE generation. Pending/unavailable/stale is not success; reconcile status and retry only within the operator's deadline.

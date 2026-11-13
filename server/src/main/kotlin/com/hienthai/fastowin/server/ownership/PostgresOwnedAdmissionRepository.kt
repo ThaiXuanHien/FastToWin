@@ -50,6 +50,60 @@ internal class PostgresOwnedAdmissionRepository(private val source: DataSource) 
             OwnedAdmissionBinding(requireNotNull(previous.topologySha256), requireNotNull(previous.policySha256)))
     }
 
+    /** Advance only from the exact committed phase, while holding its lock across the global zero sample. */
+    suspend fun advanceDrain(expected: OwnedAdmissionPolicy, binding: OwnedAdmissionBinding,
+        next: OwnedAdmissionState): OwnedAdmissionPolicy = transaction {
+        val actual = lock(this, update = true)
+        if (actual != expected || actual.topologySha256 != binding.topologySha256 ||
+            actual.policySha256 != binding.policySha256 ||
+            !((actual.state == OwnedAdmissionState.STOP_NEW && next == OwnedAdmissionState.QUIESCING) ||
+                (actual.state == OwnedAdmissionState.QUIESCING && next == OwnedAdmissionState.DISABLED))
+        ) throw OwnedAdmissionRejected("Owned drain phase or configuration changed")
+        val empty = createStatement().use { statement ->
+            statement.executeQuery("""
+                SELECT NOT EXISTS (SELECT 1 FROM room_ownership_pilot_rooms
+                    WHERE closed_at IS NULL OR
+                        (snapshot->'pendingCompletedMatch' IS NOT NULL AND snapshot->'pendingCompletedMatch' <> 'null'::jsonb))
+            """.trimIndent()).use { rows -> check(rows.next()); rows.getBoolean(1) }
+        }
+        if (!empty) throw OwnedAdmissionRejected("Owned drain still has durable work")
+        replace(this, next, binding)
+    }
+    /** Explicit recovery only: retain the phase lock while checking zero and allocating ACTIVE. */
+    suspend fun resumeDrained(expected: OwnedAdmissionPolicy, binding: OwnedAdmissionBinding): OwnedAdmissionPolicy = transaction {
+        val actual = lock(this, update = true)
+        if (actual != expected || actual.state !in setOf(OwnedAdmissionState.QUIESCING, OwnedAdmissionState.DISABLED) ||
+            actual.topologySha256 != binding.topologySha256 || actual.policySha256 != binding.policySha256
+        ) throw OwnedAdmissionRejected("Drain recovery authority changed")
+        val empty = createStatement().use { statement ->
+            statement.executeQuery("""
+                SELECT NOT EXISTS (SELECT 1 FROM room_ownership_pilot_rooms WHERE closed_at IS NULL OR
+                    (snapshot->'pendingCompletedMatch' IS NOT NULL AND snapshot->'pendingCompletedMatch' <> 'null'::jsonb))
+            """.trimIndent()).use { rows -> check(rows.next()); rows.getBoolean(1) }
+        }
+        if (!empty) throw OwnedAdmissionRejected("Drain recovery still has durable work")
+        replace(this, OwnedAdmissionState.ACTIVE, binding)
+    }
+
+    /** Revalidate an already disabled authority and global work in one locked transaction. */
+    suspend fun verifyDisabledZero(expected: OwnedAdmissionPolicy, binding: OwnedAdmissionBinding): RoomOwnershipDurableSnapshot? = transaction {
+        val actual = lock(this, update = false)
+        if (actual != expected || actual.state != OwnedAdmissionState.DISABLED ||
+            actual.topologySha256 != binding.topologySha256 || actual.policySha256 != binding.policySha256
+        ) throw OwnedAdmissionRejected("Disabled drain authority changed")
+        createStatement().use { statement ->
+            statement.executeQuery("""
+                SELECT count(*) FILTER (WHERE closed_at IS NULL AND lease_until > statement_timestamp()),
+                    count(*) FILTER (WHERE closed_at IS NULL),
+                    count(*) FILTER (WHERE snapshot->'pendingCompletedMatch' IS NOT NULL AND snapshot->'pendingCompletedMatch' <> 'null'::jsonb)
+                FROM room_ownership_pilot_rooms
+            """.trimIndent()).use { rows ->
+                check(rows.next())
+                RoomOwnershipDurableSnapshot(rows.getInt(1), rows.getInt(2), rows.getInt(3))
+            }
+        }
+    }
+
     /** Sample only after the caller has acknowledged a committed stop. Hold its generation while counting. */
     suspend fun maintenanceWorkCount(expected: OwnedAdmissionPolicy, binding: OwnedAdmissionBinding): Int = transaction {
         val actual = lock(this, update = false)

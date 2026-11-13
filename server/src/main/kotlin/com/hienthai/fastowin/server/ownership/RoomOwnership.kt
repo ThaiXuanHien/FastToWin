@@ -81,6 +81,9 @@ internal interface RoomOwnershipRepository {
         events: List<RoomOwnershipEvent>, newIntentAllowed: () -> Boolean = { true }
     ): OwnedCreateResult = OwnedCreateResult.Unresolved("CREATE_UNAVAILABLE")
 
+    suspend fun ownedFences(instanceId: UUID): List<OwnerFence> = emptyList()
+    suspend fun closeWaitingForDrain(fence: OwnerFence, revision: Long, generation: Long): FencedResult =
+        FencedResult.TemporaryFailure
     suspend fun claim(roomId: UUID, instanceId: UUID): OwnedRoomState?
     suspend fun expiredRooms(limit: Int): List<UUID>
     suspend fun renew(fence: OwnerFence): Boolean

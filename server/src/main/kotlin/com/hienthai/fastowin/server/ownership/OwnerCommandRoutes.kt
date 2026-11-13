@@ -97,6 +97,34 @@ internal fun Route.ownerCreateRoutes(
     }
 }
 
+@Serializable
+internal data class OwnedControlRequest(
+    val operationId: String, val operation: String, val generation: Long,
+    val expectedProcessId: String? = null, val candidateSha256: String? = null, val topologySha256: String? = null
+) {
+    fun valid() = parsePilotUuid(operationId)?.toString() == operationId && generation > 0 &&
+        operation in setOf("status", "stop_new", "close_waiting", "quiesce", "step", "resume") &&
+        (expectedProcessId == null || parsePilotUuid(expectedProcessId)?.toString() == expectedProcessId)
+}
+
+@Serializable
+internal data class OwnedControlResponse(
+    val operationId: String, val operation: String, val generation: Long, val outcome: String,
+    val nodeId: String? = null, val processId: String? = null, val candidateSha256: String? = null,
+    val topologySha256: String? = null, val quiesced: Boolean? = null,
+    val policy: OwnedAdmissionPolicy? = null, val openRooms: Int? = null,
+    val pendingSettlements: Int? = null, val liveLeases: Int? = null,
+    val proof: String? = null, val accepting: Boolean? = null
+)
+
+internal fun Route.ownerControlRoutes(
+    transport: OwnerPeerTransport, dispatch: suspend (OwnedControlRequest) -> OwnedControlResponse
+) {
+    post(OWNER_CONTROL_PATH) {
+        val handled = withTimeoutOrNull(CONTROL_TIMEOUT_MILLIS) { transport.receiveControl(call, dispatch); true }
+        if (handled == null && !call.response.isCommitted) call.respond(HttpStatusCode.RequestTimeout)
+    }
+}
 internal class OwnerPeerTransport(
     val instanceId: UUID,
     val peerId: UUID,
@@ -117,6 +145,7 @@ internal class OwnerPeerTransport(
     private val key = SecretKeySpec(secret, HMAC_ALGORITHM)
     private val endpoint = peerUri.resolve(OWNER_COMMAND_PATH).toString().toHttpUrl()
     private val createEndpoint = peerUri.resolve(OWNER_CREATE_PATH).toString().toHttpUrl()
+    private val controlEndpoint = peerUri.resolve(OWNER_CONTROL_PATH).toString().toHttpUrl()
     private val peerAddresses = resolvePrivatePeer(endpoint.host)
     private val nonces = PeerNonces(clock)
     private val client = OkHttpClient.Builder()
@@ -131,6 +160,34 @@ internal class OwnerPeerTransport(
         .callTimeout(PEER_TIMEOUT_MILLIS, TimeUnit.MILLISECONDS)
         .build()
 
+    suspend fun forwardControl(request: OwnedControlRequest): OwnedControlResponse? = withTimeoutOrNull(CONTROL_TIMEOUT_MILLIS) {
+        if (!request.valid()) return@withTimeoutOrNull null
+        val payload = Json.encodeToString(request).encodeToByteArray()
+        if (payload.size > MAX_BODY_BYTES) return@withTimeoutOrNull null
+        val nonce = UUID.randomUUID()
+        val auth = sign(Direction.REQUEST, nonce, payload, CONTROL_DOMAIN)
+        val http = Request.Builder().url(controlEndpoint).post(OneShotBody(payload))
+        auth.headers().forEach { (name, value) -> http.header(name, value) }
+        val response = client.newBuilder().callTimeout(CONTROL_TIMEOUT_MILLIS, TimeUnit.MILLISECONDS).build()
+            .newCall(http.build()).readReply() ?: return@withTimeoutOrNull null
+        if (response.auth.nonce != nonce || !verify(Direction.REPLY, response.auth, response.payload, CONTROL_DOMAIN)) return@withTimeoutOrNull null
+        decode<OwnedControlResponse>(response.payload)?.takeIf {
+            it.operationId == request.operationId && it.operation == request.operation && it.generation == request.generation
+        }
+    }
+
+    internal suspend fun receiveControl(call: ApplicationCall, dispatch: suspend (OwnedControlRequest) -> OwnedControlResponse) {
+        val (auth, payload) = authenticatedPayload(call, CONTROL_DOMAIN) ?: return
+        val request = decode<OwnedControlRequest>(payload)?.takeIf { it.valid() } ?: return call.respond(HttpStatusCode.BadRequest)
+        val result = dispatch(request)
+        if (result.operationId != request.operationId || result.operation != request.operation || result.generation != request.generation)
+            return call.respond(HttpStatusCode.ServiceUnavailable)
+        val reply = Json.encodeToString(result).encodeToByteArray()
+        if (reply.size > MAX_BODY_BYTES) return call.respond(HttpStatusCode.ServiceUnavailable)
+        sign(Direction.REPLY, auth.nonce, reply, CONTROL_DOMAIN).headers().forEach { (name, value) -> call.response.headers.append(name, value) }
+        call.response.headers.append(HttpHeaders.CacheControl, "no-store")
+        call.respondBytes(reply, ContentType.Application.Json)
+    }
     suspend fun forward(request: OwnerCommandRequest): OwnedRoomReply? = withTimeoutOrNull(PEER_TIMEOUT_MILLIS) {
         if (!request.isSupported()) return@withTimeoutOrNull null
         val payload = Json.encodeToString(request).encodeToByteArray()
@@ -231,6 +288,9 @@ internal class OwnerPeerTransport(
     }
 }
 
+private const val OWNER_CONTROL_PATH = "/internal/room-ownership/control"
+private const val CONTROL_DOMAIN = "fasttowin/room-control/v1"
+private const val CONTROL_TIMEOUT_MILLIS = 15_000L
 private const val OWNER_COMMAND_PATH = "/internal/room-ownership/command"
 private const val OWNER_CREATE_PATH = "/internal/room-ownership/create"
 private const val COMMAND_DOMAIN = "fasttowin/room-owner/v1"

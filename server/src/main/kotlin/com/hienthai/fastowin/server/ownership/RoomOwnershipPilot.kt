@@ -48,6 +48,7 @@ internal class RoomOwnershipPilot private constructor(
     private val admissionBinding: OwnedAdmissionBinding?,
     private val metrics: RoomOwnershipMetrics,
     private val pool: HikariDataSource?,
+    private val candidateIdentity: () -> OwnedCandidateIdentity,
     wakeups: Flow<UUID>
 ) {
     var onPresenceChanged: (Set<UUID>) -> Unit = {}
@@ -59,6 +60,11 @@ internal class RoomOwnershipPilot private constructor(
     private val rollbackGuard = RoomOwnershipRollbackGuard()
     @Volatile
     private var drained = false
+
+    private val clusterControl by lazy {
+        OwnedClusterControl(config, instanceId, checkNotNull(admissionAuthority), checkNotNull(admissionBinding),
+            rooms, transport, candidateIdentity, engine::closeWaitingForDrain, ::beginDrain, { drained }, ::isAccepting)
+    }
 
     fun allows(account: AuthenticatedAccount): Boolean = account.emailVerified && account.userId in config.allowedAccounts
 
@@ -163,7 +169,7 @@ internal class RoomOwnershipPilot private constructor(
 
     /** Call only after stopping admission on every runtime before removing owned routing. */
     suspend fun canRollback(): Boolean {
-        if (!drained) return false
+        if (isProductionMode || !drained) return false
         return try {
             val snapshot = rooms.durableSnapshot()
             rollbackGuard.canRollback(RoomOwnershipDrainReceipt(
@@ -208,7 +214,10 @@ internal class RoomOwnershipPilot private constructor(
 
     fun installRoutes(route: Route) {
         route.ownerCommandRoutes(transport, ::onPeerRequest)
-        if (isProductionMode) route.ownerCreateRoutes(transport, ::onPeerCreate)
+        if (isProductionMode) {
+            route.ownerCreateRoutes(transport, ::onPeerCreate)
+            route.ownerControlRoutes(transport, clusterControl::dispatch)
+        }
     }
 
     /** Task 3 owns serialization and retention. This method prepares a new, never-sent descriptor only. */
@@ -402,7 +411,8 @@ internal class RoomOwnershipPilot private constructor(
             accountPlayer: suspend (UUID) -> StoredActivePlayer?,
             eventRewards: EventRewardSource = NoRewardEventSource,
             wakeups: Flow<UUID>? = null,
-            newIntentAllowed: () -> Boolean = { true }
+            newIntentAllowed: () -> Boolean = { true },
+            candidateIdentity: () -> OwnedCandidateIdentity = OwnedCandidateIdentity::running
         ): RoomOwnershipPilot {
             val instanceId = UUID.randomUUID()
             val metrics = RoomOwnershipMetrics()
@@ -422,7 +432,7 @@ internal class RoomOwnershipPilot private constructor(
             return RoomOwnershipPilot(
                 config, instanceId, repository, engine, settlementWakeups,
                 OwnerPeerTransport(config.nodeId, config.peerId, config.peerUri, config.peerSecret),
-                newIntentAllowed, authority, binding, metrics, dataSource as? HikariDataSource, wakeups ?: postgresRoomEventWakeups(dataSource)
+                newIntentAllowed, authority, binding, metrics, dataSource as? HikariDataSource, candidateIdentity, wakeups ?: postgresRoomEventWakeups(dataSource)
             )
         }
 
