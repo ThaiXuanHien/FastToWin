@@ -231,9 +231,21 @@ while(docker(['inspect','--format','{{.State.Running}}',containers.runner])==='t
 const lines=docker(['logs',containers.runner]).split(/\r?\n/)
 fs.writeFileSync(path.join(directory,'runner.log'),lines.join('\n')+'\n')
 if(docker(['inspect','--format','{{.State.ExitCode}}',containers.runner])!=='0') {
+    // Safe fixture state only: fixed keys, enum phases, counts and booleans; no row identities or snapshots.
+    try {
+        const state=docker(['exec',containers.pg,'psql','-X','-At','-U',db,'-d',db,'-c',
+            "SELECT coalesce(json_agg(json_build_object('phase',r.snapshot->>'phase','closed',r.closed_at IS NOT NULL,"+
+            "'pendingSettlement',r.snapshot->'pendingCompletedMatch' IS NOT NULL AND r.snapshot->'pendingCompletedMatch'<>'null'::jsonb,"+
+            "'departedPlayers',jsonb_array_length(coalesce(r.snapshot->'departedPlayerIds','[]'::jsonb)),"+
+            "'attachedPlayers',(SELECT count(*) FROM jsonb_object_keys(coalesce(r.snapshot->'pilotSocketGenerations','{}'::jsonb))),"+
+            "'memberRows',(SELECT count(*) FROM room_ownership_pilot_memberships m WHERE m.room_id=r.room_id))), '[]'::json) "+
+            "FROM room_ownership_pilot_rooms r"])
+        fs.writeFileSync(path.join(directory,'room-failure-counts.json'),state+'\n')
+    } catch {}
     const diagnostic=path.join(directory,'failure-sites.json')
     try { docker(['cp',containers.runner+':/opt/runner/receipts/failure-sites.json',diagnostic]) } catch {}
     try { docker(['cp',containers.runner+':/opt/runner/receipts/connection-first-failure.json',path.join(directory,'connection-first-failure.json')]) } catch {}
+    try { docker(['cp',containers.runner+':/opt/runner/receipts/close-failure.json',path.join(directory,'close-failure.json')]) } catch {}
     try {
         fs.writeFileSync(path.join(directory,'failure.json'),readProductionReceipt(lines,'failure',profile,manifest,jar))
     } catch {}

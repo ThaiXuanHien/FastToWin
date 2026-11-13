@@ -592,16 +592,23 @@ internal class AcceptanceSocket(val session: DefaultClientWebSocketSession, val 
         }
         session.cancel()
     }
-    suspend fun leaveRoom(roomId: String) {
+    suspend fun leaveRoom(roomId: String) = withTimeout(25_000) {
         send(ClientMessage.LeaveRoom(roomId))
         while (true) {
-            val response = await {
-                (it is ServerMessage.RoomClosed && it.roomId == roomId) ||
-                    (it is ServerMessage.GameFinished && it.game.roomId == roomId)
+            val response = try {
+                await {
+                    (it is ServerMessage.RoomClosed && it.roomId == roomId) ||
+                        (it is ServerMessage.GameFinished && it.game.roomId == roomId)
+                }
+            } catch (failure: AcceptanceRejected) {
+                if (failure.code != "ROOM_RECOVERING") throw failure
+                // Concurrent settlement can advance the revision between read and fenced leave.
+                delay(100)
+                send(ClientMessage.LeaveRoom(roomId))
+                continue
             }
-            if (response is ServerMessage.RoomClosed) return
-            // Leaving a playing game settles it first. A finished frame, including one
-            // already queued, never acknowledges removing membership from the room.
+            if (response is ServerMessage.RoomClosed) return@withTimeout
+            // GameFinished acknowledges finishing play, not leaving the results membership.
             send(ClientMessage.LeaveRoom(roomId))
         }
     }
@@ -776,7 +783,12 @@ internal class AcceptanceMatch(
         for (socket in sockets) {
             try {
                 socket.leaveRoom(roomId)
-            } catch (failure: Exception) { currentCoroutineContext().ensureActive() }
+            } catch (failure: Exception) {
+                currentCoroutineContext().ensureActive()
+                Files.createDirectories(fixture.settings.receipts)
+                Files.writeString(fixture.settings.receipts.resolve("close-failure.json"),
+                    rehearsalFailureDiagnostic(failure))
+            }
             socket.closeGracefully()
         }
     }
