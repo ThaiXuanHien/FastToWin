@@ -40,6 +40,28 @@ try {
     }
     if ((Docker @('info', '--format', '{{.OSType}}')) -cne 'linux') { throw 'Linux Docker required' }
     New-Item -ItemType Directory -Path "$context/classes", "$context/lib" | Out-Null
+    if ($Profile -cne 'Seed') {
+        $sourceRoot = Join-Path $output 'tested-source'
+        $launcherSources = @(
+            'scripts/room-production-rehearsal-local.ps1',
+            'scripts/room-production-rehearsal-local.mjs',
+            'scripts/read-room-rehearsal-receipt.mjs',
+            'scripts/lib/room-production-supervisor.mjs',
+            'scripts/lib/room-supervised-local.mjs'
+        )
+        $sourceManifest = foreach ($relative in $launcherSources) {
+            $original = Get-Item -LiteralPath (Join-Path $repo $relative)
+            if ($original.PSIsContainer -or ($original.Attributes -band [IO.FileAttributes]::ReparsePoint)) {
+                throw 'Rehearsal launcher source must be a regular file'
+            }
+            $snapshot = Join-Path $sourceRoot $relative
+            New-Item -ItemType Directory -Path (Split-Path -Parent $snapshot) -Force | Out-Null
+            Copy-Item -LiteralPath $original.FullName -Destination $snapshot
+            [ordered]@{ path = $relative; sha256 = Hash $snapshot }
+        }
+        $sourceManifest | ConvertTo-Json -Depth 4 |
+            Set-Content (Join-Path $output 'source-manifest.json') -Encoding utf8NoBOM
+    }
     Set-RunVariable 'JAVA_HOME' 'C:/Program Files/Android/Android Studio/jbr'
     Set-RunVariable 'GRADLE_USER_HOME' 'C:/Users/Hien Hue/.gradle'
     $tempDirectory = Join-Path $repo '.artifacts/java-tmp'
@@ -86,7 +108,7 @@ ENTRYPOINT ["timeout","1800","java","-Xmx384m","-cp","classes:lib/*","com.hienth
         throw 'Runner image configuration differs'
     }
     if ($Profile -cne 'Seed') {
-        & node scripts/room-production-rehearsal-local.mjs $output $Profile $runId $tag $script:endpoint
+        & node (Join-Path $sourceRoot 'scripts/room-production-rehearsal-local.mjs') $output $Profile $runId $tag $script:endpoint $repo
         if ($LASTEXITCODE -ne 0) { throw 'Production workload failed. See its classified receipt' }
     } else {
     Docker @('network', 'create', '--internal', '--label', $label, $name) | Out-Null

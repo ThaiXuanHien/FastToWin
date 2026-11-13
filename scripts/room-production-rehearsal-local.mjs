@@ -5,9 +5,11 @@ import fs from 'node:fs'
 import path from 'node:path'
 import { setTimeout as sleep } from 'node:timers/promises'
 import { readProductionReceipt } from './read-room-rehearsal-receipt.mjs'
+import { buildRehearsalSupervisor } from './lib/room-production-supervisor.mjs'
 
-const root=path.resolve(import.meta.dirname,'..')
-const [output,selected,runId,runnerImage,endpoint]=process.argv.slice(2)
+const [output,selected,runId,runnerImage,endpoint,repo]=process.argv.slice(2)
+const root=path.resolve(repo)
+const sourceRoot=path.resolve(import.meta.dirname,'..')
 assert(['Fault','Load'].includes(selected) && /^[a-f0-9-]{36}$/.test(runId))
 assert(/^npipe:\/{4}\.\/pipe\/[A-Za-z0-9_.-]+$/.test(endpoint))
 const suffix=runId.replaceAll('-','').slice(0,12), name='room-pilot-'+suffix
@@ -17,6 +19,18 @@ const label='fasttowin.production-rehearsal='+runId
 const db='room_rehearsal_'+suffix, profile=selected==='Fault'?'fault':'two-backend'
 const sha=file=>createHash('sha256').update(fs.readFileSync(file)).digest('hex')
 const put=(file,value)=>fs.writeFileSync(path.join(directory,file),JSON.stringify(value,null,2)+'\n')
+assert.equal(sourceRoot,path.join(directory,'tested-source'))
+const sourceManifestPath=path.join(directory,'source-manifest.json')
+const sourceManifest=JSON.parse(fs.readFileSync(sourceManifestPath,'utf8'))
+const sourcePaths=[
+    'scripts/room-production-rehearsal-local.ps1',
+    'scripts/room-production-rehearsal-local.mjs',
+    'scripts/read-room-rehearsal-receipt.mjs',
+    'scripts/lib/room-production-supervisor.mjs',
+    'scripts/lib/room-supervised-local.mjs'
+]
+assert.deepEqual(sourceManifest.map(entry=>entry.path),sourcePaths)
+for(const {path:relative,sha256} of sourceManifest) assert.equal(sha(path.join(sourceRoot,relative)),sha256)
 const hex=()=>randomBytes(32).toString('hex')
 const dbPassword=hex(), redisPassword=hex(), token=hex(), peerSecret=randomBytes(32).toString('base64')
 const deadline=Date.now()+3_600_000
@@ -31,16 +45,15 @@ function docker(args,env={},timeout=120_000) {
     } catch { throw new Error('Docker '+args[0]+' failed') }
 }
 const contexts=path.join(directory,'contexts')
-const accepted=path.join(root,'.artifacts/room-cloud-supervised-preflight/capability-v2')
-const expectedSupervisor=JSON.parse(fs.readFileSync(path.join(root,
-    '.artifacts/room-supervised-local/room-supervised-cb7e69f5e44e/run-manifest.json'),'utf8')).supervisorBinary
+const { binary: supervisorBinary, ...supervisor } = buildRehearsalSupervisor({ repo: root, output: directory, name, label, docker })
+put('supervisor-manifest.json',supervisor)
+const expectedSupervisor=supervisor.binarySha256
 const images={}
 for(const [role,recipe] of [['backend','backend'],['pg','postgres'],['redis','redis'],['proxy','proxy']]) {
     const context=path.join(contexts,role)
     fs.mkdirSync(context,{recursive:true})
-    const supervisor=path.join(accepted,role,'supervisor')
-    assert.equal(sha(supervisor),expectedSupervisor)
-    fs.copyFileSync(supervisor,path.join(context,'supervisor'))
+    fs.copyFileSync(supervisorBinary,path.join(context,'supervisor'))
+    assert.equal(sha(path.join(context,'supervisor')),expectedSupervisor)
     fs.copyFileSync(path.join(root,'deploy/room-ownership/supervised',recipe+'.Dockerfile'),path.join(context,'Dockerfile'))
     if(role==='backend') fs.cpSync(path.join(root,'server/build/install/server'),path.join(context,'distribution'),{recursive:true})
     if(role==='redis') fs.copyFileSync(path.join(root,'deploy/room-ownership/supervised/redis-entrypoint.sh'),path.join(context,'redis-entrypoint.sh'))
@@ -64,6 +77,8 @@ const files=dir=>fs.readdirSync(dir,{withFileTypes:true}).flatMap(e=>{
 put('contexts-manifest.json',files(contexts))
 put('run-manifest.json',{runId,profile,runnerManifest:sha(path.join(directory,'runner-manifest.json')),
     contextsManifest:sha(path.join(directory,'contexts-manifest.json')),imagesManifest:sha(path.join(directory,'images.json')),supervisor:expectedSupervisor,
+    supervisorManifest:sha(path.join(directory,'supervisor-manifest.json')),
+    sourceManifest:sha(sourceManifestPath),
     jarSha256:sha(path.join(directory,'runner/lib/server.jar')),accounts:40,rooms:20,offerSeconds:600,
     policy:'production-defaults',sourceIps:'synthetic-per-account-forwarded-in-isolated-network'})
 const manifest=sha(path.join(directory,'run-manifest.json'))
