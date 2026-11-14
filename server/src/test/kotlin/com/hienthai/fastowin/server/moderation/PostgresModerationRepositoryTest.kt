@@ -26,8 +26,8 @@ class PostgresModerationRepositoryTest {
                 }
             }
             val explicitVersion=7
-            execute("INSERT INTO ugc_account_restrictions(user_id,version,blocked,updated_at) VALUES (?, ?, false, NOW())",
-                UUID.fromString(reporter),explicitVersion)
+            execute("INSERT INTO ugc_account_restrictions(user_id,version,blocked,updated_at) VALUES (?, ?, false, ?)",
+                UUID.fromString(reporter),explicitVersion,1_000L)
             execute("UPDATE users SET status='BLOCKED' WHERE id=?",UUID.fromString(reporter))
             val selectedSql=mutableListOf<String>()
             ds.connection.use {raw ->
