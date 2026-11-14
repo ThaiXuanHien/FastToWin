@@ -46,6 +46,19 @@ internal class OwnershipQueryProfile {
             if (classes.any { it.startsWith(root + "PostgresAuthRepository") }) return "auth"
             if (classes.any { it.startsWith(root + "moderation.JdbcModerationTransaction") }) return "moderation"
             if (classes.any { it.startsWith(root + "ownership.PostgresOwnedAdmissionRepository") }) return "admission"
+            if (classes.any { it.startsWith(root + "PostgresPlayQuotaRepository") }) return "play_quota"
+            if (classes.any { it.startsWith(root + "PostgresMatchResultRepository") }) return "match_result"
+            if (classes.any { it.startsWith(root + "PostgresFriendRepository") }) return "friends"
+            if (classes.any { it.startsWith(root + "PostgresClanRepository") }) return "clans"
+            classes.firstOrNull { it.startsWith(root + "PostgresPlayerProfileRepository") }?.let {
+                val suffix = it.substringAfter("PostgresPlayerProfileRepository").trimStart('#', '$')
+                    .substringBefore('$').ifBlank { "other" }
+                val caller = classes.firstOrNull { frame -> frame.startsWith(root + "GameEngine#") || frame.startsWith(root + "GameEngine$") }
+                    ?.let { frame -> if ('#' in frame) frame.substringAfter('#') else frame.substringAfter("GameEngine$") }
+                    ?.substringBefore('$')
+                return "profile_${caller ?: suffix}"
+            }
+            if (classes.any { it.startsWith(root + "PostgresActiveRoomRepository") }) return "legacy_room"
             return "other"
         }
 
