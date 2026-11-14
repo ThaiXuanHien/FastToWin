@@ -1041,26 +1041,26 @@ internal fun Application.gameModule(
                 if (snapshot != null && connections[activePlayerId] === connection) connection.send(snapshot)
             }
 
+            data class ModerationGate(val playerId: String)
+
             suspend fun AccountGameLane.LaneContext.dispatchProduction(
                 pilot: RoomOwnershipPilot,
                 connection: SocketConnection,
                 account: AuthenticatedAccount,
                 message: ClientMessage,
+                moderationGate: ModerationGate,
                 deferDelivery: (suspend () -> Unit) -> Unit
             ): CloseReason? {
                 val activePlayerId = account.userId.toString()
                 val replaced = CloseReason(CloseReason.Codes.NORMAL, SESSION_REPLACED_CLOSE_REASON)
                 if (connections[activePlayerId] !== connection || !isCurrent(connection)) return replaced
+                check(moderationGate.playerId == activePlayerId)
                 val token = checkNotNull(connection.accessToken)
                 val authenticated = authService.authenticateAccessToken(token)
                 if (authenticated?.userId != account.userId || authenticated.sessionId != account.sessionId) {
                     connection.send(structuredServerError("INVALID_ACCESS_TOKEN",
                         legacyFallback("Phiên đăng nhập không hợp lệ hoặc đã hết hạn.")))
                     return CloseReason(CloseReason.Codes.NORMAL, "Account session revoked")
-                }
-                if (engine.moderationService.isBlocked(activePlayerId)) {
-                    connection.send(ServerMessage.Error("ACCOUNT_BLOCKED", "Account is restricted."))
-                    return CloseReason(CloseReason.Codes.VIOLATED_POLICY, "Account restricted")
                 }
                 val socket = checkNotNull(socket(connection))
                 if (!pilot.isCurrent(socket)) return replaced
@@ -1232,11 +1232,11 @@ internal fun Application.gameModule(
                     val activePlayerId = checkNotNull(playerId)
                     if (message is ClientMessage.GetContentTerms) connections[activePlayerId]
                         ?.takeIf { it.session === this }?.moderationAware = true
-                    if (engine.moderationService.isBlocked(activePlayerId)) {
+                    val moderationGate = if (engine.moderationService.isBlocked(activePlayerId)) {
                         send(ProtocolJson.encodeToString<ServerMessage>(ServerMessage.Error("ACCOUNT_BLOCKED", "Account is restricted.")))
                         close(CloseReason(CloseReason.Codes.VIOLATED_POLICY, "Account restricted"))
                         break
-                    }
+                    } else ModerationGate(activePlayerId)
                     val activePlayerRateLimitKey = checkNotNull(playerRateLimitKey)
                     val playerMessageLimit = rateLimiter.consume(
                         RateLimitBuckets.WEBSOCKET_MESSAGE_PLAYER,
@@ -1277,7 +1277,7 @@ internal fun Application.gameModule(
                     if (productionOwnership && account != null) {
                         var deliverAfterDispatch: (suspend () -> Unit)? = null
                         val reason = accountGameLane.withAccount(account.userId) {
-                            dispatchProduction(checkNotNull(roomOwnershipPilot), connection, account, message) {
+                            dispatchProduction(checkNotNull(roomOwnershipPilot), connection, account, message, moderationGate) {
                                 deliverAfterDispatch = it
                             }
                         }
