@@ -1,0 +1,49 @@
+# Room Ownership Load Performance Implementation Plan
+
+> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox syntax for tracking.
+
+**Goal:** Complete the existing #15 cloud Load/Topology and release gates without weakening600seconds,20rooms,40accounts,60,000selections,1,200matches,default rate policies,pools20 or fail-closed access/presence semantics.
+
+**Architecture:** Use the existing moderation read module for a bounded first optimization: merge restriction-row lookup plus legacy users-status fallback into one fresh parameterized SELECT. Preserve all result precedence/defaults, transaction boundaries, mutation locks, JDBC timeout and error handling. Do not cache authorization or suppress presence repair. Measure this candidate against the fixed3ms local RTT baseline before calling it a throughput fix; further optimization requires its own evidence and review.
+
+**Tech Stack:** Kotlin/JVM17,Ktor,PostgreSQL18,JDBC/Hikari,Gradle tests,isolated Docker fixtures.
+
+**Spec:** Existing closure requirements in2026-11-11-room-ownership-rollout-closure.md; measured failures R11/R12 and local experiment conclusions below.
+
+## Evidence and constraints
+
+- R10 Fault8/8accepted and cleaned. R11 Load221s protocol rejection remains unexplained; R12 Load630s timeout46,972ACKs/929matches and cleanup are verified. No cloud Load or Topology acceptance exists.
+- No-delay local Load9c504ede72fd passed60,000/1,200in601.337s. Fixed3ms RTT experiment84a45695c843 exposed synchronized Load owner cohorts; test-only correction86dbfc8d passed settings and review. Repeat0d5a37af3f5d now reaches630s timeout24,140ACKs/473matches with phase command mean379.085ms and recreation mean3,075ms; cleanupallzero.
+- The model has comparable preflight SQL SELECT3.64-3.77ms/COMMIT4.55-4.60ms but is quantitatively slower than cloud. It tests sensitivity, not equivalence. Preserve all snapshots and receipts.
+- A measured180second window has8,701incomingmessages/131,281ownership read transactions. Three early samples show JDBC moderation/auth/ownership/social reads. These counts motivate reducing proven extra statements, not speculative removal of security checks.
+- Redis outage recovery on next unchanged-state selection must remain. A naive semantic-presence cache was rejected by an existing integration test. Current socket-generation/membership checks stay intact.
+- Every runtime JAR change invalidates the frozen candidate acceptance for that new candidate. Repeat appropriate real-DB regressions and full local profiles before proposing a new concrete cloud scope. Existing paid scopes cannot be reused.
+
+## Task1: Prove the restriction-read round-trip defect
+
+Files: existing moderation/PostgresModerationRepositoryTest.kt; implementation moderation/PostgresModerationRepository.kt.
+
+- [ ] Add a real-PostgreSQL test using a counting connection around the actual JdbcModerationTransaction read. Require one SELECT for normal,unknown,legacy-blocked,explicit-block/unblock and conflicting legacy/status rows.
+- [ ] Assert existing restriction record version/blocked takes precedence, absent record falls back to users.status, absent user remains defaultfalse, and committed changes are observed on the next read without cache.
+- [ ] Run against an isolated loopback PostgreSQL fixture; observe RED on existing two-SELECT normal-user path. Keep exact-ID cleanup and no unexpected skips.
+
+## Task2: One fresh restriction SELECT
+
+- [ ] Replace the fallback chain with one bound SELECT over a one-row UUID input LEFT JOINed to restriction and user tables. Return existing view defaults/precedence exactly.
+- [ ] Keep repository.read transaction/readonly path and exception translation unchanged. No side-effecting SQL, permission/timeout/caching change.
+- [ ] Run all moderation repository/service/integration and established-connection-drop tests relevant to this seam. Verify the new query test GREEN and fresh-state/rollback tests unchanged.
+- [ ] Independent source/spec review before committing. Do not describe this as resolving cloud throughput until measured.
+
+## Task3: Controlled performance gate
+
+- [ ] Build a fresh candidate and bind complete classpath, source, image/context and migration manifests.
+- [ ] Repeat the identical fixed3ms local controller with corrected cohorts. Retain phase summary, workload metric deltas, rejection diagnostic, ACKcount,all3recoveries and exact cleanup.
+- [ ] Compare command/recycle timing and query counts against0d5a37af3f5d. If full target is not met, continue evidence-driven profiling/optimization; do not lower thresholds or increase deadline to earn acceptance.
+
+## Task4: Complete existing acceptance and release sequence
+
+- [ ] Full appropriate backend regressions and local Fault/Load/Topology on final candidate with independently decoded receipts and cleanup.
+- [ ] Freeze/review fresh Staging scope and obtain its explicit final approval before cloud mutations. Run remaining acceptance against current candidate, not old receipts relabeled as new.
+- [ ] Complete reviewed production package,actual target/config/policy/account mappings,backup/window/rollback/operator and exact release approval,then production rollout/QA. Do not close#15 beforehand.
+
+No cloud or production mutation is authorized by this performance plan. Local read-only experiments and reversible source/test changes continue under the existing task authorization.

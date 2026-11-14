@@ -152,9 +152,16 @@ class JdbcModerationTransaction(private val connection:Connection):ModerationTra
                 titleKey="UgcContentRemovedTitle",messageKey="UgcContentRemovedBody")))
         }
     }
-    override fun restriction(userId:String):ModerationRestrictionView=rows("SELECT version,blocked FROM ugc_account_restrictions WHERE user_id=?",uuid(userId)) {
-        ModerationRestrictionView(userId,it.getInt(1),it.getBoolean(2))
-    }.singleOrNull() ?: ModerationRestrictionView(userId,blocked=rows("SELECT status FROM users WHERE id=?",uuid(userId)){it.getString(1)=="BLOCKED"}.singleOrNull()==true)
+    override fun restriction(userId:String):ModerationRestrictionView=rows(
+        """SELECT r.version,r.blocked,u.status
+            FROM (VALUES (?::uuid)) AS requested(user_id)
+            LEFT JOIN ugc_account_restrictions r ON r.user_id=requested.user_id
+            LEFT JOIN users u ON u.id=requested.user_id""",uuid(userId)
+    ) {
+        val explicitVersion=it.getObject(1) as? Number
+        val explicitBlocked=it.getObject(2) as? Boolean
+        ModerationRestrictionView(userId,explicitVersion?.toInt() ?: 0,explicitBlocked ?: (it.getString(3)=="BLOCKED"))
+    }.single()
     override fun putRestriction(value:ModerationRestrictionView,nowMillis:Long) {
         // Parent user row is locked before sessions in every auth mutation.
         if(rows("SELECT id FROM users WHERE id=? AND status<>'DELETED' FOR UPDATE",uuid(value.userId)){it.getString(1)}.isEmpty()) missing()

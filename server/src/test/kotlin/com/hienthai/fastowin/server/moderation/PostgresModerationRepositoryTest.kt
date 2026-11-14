@@ -9,10 +9,73 @@ import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.test.runTest
 import org.flywaydb.core.Flyway
 import org.junit.jupiter.api.Assumptions.assumeTrue
+import java.lang.reflect.Proxy
+import java.sql.Connection
+import java.sql.PreparedStatement
+import java.sql.ResultSet
 import java.util.UUID
 import kotlin.test.*
 
 class PostgresModerationRepositoryTest {
+    @Test fun `restriction read gives explicit row precedence then status fallback and missing defaults`() {
+        val userId=UUID.randomUUID().toString()
+        data class Row(val version:Int?,val blocked:Boolean?,val status:String?)
+        listOf(
+            Row(version=7,blocked=false,status="BLOCKED") to ModerationRestrictionView(userId,7,false),
+            Row(version=null,blocked=null,status="BLOCKED") to ModerationRestrictionView(userId,0,true),
+            Row(version=null,blocked=null,status=null) to ModerationRestrictionView(userId,0,false)
+        ).forEach {(row,expected) ->
+            val preparedSql=mutableListOf<String>()
+            var boundId:Any?=null
+            var resultConsumed=false
+            val resultSet=Proxy.newProxyInstance(ResultSet::class.java.classLoader,arrayOf(ResultSet::class.java)) { _,method,args ->
+                when(method.name) {
+                    "next" -> if(resultConsumed) false else {resultConsumed=true;true}
+                    "getObject" -> when(args?.singleOrNull()) {1 -> row.version;2 -> row.blocked;3 -> row.status;else -> null}
+                    "getInt" -> row.version ?: 0
+                    "getBoolean" -> row.blocked ?: false
+                    "getString" -> row.status
+                    "close" -> null
+                    else -> primitiveDefault(method.returnType)
+                }
+            } as ResultSet
+            val statement=Proxy.newProxyInstance(PreparedStatement::class.java.classLoader,arrayOf(PreparedStatement::class.java)) { _,method,args ->
+                when(method.name) {
+                    "setObject" -> {boundId=args?.getOrNull(1);null}
+                    "executeQuery" -> resultSet
+                    "close" -> null
+                    else -> primitiveDefault(method.returnType)
+                }
+            } as PreparedStatement
+            val connection=Proxy.newProxyInstance(Connection::class.java.classLoader,arrayOf(Connection::class.java)) { _,method,args ->
+                when(method.name) {
+                    "prepareStatement" -> {preparedSql += args?.getOrNull(0) as String;statement}
+                    "close" -> null
+                    else -> primitiveDefault(method.returnType)
+                }
+            } as Connection
+
+            assertEquals(expected,JdbcModerationTransaction(connection).restriction(userId))
+            assertEquals(listOf(UUID.fromString(userId)),listOf(boundId))
+            assertEquals(1,preparedSql.size)
+            assertTrue(preparedSql.single().contains("VALUES (?::uuid)"))
+            assertTrue(preparedSql.single().contains("ugc_account_restrictions"))
+            assertTrue(preparedSql.single().contains("users"))
+        }
+    }
+
+    private fun primitiveDefault(type:Class<*>):Any?=when(type) {
+        Boolean::class.javaPrimitiveType -> false
+        Byte::class.javaPrimitiveType -> 0.toByte()
+        Short::class.javaPrimitiveType -> 0.toShort()
+        Int::class.javaPrimitiveType -> 0
+        Long::class.javaPrimitiveType -> 0L
+        Float::class.javaPrimitiveType -> 0f
+        Double::class.javaPrimitiveType -> 0.0
+        Char::class.javaPrimitiveType -> '\u0000'
+        else -> null
+    }
+
     @Test fun `concurrent retries create one report and one quota event across repository instances`()=runTest {
         fixture {ds,reporter,target ->
             val request=ContentReportRequest(UgcTargetType.PLAYER_PROFILE,target,UgcReportReason.HARASSMENT,"context","parallel-retry")
