@@ -33,6 +33,51 @@ import kotlin.test.*
 
 class RoomOwnershipProductionWebSocketTest {
     @Test
+    fun `query profile attributes real owned commands without caching authorization`() = runBlocking {
+        val profile = OwnershipQueryProfile()
+        presenceFixture(queryProfile = profile) { f, _, _ ->
+            val host = f.connect(f.aPort, f.tokens[0])
+            val guest = f.connect(f.aPort, f.tokens[1])
+            suspend fun phase(name: String, action: suspend () -> Unit) {
+                val before = profile.snapshot()
+                action()
+                val delta = profile.snapshot().mapValues { (key, count) -> count - (before[key] ?: 0) }
+                    .filterValues { it > 0 }.toSortedMap()
+                if (name != "idle200ms") assertTrue(delta.isNotEmpty())
+                println("OWNED_QUERY_PROFILE $name " + delta.entries.joinToString(",") { "${it.key}=${it.value}" })
+            }
+            try {
+                phase("idle200ms") { delay(200) }
+                var roomId = ""
+                phase("create") {
+                    host.sendMessage(ClientMessage.CreateRoom("Profile", "private", ProtocolGameMode.ORDER))
+                    roomId = host.receiveMessage<ServerMessage.RoomCreated>().game.roomId
+                }
+                phase("join") {
+                    guest.sendMessage(ClientMessage.JoinRoom(roomId, "private"))
+                    guest.receiveMessage<ServerMessage.RoomUpdated>()
+                    host.receiveMessage<ServerMessage.RoomUpdated>()
+                }
+                phase("ready") {
+                    host.sendMessage(ClientMessage.SetReady(roomId, true))
+                    host.receiveMessage<ServerMessage.RoomUpdated> { it.game.players.any { p -> p.id == f.accounts[0].toString() && p.isReady } }
+                    guest.sendMessage(ClientMessage.SetReady(roomId, true))
+                    host.receiveMessage<ServerMessage.GameStarted>()
+                    guest.receiveMessage<ServerMessage.GameStarted>()
+                }
+                phase("select10") {
+                    for (number in 1..10) {
+                        host.sendMessage(ClientMessage.SelectNumber(roomId, number, "profile-$number"))
+                        assertEquals((1..number).toList(), host.receiveMessage<ServerMessage.GameStateUpdated>().game.selectedNumbers)
+                        assertEquals((1..number).toList(), guest.receiveMessage<ServerMessage.GameStateUpdated>().game.selectedNumbers)
+                    }
+                }
+                assertTrue((profile.snapshot()["a.ownership_isCurrentSocket"] ?: 0) > 0)
+            } finally { guest.close(); host.close() }
+        }
+    }
+
+    @Test
     fun `old frame queued before dispatch cannot reserve a lane after replacement`() = runBlocking {
         val gate = CreateGate()
         fixture(gate) { f ->
@@ -524,14 +569,14 @@ class RoomOwnershipProductionWebSocketTest {
         }
     }
 
-    private suspend fun presenceFixture(block: suspend (Fixture, PresenceStore, RedisFaultProxy) -> Unit) {
+    private suspend fun presenceFixture(queryProfile: OwnershipQueryProfile? = null, block: suspend (Fixture, PresenceStore, RedisFaultProxy) -> Unit) {
         val redis = System.getenv("FASTTOWIN_TEST_PRESENCE_REDIS_URL")
         assumeTrue(!redis.isNullOrBlank(), "Isolated Redis required")
         val config = PresenceConfiguration(requireNotNull(redis), "t" + UUID.randomUUID().toString().replace("-", ""))
         RedisPresenceStore(config).use { observer ->
             RedisFaultProxy(redis).use { proxy ->
                 RedisPresenceStore(PresenceConfiguration(proxy.proxyUrl, config.namespace)).use { publisher ->
-                    fixture(presenceStore = publisher) { f -> block(f, observer, proxy) }
+                    fixture(presenceStore = publisher, queryProfile = queryProfile) { f -> block(f, observer, proxy) }
                 }
             }
         }
@@ -552,24 +597,29 @@ class RoomOwnershipProductionWebSocketTest {
         expected.forEach { (id, state) -> assertEquals(state, clan.clan.members.single { it.userId == id }.presence) }
     }
 
-    private suspend fun fixture(rateLimiter: RateLimiter = InMemoryRateLimiter(), presenceStore: PresenceStore? = null, maintenanceService: MaintenanceService? = null, block: suspend (Fixture) -> Unit) {
+    private suspend fun fixture(rateLimiter: RateLimiter = InMemoryRateLimiter(), presenceStore: PresenceStore? = null, maintenanceService: MaintenanceService? = null, queryProfile: OwnershipQueryProfile? = null, block: suspend (Fixture) -> Unit) {
         val url = System.getenv("TEST_DATABASE_URL")
         if (System.getenv("FASTTOWIN_TEST_ROOM_OWNERSHIP") == "true") requireNotNull(url)
         assumeTrue(url != null, "Isolated PostgreSQL required")
         require(url!!.matches(Regex("jdbc:postgresql://(?:localhost|127\\.0\\.0\\.1):[0-9]+/[a-zA-Z0-9_]+")))
         val schema = "owned_production_ws_" + UUID.randomUUID().toString().replace("-", "")
-        fun pool(selectedSchema: String?) = HikariDataSource(HikariConfig().apply {
+        fun pool(selectedSchema: String?, node: String = "control"): HikariDataSource {
+            val config = HikariConfig().apply {
             jdbcUrl = url
             username = System.getenv("TEST_DATABASE_USER") ?: "fasttowin"
             password = System.getenv("TEST_DATABASE_PASSWORD") ?: "fasttowin"
             maximumPoolSize = 5
             if (selectedSchema != null) this.schema = selectedSchema
-        })
+            }
+            return if (queryProfile == null) HikariDataSource(config) else object : HikariDataSource(config) {
+                override fun getConnection(): java.sql.Connection = queryProfile.connection(super.getConnection(), node)
+            }
+        }
         pool(null).use { control ->
             control.connection.use { it.createStatement().use { s -> s.execute("CREATE SCHEMA $schema") } }
             try {
                 Flyway.configure().dataSource(control).schemas(schema).defaultSchema(schema).load().migrate()
-                pool(schema).use { a -> pool(schema).use { b ->
+                pool(schema, "a").use { a -> pool(schema, "b").use { b ->
                     val authA = AuthenticationService(PostgresAuthRepository(a), passwordHasher = PasswordHasher(1000))
                     val sessions = listOf("Host", "Guest", "Outside").map { name ->
                         assertIs<AuthResult.Success>(authA.register("$name@example.test", "Password123!", name, "test")).session
