@@ -47,3 +47,9 @@ Files: existing moderation/PostgresModerationRepositoryTest.kt; implementation m
 - [ ] Complete reviewed production package,actual target/config/policy/account mappings,backup/window/rollback/operator and exact release approval,then production rollout/QA. Do not close#15 beforehand.
 
 No cloud or production mutation is authorized by this performance plan. Local read-only experiments and reversible source/test changes continue under the existing task authorization.
+
+## Checkpoint after query optimization (2026-11-14)
+
+The one-query moderation restriction read is committed as `14759360` and its focused repository suite passed (`BUILD SUCCESSFUL`, 14 tasks). The controlled local DB-wire model was repeated with run `room-pilot-2e7dd081f094` against baseline `room-pilot-0d5a37af3f5d`: 1 ms upstream + 2 ms downstream delay, 20 rooms, 40 accounts, 600-second window, unchanged rate policy and resource caps. The candidate reached 26,317 selections / 517 matches before the 630-second timeout; baseline reached 24,139 / 473. Command p95 improved from 475.4 ms to 415.3 ms. Exact cleanup reported zero containers, networks, volumes and images.
+
+This is measurable local improvement, not acceptance. The full Load gate remains open because the target is 60,000 selections / 1,200 matches within the bounded window. No cloud or production mutation was performed.
