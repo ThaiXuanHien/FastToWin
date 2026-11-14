@@ -69,6 +69,10 @@ The CLI repair preserves safe exit/signal/timing/output-size metadata and allowl
 
 All97 offline tests passed with no skips; independent review reran10 new process/retained-proof tests and found no blocker. Self-test verified pinned contexts and retained Fault. The independently executed read-only preflight at04:05:17.084 UTC binds the final scope hash and confirms9baseline services/1volume, zero fixture services and zero mutations. R11 has no execution, launch or approval record. Prefixes are `room-pilot-40135b460ad9` and `room-pilot-b8157b59f4c8`; caps remain six concurrent temporary services,10.75vCPU/3.39GB RAM and at most three hours including15minutes cleanup. Start by14November17:00 and cleanup by20:00 Asia/Bangkok, subject to the earlier actual launcher deadline. Explicit new-scope execution approval is pending.
 
+## R11 attended execution
+
+The user approved R11 explicitly and asked how long it would run and whether skipping affects production readiness. The timing estimate was60-90minutes, with a hard three-hour maximum; skipping postpones the remaining cloud acceptance and release readiness, while the currently deployed production app is unchanged. The frozen hidden launcher started at04:07:40 UTC on14November with actual hard cleanup deadline07:07:40 UTC (14:07Asia/Bangkok). Scope is `e575ebc714e0dabf0e664e17626673cd86ca643445ae58653e72cdfc2626a8fc`; controller PID19200 and host PID16768 identities are journaled in `launch/process.json`. R10 Fault was revalidated before cloud operations. Load is preparing its fixture; Topology has not begun. Do not rerun or modify the approved frozen package. No production mutation is authorized by this Staging execution.
+
 ## Global Constraints
 
 - The current `pilot` mode remains restricted to `dev` and fixture accounts.
