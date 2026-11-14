@@ -119,6 +119,12 @@ The new regression was observed red (12settings cases,1failure) before this two-
 - Redis namespace `prod_main` and the existing rate-limit behavior remain unchanged.
 - No production mutation occurs during implementation or rehearsal preparation.
 - Every cloud rehearsal uses synthetic accounts, private networking, bounded resources, one attempt per phase, and cleanup by journaled service IDs.
+
+## Early production preparation checkpoint (14 November 2026)
+
+To shorten the later rollout window, a new local release draft is prepared at `.artifacts/room-production-release/20261114-cee03e9a-draft`. It pins commit `cee03e9a3accf5b7eab8205a9a4773e04715705a`, server JAR `129cf6678b9ed8695e1173fc6ec7eb6ed785496905157c50a4cc44936204275b`, the ordered backend context manifest and local image `sha256:3c3161f99f6de4e06b6a727b186082b9dd7141a06d7a938feb825784243a2dc3`. The image was inspected locally with user `fasttowin`, entrypoint `bin/server`, and the embedded JAR hash matched the candidate.
+
+The draft includes rollback and QA checklists, records the read-only production project/environment inventory and contains no secrets. Its status remains `DRAFT_NOT_EXECUTABLE`. Cloud Load and Topology are not accepted, production QA has not run, no production image was pushed, and no production service or policy was changed. The final manifest still requires exact current service identities, a database backup receipt, a maintenance window, rollback deadline and explicit production approval.
 - Rollback must stop new opt-in room creation, drain active work, and verify no pending owned settlement before removing the route.
 
 ---
