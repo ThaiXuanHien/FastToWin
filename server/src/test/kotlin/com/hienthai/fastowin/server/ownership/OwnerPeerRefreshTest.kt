@@ -4,6 +4,7 @@ import com.hienthai.fastowin.protocol.ClientMessage
 import com.hienthai.fastowin.protocol.ProtocolGameMode
 import io.ktor.server.engine.embeddedServer
 import io.ktor.server.netty.Netty
+import io.ktor.server.routing.Route
 import io.ktor.server.routing.routing
 import kotlinx.coroutines.runBlocking
 import java.net.InetAddress
@@ -19,6 +20,47 @@ import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
 class OwnerPeerRefreshTest {
+    @Test fun `constructor defers DNS and refresh can recover after peer appears`() {
+        val answers = mutableListOf<InetAddress>()
+        val lookups = AtomicInteger()
+        OwnerPeerTransport(UUID.randomUUID(), UUID.randomUUID(), URI("http://worker.railway.internal:8080"),
+            ByteArray(32) { 7 }, resolvePeer = { lookups.incrementAndGet(); answers.toList() }).use { peer ->
+            assertEquals(0, lookups.get())
+            assertFalse(peer.hasValidatedPeer())
+            assertFalse(peer.refreshPrivatePeer())
+            answers += InetAddress.getByName("127.0.0.1")
+            assertTrue(peer.refreshPrivatePeer())
+            assertEquals(2, lookups.get())
+            assertTrue(peer.hasValidatedPeer())
+        }
+    }
+
+    @Test fun `first hop waits for DNS and retries after the peer becomes resolvable`() = runBlocking {
+        val ingress = UUID.randomUUID()
+        val worker = UUID.randomUUID()
+        val secret = ByteArray(32) { 7 }
+        val answers = mutableListOf<InetAddress>()
+        val lookups = AtomicInteger()
+        OwnerPeerTransport(worker, ingress, URI("http://127.0.0.1:1"), secret).use { receiver ->
+            withEndpoint({
+                ownerControlRoutes(receiver) { request ->
+                    OwnedControlResponse(request.operationId, request.operation, request.generation, "ok")
+                }
+            }) { uri ->
+                val port = uri.port
+                OwnerPeerTransport(ingress, worker, URI("http://worker.railway.internal:$port"), secret,
+                    resolvePeer = { lookups.incrementAndGet(); answers.toList() }).use { peer ->
+                    val request = OwnedControlRequest(UUID.randomUUID().toString(), "status", 1)
+                    assertNull(peer.forwardControl(request))
+                    assertEquals(1, lookups.get())
+                    answers += InetAddress.getByName("127.0.0.1")
+                    assertEquals("ok", peer.forwardControl(request)?.outcome)
+                    assertEquals(2, lookups.get())
+                }
+            }
+        }
+    }
+
     @Test fun `replacement cancels a captured command before old endpoint admission`() = capturedCall("command", "replace")
     @Test fun `replacement cancels a captured create before old endpoint admission`() = capturedCall("create", "replace")
     @Test fun `replacement cancels a captured control before old endpoint admission`() = capturedCall("control", "replace")
@@ -54,6 +96,7 @@ class OwnerPeerRefreshTest {
                 val port = server.engine.resolvedConnectors().single().port
                 OwnerPeerTransport(ingress, worker, URI("http://worker.railway.internal:$port"), secret,
                     resolvePeer = { answers }).use { peer ->
+                    assertTrue(peer.refreshPrivatePeer())
                     barrier.install(peer)
                     suspend fun send(): Any? = when (lane) {
                         "command" -> peer.forward(OwnerCommandRequest(UUID.randomUUID().toString(), 1,
@@ -165,6 +208,17 @@ class OwnerPeerRefreshTest {
             } finally {
                 oldServer.stop(0, 1_000)
             }
+        }
+    }
+
+    private fun withEndpoint(routes: Route.() -> Unit, block: suspend (URI) -> Unit) = runBlocking {
+        val server = embeddedServer(Netty, host = "127.0.0.1", port = 0) {
+            routing(routes)
+        }.start(wait = false)
+        try {
+            block(URI("http://127.0.0.1:${server.engine.resolvedConnectors().single().port}"))
+        } finally {
+            server.stop(0, 1_000)
         }
     }
 }

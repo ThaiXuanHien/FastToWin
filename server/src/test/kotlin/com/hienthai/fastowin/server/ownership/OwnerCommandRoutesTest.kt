@@ -33,7 +33,7 @@ import javax.crypto.Mac
 import javax.crypto.spec.SecretKeySpec
 import kotlin.test.Test
 import kotlin.test.assertEquals
-import kotlin.test.assertFailsWith
+import kotlin.test.assertFalse
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
 import kotlin.time.measureTime
@@ -178,8 +178,9 @@ class OwnerCommandRoutesTest {
     }
 
     @Test fun `public destinations are rejected before any request`() {
-        assertFailsWith<IllegalArgumentException> {
-            OwnerPeerTransport(ingress, owner, URI("http://8.8.8.8:8090"), key, clock)
+        OwnerPeerTransport(ingress, owner, URI("http://8.8.8.8:8090"), key, clock).use { peer ->
+            assertFalse(peer.refreshPrivatePeer())
+            assertFalse(peer.hasValidatedPeer())
         }
     }
 

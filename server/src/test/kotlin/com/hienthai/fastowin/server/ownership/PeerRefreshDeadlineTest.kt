@@ -98,7 +98,9 @@ class PeerRefreshDeadlineTest {
 
     private fun transport(port: Int, resolve: (String) -> List<InetAddress>) =
         OwnerPeerTransport(UUID.randomUUID(), UUID.randomUUID(), URI("http://worker.railway.internal:$port"),
-            ByteArray(32) { 7 }, resolvePeer = resolve)
+            ByteArray(32) { 7 }, resolvePeer = resolve).also { peer ->
+            assertTrue(peer.refreshPrivatePeer())
+        }
 
     private fun <T> background(work: () -> T) = FutureTask(work).also { Thread(it).start() }
 

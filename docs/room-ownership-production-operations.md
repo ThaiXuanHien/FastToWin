@@ -4,7 +4,7 @@ The supported topology has one public ingress A and one private worker B. B has 
 
 ## Before a replacement
 
-Drain or stop the old A, verify it is stopped, and only then start the replacement. Keep the existing owned configuration and routes installed. When B's private address changes, A revalidates the full DNS answer set and replaces its pinned client. Wait for signed status and a successful B-owned create through A before accepting rejoin. Failed or mixed DNS answers make the peer unavailable until a valid private answer returns. Confirm both services run the same approved server JAR and ordered runtime distribution, with the intended node IDs, peer credentials, accounts, policy and topology. Do not use a prior candidate's fault/load receipts as acceptance of a new distribution.
+Drain or stop the old A, verify it is stopped, and only then start the replacement. Keep the existing owned configuration and routes installed. Peer transport construction does not require the other private hostname to resolve: each process may start healthy with readiness false, then lazily resolves and pins the full private DNS answer set before its first hop or inbound authenticated request. When B's private address changes, A revalidates the full DNS answer set and replaces its pinned client. Wait for signed status and a successful B-owned create through A before accepting rejoin. Failed or mixed DNS answers make the peer unavailable until a valid private answer returns. Confirm both services run the same approved server JAR and ordered runtime distribution, with the intended node IDs, peer credentials, accounts, policy and topology. Do not use a prior candidate's fault/load receipts as acceptance of a new distribution.
 
 ## Health and monitoring
 

@@ -13,7 +13,9 @@ import io.ktor.server.response.respondBytes
 import io.ktor.server.routing.Route
 import io.ktor.server.routing.post
 import io.ktor.utils.io.readAvailable
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.suspendCancellableCoroutine
+import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeoutOrNull
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
@@ -43,6 +45,7 @@ import java.time.Clock
 import java.util.Base64
 import java.util.UUID
 import java.util.concurrent.TimeUnit
+import java.util.concurrent.locks.ReentrantLock
 import javax.crypto.Mac
 import javax.crypto.spec.SecretKeySpec
 import kotlin.coroutines.resume
@@ -150,10 +153,13 @@ internal class OwnerPeerTransport(
     private data class PinnedPeer(val addresses: Set<InetAddress>, val client: OkHttpClient)
 
     private val nonces = PeerNonces(clock)
-    private val refreshLock = Any()
+    private val refreshLock = ReentrantLock()
     private val peerLock = Any()
     private var closed = false
-    @Volatile private var peer: PinnedPeer? = pin(resolvePrivatePeer(endpoint.host, resolvePeer))
+    // Peer DNS is intentionally lazy. Railway may publish both private services
+    // after their processes start; construction must keep /health alive while
+    // readiness remains false until a private answer is validated.
+    @Volatile private var peer: PinnedPeer? = null
 
     private fun pin(addresses: Set<InetAddress>): PinnedPeer = PinnedPeer(addresses, OkHttpClient.Builder()
         .dns(Dns { host ->
@@ -170,20 +176,32 @@ internal class OwnerPeerTransport(
     fun hasValidatedPeer(): Boolean = peer != null
 
     /** Serialize DNS lookups so a stale refresh cannot overwrite a newer validation result. */
-    fun refreshPrivatePeer(): Boolean = synchronized(refreshLock) {
-        if (synchronized(peerLock) { closed }) return false
-        val addresses = try {
-            resolvePrivatePeer(endpoint.host, resolvePeer)
-        } catch (_: IllegalArgumentException) {
-            null
+    fun refreshPrivatePeer(): Boolean {
+        if (!refreshLock.tryLock()) return hasValidatedPeer()
+        try {
+            if (synchronized(peerLock) { closed }) return false
+            val addresses = try {
+                resolvePrivatePeer(endpoint.host, resolvePeer)
+            } catch (_: IllegalArgumentException) {
+                null
+            }
+            val previous = synchronized(peerLock) {
+                if (closed) return false
+                if (peer?.addresses == addresses) return peer != null
+                replacePeer(addresses?.let(::pin))
+            }
+            previous?.releaseResources()
+            return peer != null
+        } finally {
+            refreshLock.unlock()
         }
-        val previous = synchronized(peerLock) {
-            if (closed) return false
-            if (peer?.addresses == addresses) return peer != null
-            replacePeer(addresses?.let(::pin))
+    }
+
+    private suspend fun ensurePeerAvailable(): Boolean {
+        if (hasValidatedPeer()) return true
+        return withContext(Dispatchers.IO) {
+            withTimeoutOrNull(PEER_TIMEOUT_MILLIS) { refreshPrivatePeer() } ?: false
         }
-        previous?.releaseResources()
-        peer != null
     }
 
     override fun close() {
@@ -210,6 +228,7 @@ internal class OwnerPeerTransport(
 
     suspend fun forwardControl(request: OwnedControlRequest): OwnedControlResponse? = withTimeoutOrNull(CONTROL_TIMEOUT_MILLIS) {
         if (!request.valid()) return@withTimeoutOrNull null
+        if (!ensurePeerAvailable()) return@withTimeoutOrNull null
         val payload = Json.encodeToString(request).encodeToByteArray()
         if (payload.size > MAX_BODY_BYTES) return@withTimeoutOrNull null
         val nonce = UUID.randomUUID()
@@ -237,6 +256,7 @@ internal class OwnerPeerTransport(
     }
     suspend fun forward(request: OwnerCommandRequest): OwnedRoomReply? = withTimeoutOrNull(PEER_TIMEOUT_MILLIS) {
         if (!request.isSupported()) return@withTimeoutOrNull null
+        if (!ensurePeerAvailable()) return@withTimeoutOrNull null
         val payload = Json.encodeToString(request).encodeToByteArray()
         if (payload.size > MAX_BODY_BYTES) return@withTimeoutOrNull null
         val nonce = UUID.randomUUID()
@@ -252,6 +272,7 @@ internal class OwnerPeerTransport(
 
     suspend fun forwardCreate(request: OwnedCreateRequest): OwnedCreateResult = withTimeoutOrNull(PEER_TIMEOUT_MILLIS) {
         if (!request.isSupported() || request.destinationNodeId != peerId) return@withTimeoutOrNull null
+        if (!ensurePeerAvailable()) return@withTimeoutOrNull null
         val payload = Json.encodeToString(OwnedCreateWireRequest.from(request)).encodeToByteArray()
         if (payload.size > MAX_BODY_BYTES) return@withTimeoutOrNull null
         val nonce = UUID.randomUUID()
@@ -293,6 +314,9 @@ internal class OwnerPeerTransport(
     }
 
     private suspend fun authenticatedPayload(call: ApplicationCall, domain: String): Pair<PeerAuth, ByteArray>? {
+        if (!ensurePeerAvailable()) {
+            call.respond(HttpStatusCode.Unauthorized); return null
+        }
         // The local connection point is the actual socket even when ForwardedHeaders is installed.
         val source = call.request.local.remoteAddress.asSocketAddress()
         val pinned = peer
