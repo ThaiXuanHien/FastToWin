@@ -6,6 +6,10 @@
 
 **Architecture:** Use the existing moderation read module for a bounded first optimization: merge restriction-row lookup plus legacy users-status fallback into one fresh parameterized SELECT. Preserve all result precedence/defaults, transaction boundaries, mutation locks, JDBC timeout and error handling. Do not cache authorization or suppress presence repair. Measure this candidate against the fixed3ms local RTT baseline before calling it a throughput fix; further optimization requires its own evidence and review.
 
+## Owner priority update and cloud Topology result
+
+On 14 November the owner deferred the 60,000-selection/1,200-match Load step and requested production preparation first. The current candidate subsequently passed the separately approved R14 cloud Topology scope `7abdefa8b8da92f224c13202f69157da65f4470a55d96c51bd2266b641489c8a`. Its original logs independently verified presence, outage/reconnect, account lanes and drain/rollback, with cleanup confirming zero fixture services and the nine-service/one-volume baseline. The release draft binds that evidence and the matching 181-file distribution. Full Load acceptance remains outstanding for disclosure in the final production rollout decision. Production rollout and QA remain pending.
+
 **Tech Stack:** Kotlin/JVM17,Ktor,PostgreSQL18,JDBC/Hikari,Gradle tests,isolated Docker fixtures.
 
 **Spec:** Existing closure requirements in2026-11-11-room-ownership-rollout-closure.md; measured failures R11/R12 and local experiment conclusions below.
