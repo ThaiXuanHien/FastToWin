@@ -17,6 +17,39 @@ import java.util.UUID
 import kotlin.test.*
 
 class PostgresModerationRepositoryTest {
+    @Test fun `restriction read uses one PostgreSQL select and preserves precedence and fresh fallback`()=runTest {
+        fixture {ds,reporter,_ ->
+            fun execute(sql:String,vararg values:Any?)=ds.connection.use {connection ->
+                connection.prepareStatement(sql).use {statement ->
+                    values.forEachIndexed {index,value -> statement.setObject(index+1,value)}
+                    statement.executeUpdate()
+                }
+            }
+            val explicitVersion=7
+            execute("INSERT INTO ugc_account_restrictions(user_id,version,blocked,updated_at) VALUES (?, ?, false, NOW())",
+                UUID.fromString(reporter),explicitVersion)
+            execute("UPDATE users SET status='BLOCKED' WHERE id=?",UUID.fromString(reporter))
+            val selectedSql=mutableListOf<String>()
+            ds.connection.use {raw ->
+                val counted=Proxy.newProxyInstance(Connection::class.java.classLoader,arrayOf(Connection::class.java)) { _,method,args ->
+                    if (method.name=="prepareStatement") {
+                        selectedSql += args?.getOrNull(0) as String
+                    }
+                    method.invoke(raw,*(args ?: emptyArray()))
+                } as Connection
+                assertEquals(ModerationRestrictionView(reporter,explicitVersion,false),JdbcModerationTransaction(counted).restriction(reporter))
+            }
+            assertEquals(1,selectedSql.count { it.contains("ugc_account_restrictions") && it.trimStart().startsWith("SELECT") })
+
+            execute("DELETE FROM ugc_account_restrictions WHERE user_id=?",UUID.fromString(reporter))
+            assertEquals(ModerationRestrictionView(reporter,0,true),PostgresModerationRepository(ds).transaction { restriction(reporter) })
+            execute("UPDATE users SET status='ACTIVE' WHERE id=?",UUID.fromString(reporter))
+            assertEquals(ModerationRestrictionView(reporter,0,false),PostgresModerationRepository(ds).transaction { restriction(reporter) })
+            val missing=UUID.randomUUID().toString()
+            assertEquals(ModerationRestrictionView(missing,0,false),PostgresModerationRepository(ds).transaction { restriction(missing) })
+        }
+    }
+
     @Test fun `restriction read gives explicit row precedence then status fallback and missing defaults`() {
         val userId=UUID.randomUUID().toString()
         data class Row(val version:Int?,val blocked:Boolean?,val status:String?)
