@@ -53,6 +53,14 @@ The R10 package contains no inherited execution, launch, or approval records. It
 
 Evidence correction: historical R7/R8 post-cleanup preflight files were manually authored, not independently executed observations; R7 pinned code was changed after execution. Do not use those files to certify historical input immutability or current baseline. R10 binds the actual R9 recovered cleanup and independently executed preflight instead. Earlier timeout-only and DNS-export-only diagnoses do not establish the complete root cause.
 
+## R10 execution in progress
+
+The user explicitly approved scope `b31572986e216960e2a87b63448feabe43cd8d2f05bd2e639003b6731496d767`. The frozen hidden launcher reserved one execution at 03:16:03 UTC on 14 November, with actual hard cleanup deadline 06:16:03 UTC (13:16 Asia/Bangkok). Controller and host identities are retained in the package's `launch/process.json`. Do not relaunch this scope or change pinned inputs.
+
+Fault completed all eight cases. Maximum recovery was 14,039 ms; Redis process pause recovered in 762 ms and PostgreSQL pause in 3,885 ms. The revised stop gate observed the exact removed B deployment with no active/latest projection; B replacement changed both private address families while signed A process/deployment remained unchanged. Golden rooms verified both owners with all four public sockets on A and B public routes returning 404. The phase's accepted receipts retain the approved scope and frozen server JAR. Exact-ID cleanup confirmed zero owned services and the nine-service/one-volume baseline. Load is now preparing its separate fixture; no Load or Topology acceptance exists yet.
+
+During the attended cloud run, the draft release initialization manifest was bound to the source-matching `postgres-test-99d0c77e71bb.json` receipt. Independent review confirmed all six source hashes, the frozen JAR/context files, 12 passing real PostgreSQL/runtime cases, STOP_NEW readiness and separate signed resume, and zero local resources. A local production backend image was also built from all 181 hash-matching frozen distribution files using the real `bin/server` entrypoint and a pinned JRE base. Content verification inside image `sha256:37cd14670fbf3c2c6a2402af24eccc8177418a8313397a13db81218e482db0d2` matched all files and removed its test container. This local image has not been pushed, deployed or health/readiness tested. Release status remains DRAFT_NOT_EXECUTABLE; production inputs and execution approval remain pending.
+
 ## Global Constraints
 
 - The current `pilot` mode remains restricted to `dev` and fixture accounts.
