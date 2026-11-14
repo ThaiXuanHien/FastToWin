@@ -55,3 +55,5 @@ The one-query moderation restriction read is committed as `14759360` and its foc
 This is measurable local improvement, not acceptance. The full Load gate remains open because the target is 60,000 selections / 1,200 matches within the bounded window. No cloud or production mutation was performed.
 
 The same candidate also passed the no-delay local regression as run `room-pilot-603d6ce7c8b2`: 60,000 selections, 1,200 matches, 601.239 seconds, 99.794 selections/second, command p95 190.6 ms, zero retries. Load and latency exports were independently decoded against the run manifest/JAR, and exact cleanup reported zero containers, networks, volumes and images. The fixed RTT model remains the limiting case; this no-delay pass does not close the cloud Load/Topology gates.
+
+The candidate also passed the local Fault profile as `room-pilot-20635a0af518`: all 8 cases passed, maximum recovery 14,767 ms, independently decoded fault/latency receipts, and exact cleanup was zero containers, networks, volumes and images. Fault acceptance is therefore locally green; cloud Load and Topology acceptance remain open.
