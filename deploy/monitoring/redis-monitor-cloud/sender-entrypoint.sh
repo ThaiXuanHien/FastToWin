@@ -22,6 +22,8 @@ env -i PATH=/usr/local/bin:/usr/bin:/bin \
   GRAFANA_CLOUD_EXPECTED_HOST="${GRAFANA_CLOUD_EXPECTED_HOST-}" \
   GRAFANA_CLOUD_TENANT_ID="${GRAFANA_CLOUD_TENANT_ID-}" \
   FASTTOWIN_REDIS_MONITOR_SCRAPE_ADDRESS="${FASTTOWIN_REDIS_MONITOR_SCRAPE_ADDRESS-}" \
+  ${FASTTOWIN_BACKEND_METRICS_INGRESS+FASTTOWIN_BACKEND_METRICS_INGRESS="$FASTTOWIN_BACKEND_METRICS_INGRESS"} \
+  ${FASTTOWIN_BACKEND_METRICS_WORKER+FASTTOWIN_BACKEND_METRICS_WORKER="$FASTTOWIN_BACKEND_METRICS_WORKER"} \
   /usr/local/bin/node /opt/redis-monitor-cloud/prepare-runtime.mjs || fail
 env -i PATH=/usr/local/bin:/usr/bin:/bin /bin/alloy validate /run/secrets/config.alloy >/dev/null 2>&1 || fail
 exec env -i PATH=/usr/local/bin:/usr/bin:/bin HOME=/nonexistent SSL_CERT_FILE=/etc/ssl/certs/ca-certificates.crt \

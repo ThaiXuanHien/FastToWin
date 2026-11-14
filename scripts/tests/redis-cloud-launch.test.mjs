@@ -88,6 +88,14 @@ test('collector writes private secret and execs only the fixed collector with a 
 test('sender strips credentials/environment, prepares one config and execs Alloy with safe fixed flags',()=>{
  const r=run('sender',{...good,GRAFANA_CLOUD_WRITE_TOKEN:token,FASTTOWIN_REDIS_MONITOR_PASSWORD:monitor},29);safe(r,29);assert.match(r.stdout,/PRIVATE_FILE_OK/);for(const arg of ['run','--disable-reporting','--server.http.listen-addr=127.0.0.1:12345','--server.http.enable-pprof=false','--server.http.disable-support-bundle','--storage.path=/var/lib/alloy','/run/secrets/config.alloy'])assert.ok(r.stdout.includes('ARG:'+arg+'\n'),arg);assert.doesNotMatch(r.stdout,/GRAFANA_|FASTTOWIN_|HTTP_PROXY|HTTPS_PROXY/);
 });
+test('sender passes the paired backend targets to the actual runtime renderer and rejects incomplete pairs',()=>{
+ const backend={FASTTOWIN_BACKEND_METRICS_INGRESS:'server.railway.internal:8080',FASTTOWIN_BACKEND_METRICS_WORKER:'owned-worker.railway.internal:8080'};
+ safe(run('sender',{...good,...backend,GRAFANA_CLOUD_WRITE_TOKEN:token},29),29);
+ for(const change of [{FASTTOWIN_BACKEND_METRICS_WORKER:''},{FASTTOWIN_BACKEND_METRICS_WORKER:undefined},{FASTTOWIN_BACKEND_METRICS_INGRESS:'public.example.com:8080'}]){
+  const env={...good,...backend,...change,GRAFANA_CLOUD_WRITE_TOKEN:token};for(const key of Object.keys(env))if(env[key]===undefined)delete env[key];safe(run('sender',env),1);
+ }
+});
+
 test('launchers fail closed on missing or malformed credentials/config and preserve existing private directories',()=>{
  for(const secret of [undefined,'MARKER','a'.repeat(95),'A'.repeat(96)]){const env={FASTTOWIN_REDIS_MONITOR_ADDRESS:'redis:6379'};if(secret!==undefined)env.FASTTOWIN_REDIS_MONITOR_PASSWORD=secret;safe(run('collector',env),1);}
  for(const bad of [{GRAFANA_CLOUD_WRITE_TOKEN:''},{GRAFANA_CLOUD_WRITE_TOKEN:'MARKER with space'},{GRAFANA_CLOUD_REMOTE_WRITE_URL:'https://MARKER.invalid/api/prom/push'},{GRAFANA_CLOUD_TENANT_ID:'MARKER'},{FASTTOWIN_REDIS_MONITOR_SCRAPE_ADDRESS:'https://MARKER'}])safe(run('sender',{...good,GRAFANA_CLOUD_WRITE_TOKEN:token,...bad}),1);

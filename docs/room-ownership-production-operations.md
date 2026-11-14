@@ -13,6 +13,19 @@ for the proxy and backend startup checks. Check `/ready` and signed status on bo
 private services before opening owned admission. `/ready` can return 503 during an
 intentional stop or drain. Use `/health` for process liveness during those phases.
 
+The existing cloud metrics sender can add both backend targets with
+`FASTTOWIN_BACKEND_METRICS_INGRESS=server.railway.internal:8080` and
+`FASTTOWIN_BACKEND_METRICS_WORKER=owned-worker.railway.internal:8080`.
+Set both or leave both absent. Invalid, incomplete, identical or public targets
+stop sender startup. The Redis pipeline remains installed, and the backend
+pipeline keeps only operational counters/gauges, fixed outcome/operation values
+and `instance="a"`/`instance="b"`. Scraping uses 15-second intervals, five-second
+timeouts, no redirects or environment proxies. Applying the new sender image
+and variables is part of the approved rollout; a local receipt is not Grafana
+Cloud acceptance. Verify both backend `up` series and the unchanged Redis
+series after deployment. Shipping metrics does not install Grafana alert rules;
+confirm those separately or retain an attended observer for the approved window.
+
 Scrape `/internal/metrics` from A and B on the private network as job
 `fasttowin-server`, retaining their separate instance labels. The [Prometheus rules](../deploy/monitoring/alerts.yml) cover repeated unavailable routes, settlement failures, and a queued
 event age above 25 seconds for one minute. The backlog threshold uses the local

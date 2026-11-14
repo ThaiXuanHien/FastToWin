@@ -2,11 +2,15 @@
 import fs from 'node:fs';
 import {renderAlloy} from './prepare.mjs';
 try {
+  const ingress = process.env.FASTTOWIN_BACKEND_METRICS_INGRESS;
+  const worker = process.env.FASTTOWIN_BACKEND_METRICS_WORKER;
+  const backendTargets = ingress === undefined && worker === undefined ? undefined : {ingress, worker};
   const config = renderAlloy({
     url: process.env.GRAFANA_CLOUD_REMOTE_WRITE_URL,
     expectedHost: process.env.GRAFANA_CLOUD_EXPECTED_HOST,
     tenantId: process.env.GRAFANA_CLOUD_TENANT_ID,
     collectorAddress: process.env.FASTTOWIN_REDIS_MONITOR_SCRAPE_ADDRESS,
+    backendTargets,
   });
   fs.writeFileSync('/run/secrets/config.alloy', config, {mode: 0o600, flag: 'wx'});
 } catch {

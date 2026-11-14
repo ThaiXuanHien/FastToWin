@@ -20,3 +20,9 @@ restartPolicyMaxRetries = 3
 # See docs/redis-monitor-volume-initialization.md. Never run Alloy as root.
 # Revised limits for later production approval: CPU 0.25, RAM 0.25 GB.
 # Retention 5m/5m/2h is not a disk cap. Resource fit remains an acceptance gate.
+
+# Optional ownership rollout: set BOTH private targets or leave BOTH absent.
+# FASTTOWIN_BACKEND_METRICS_INGRESS=server.railway.internal:8080
+# FASTTOWIN_BACKEND_METRICS_WORKER=owned-worker.railway.internal:8080
+# Preserves Redis scrape and sends only allowlisted backend metrics as job
+# fasttowin-server with distinct instance labels a/b; no new credential is needed.

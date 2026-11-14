@@ -54,8 +54,61 @@ function privateTarget(address) {
   return /^[a-z0-9](?:[a-z0-9-]*[a-z0-9])?\.railway\.internal$/.test(host);
 }
 
+function backendConfig(targets) {
+  if (targets === undefined) return '';
+  if (!targets || typeof targets !== 'object' || Array.isArray(targets) ||
+      Object.keys(targets).sort().join(',') !== 'ingress,worker' ||
+      targets.ingress === targets.worker ||
+      ![targets.ingress, targets.worker].every(value => typeof value === 'string' &&
+        /^[a-z0-9](?:[a-z0-9-]*[a-z0-9])?\.railway\.internal:[0-9]{1,5}$/.test(value) && privateTarget(value))) {
+    throw new Error('Invalid backend targets');
+  }
+  const plain = ['up', 'fasttowin_websocket_connections',
+    'fasttowin_room_ownership_settlement_failures_total',
+    'fasttowin_room_ownership_oldest_queued_event_seconds',
+    'fasttowin_room_ownership_takeovers_total', 'fasttowin_room_ownership_fence_rejections_total',
+    'fasttowin_room_ownership_resyncs_total', 'fasttowin_room_ownership_pool_active_connections',
+    'fasttowin_room_ownership_pool_max_connections'].join('|');
+  return `
+prometheus.scrape "backends" {
+  targets = [
+    { "__address__" = "${targets.ingress}", "instance" = "a" },
+    { "__address__" = "${targets.worker}", "instance" = "b" },
+  ]
+  metrics_path = "/internal/metrics"
+  scrape_interval = "15s"
+  scrape_timeout = "5s"
+  sample_limit = 1000
+  label_limit = 12
+  follow_redirects = false
+  proxy_from_environment = false
+  honor_labels = false
+  honor_timestamps = false
+  forward_to = [prometheus.relabel.backends.receiver]
+}
+
+prometheus.relabel "backends" {
+  forward_to = [prometheus.remote_write.grafana.receiver]
+  rule {
+    source_labels = ["__name__", "outcome", "operation"]
+    regex = "(${plain});;|fasttowin_room_ownership_routes_total;(local|peer|unavailable);|fasttowin_rate_limit_shared_decisions_total;(allowed|limited|unavailable);|fasttowin_presence_redis_failures_total;;(read|write)"
+    action = "keep"
+  }
+  rule {
+    target_label = "job"
+    replacement = "fasttowin-server"
+  }
+  rule {
+    regex = "__name__|job|instance|outcome|operation"
+    action = "labelkeep"
+  }
+}
+`;
+}
+
 export function renderAlloy(input) {
   const destination = validateDestination(input);
+  const backends = backendConfig(input.backendTargets);
   if (!privateTarget(input.collectorAddress)) throw new Error('Invalid collector target');
   const errorName = 'fasttowin_redis_monitor_collection_errors_total';
   const others = metricNames.filter(name => name !== errorName).join('|');
@@ -103,7 +156,7 @@ prometheus.relabel "redis_monitor" {
   }
 }
 
-prometheus.remote_write "grafana" {
+${backends}prometheus.remote_write "grafana" {
   endpoint {
     url = "${destination.url}"
     remote_timeout = "10s"
