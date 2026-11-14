@@ -37,3 +37,5 @@ The runbook requires planned global maintenance, fresh effective policy, zero ag
 Production QA, final Owner execution approval and issue closure remain pending.
 
 Final review found no remaining blocker after fixing scope-object versus file binding, with a red/green regression. The production recovery procedure now explicitly stops both A/B by journaled deployment identity after completed zero-work proof and keeps B stopped in legacy recovery.
+
+A supplemental short local shipping check also passed with the sender capped at the existing production0.25vCPU/250,000,000bytes: both backend instances and Redis arrived, forbidden series/labels remained absent, and cleanup was zero. Its first observation raced A/B arrival against Redis; the rerun waited for all three streams within the existing bound. Only the local harness changed. This is functional resource-ceiling evidence, not sustained capacity/Load acceptance; the approved-scope candidate hash remains unchanged.
