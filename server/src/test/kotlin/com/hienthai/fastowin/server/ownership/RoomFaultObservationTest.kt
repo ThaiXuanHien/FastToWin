@@ -6,6 +6,26 @@ import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 
 class RoomFaultObservationTest {
+    @kotlin.test.Test
+    fun safeFailureDiagnosticIsExportedBeforeDisposableContainerCleanup() {
+        val bytes = java.io.ByteArrayOutputStream()
+        val out = java.io.PrintStream(bytes, true, Charsets.UTF_8)
+        val failure = LoadPhaseFailure("command", AcceptanceRejected("RATE_LIMITED"))
+        printRehearsalFailureDiagnostic(out, failure)
+        val line = bytes.toString(Charsets.UTF_8).trimEnd()
+        kotlin.test.assertTrue(line.startsWith("FTW_RUNNER_DIAGNOSTIC "))
+        kotlin.test.assertTrue(line.contains("RATE_LIMITED"))
+        kotlin.test.assertTrue(line.contains("command"))
+        kotlin.test.assertFalse(line.contains('\n'))
+        bytes.reset()
+        printRehearsalFailureDiagnostic(out, IllegalStateException("private account FAKE_TOKEN", AcceptanceRejected("TOP_SECRET_ACCOUNT")))
+        val unknown = bytes.toString(Charsets.UTF_8)
+        kotlin.test.assertTrue(unknown.contains("unknown"))
+        kotlin.test.assertFalse(unknown.contains("private account"))
+        kotlin.test.assertFalse(unknown.contains("FAKE_TOKEN"))
+        kotlin.test.assertFalse(unknown.contains("TOP_SECRET_ACCOUNT"))
+    }
+
     @Test
     fun rejectionDiagnosticsExportOnlyKnownCodes() {
         assertTrue(rehearsalFailureDiagnostic(AcceptanceRejected("ROOM_RECOVERING")).contains("ROOM_RECOVERING"))

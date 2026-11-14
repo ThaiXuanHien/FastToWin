@@ -1,6 +1,7 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
 import { createHash } from 'node:crypto'
+import { readFileSync } from 'node:fs'
 import { gate, readReceipt, readProductionReceipt } from '../read-room-rehearsal-receipt.mjs'
 
 const manifest = 'c'.repeat(64)
@@ -25,6 +26,17 @@ test('production exports bind the supplied artifact and reject fixture namespace
     assert.throws(()=>readReceipt(lines,'failure','fault',manifest))
     assert.throws(()=>readProductionReceipt([...lines,...chunks(bytes,'failure')],'failure','fault',manifest,expectedJar))
 })
+test('actual runner diagnostic prefix preserves production checksums and mixed-namespace refusal',()=>{
+    const runnerSource=readFileSync(new URL('../../server/src/test/kotlin/com/hienthai/fastowin/server/ownership/RoomFaultObservation.kt',import.meta.url),'utf8')
+    const prefix=/out.println\("([A-Z_]+ )" \+ rehearsalFailureDiagnostic/.exec(runnerSource)?.[1]
+    assert(prefix,'Runner diagnostic output call missing')
+    const bytes=JSON.stringify({...failure,jarSha256:'e'.repeat(64)})
+    const production=chunks(bytes,'failure').map(line=>line.replace('FTW_REHEARSAL_','FTW_PRODUCTION_REHEARSAL_'))
+    const diagnostic=prefix+'[{"category":"protocol-rejected","protocolCode":"RATE_LIMITED"}]'
+    assert.equal(readProductionReceipt([...production,diagnostic],'failure','fault',manifest,'e'.repeat(64)).toString(),bytes)
+    assert.throws(()=>readProductionReceipt([...production,diagnostic,...chunks(bytes,'failure')],'failure','fault',manifest,'e'.repeat(64)))
+})
+
 const load = envelope('load','two-backend',{
     pools:[20,20], seed:73,backendCount:2,concurrentRooms:20,configuredDurationSeconds:600,configuredSelectionsPerRoomPerSecond:5,
     roomSetupSeconds:4,elapsedSeconds:600,selectionCount:60000,selectionsByRoomSlot:Array(20).fill(3000),

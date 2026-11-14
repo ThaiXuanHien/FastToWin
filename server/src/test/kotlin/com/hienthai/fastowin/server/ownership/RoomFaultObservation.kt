@@ -96,3 +96,8 @@ internal fun rehearsalFailureDiagnostic(failure: Throwable): String {
         }
     }.toString()
 }
+
+/** Same allowlisted fields as the local sidecar, retained in provider logs after fixture cleanup. */
+internal fun printRehearsalFailureDiagnostic(out: java.io.PrintStream, failure: Throwable) {
+    out.println("FTW_RUNNER_DIAGNOSTIC " + rehearsalFailureDiagnostic(failure))
+}

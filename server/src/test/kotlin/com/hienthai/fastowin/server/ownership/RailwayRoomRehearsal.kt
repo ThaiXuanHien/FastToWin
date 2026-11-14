@@ -248,6 +248,7 @@ internal fun runRehearsal(
         export(kind, result)
     } catch (failure: Throwable) {
         Files.writeString(path.resolve("failure-sites.json"), rehearsalFailureDiagnostic(failure))
+        printRehearsalFailureDiagnostic(out, failure)
         val category = rehearsalFailureCategory(failure)
         export("failure", buildJsonObject {
             put("phase",phase); put("category", category); put("completedCases",cases.size)
