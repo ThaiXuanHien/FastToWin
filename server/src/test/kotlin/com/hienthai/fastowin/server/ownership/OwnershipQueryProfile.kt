@@ -58,7 +58,11 @@ internal class OwnershipQueryProfile {
             if (operation != null) return "ownership_$operation"
             if (classes.any { it.startsWith(root + "ownership.PostgresRoomOwnershipRepository") }) return "ownership_other"
             if (classes.any { it.startsWith(root + "PostgresAuthRepository") }) return "auth"
-            if (classes.any { it.startsWith(root + "moderation.JdbcModerationTransaction") }) return "moderation"
+            classes.firstOrNull { it.startsWith(root + "moderation.JdbcModerationTransaction") }?.let {
+                val suffix = it.substringAfter("JdbcModerationTransaction").trimStart('#', '$')
+                    .substringBefore('$').ifBlank { "other" }
+                return "moderation_$suffix"
+            }
             if (classes.any { it.startsWith(root + "ownership.PostgresOwnedAdmissionRepository") }) return "admission"
             if (classes.any { it.startsWith(root + "PostgresPlayQuotaRepository") }) return "play_quota"
             if (classes.any { it.startsWith(root + "PostgresMatchResultRepository") }) return "match_result"
