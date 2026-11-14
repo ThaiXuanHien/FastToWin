@@ -91,6 +91,12 @@ All100 offline cases passed with no skips. Independent review verified102final i
 
 Prefixes are `room-pilot-adc36a93bd3a` and `room-pilot-cf5f2053b658`. Limits remain6temporary concurrent services,10.75vCPU/3.39GB RAM and maximum3hours including15minutes cleanup. Start by14November17:00 and cleanup by20:00Asia/Bangkok, subject to the earlier actual launcher reservation. A new exact-scope approval is required because the approved R11 attempt ended. Current production remains unchanged; #15 still lacks accepted cloud Load/Topology and production rollout/QA evidence.
 
+## R12 attended execution
+
+The user explicitly approved scope `91adf0b398213244dc3fd2d29f544d3dcba35358ab8ccfab1103e0e4b51bb857`. The frozen hidden launcher started at05:04:11UTC on14November with actual hard cleanup deadline08:04:11UTC (15:04Asia/Bangkok). Controller PID15268 and host PID30464 identities are retained in `launch/process.json`; original approval text is in `execution-approval.json`. R10 Fault was revalidated before cloud operations. Load is preparing its seed runner. No new Load/Topology acceptance exists yet; never relaunch or modify this approved package.
+
+Separate read-only inventory at05:05:56UTC confirmed the production project is FastToWin Alpha `8daf3d1f-df4c-4f39-a07b-61becae674fa`, environment `351ee85f-7760-4b57-9649-9693fdcdbfea`. Existing PostgreSQL,Web,Redis,server,monitor andmetrics deployments were SUCCESS and not stopped. IDs/healthcheck/resource-limit observations are bound in the draft release's `production-inventory-readonly.json`. No variables or credentials were read; no worker was provisioned and production was not changed. The Staging project remains distinct.
+
 ## Global Constraints
 
 - The current `pilot` mode remains restricted to `dev` and fixture accounts.
