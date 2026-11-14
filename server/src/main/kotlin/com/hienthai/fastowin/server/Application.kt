@@ -1088,7 +1088,10 @@ internal fun Application.gameModule(
                         retire(connection)
                         return CloseReason(CloseReason.Codes.TRY_AGAIN_LATER, "Room recovery in progress")
                     }
-                    val ownedRoom = pilot.ownedRoom(account.userId)
+                    val ownedRoom = when (message) {
+                        is ClientMessage.CreateRoom, is ClientMessage.JoinRoom -> pilot.ownedRoom(account.userId)
+                        else -> pilot.delivery.currentRoomId(socket) ?: pilot.ownedRoom(account.userId)
+                    }
                     val targetOwned = (message as? ClientMessage.JoinRoom)?.let { pilot.ownsRoom(it.roomId) } == true
                     val ownedCreate = message is ClientMessage.CreateRoom && pilot.routesCreate(account, message)
                     if (targetOwned && !pilot.allows(account)) {

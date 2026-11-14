@@ -75,6 +75,10 @@ internal class RoomEventDelivery(
 
     fun queuedPositions(): List<RoomQueuePosition> = subscriptions.values.mapNotNull { it.queuePosition }
 
+    /** Returns the latest non-terminated room cursor published for this socket. */
+    fun currentRoomId(socket: SocketFence): UUID? =
+        subscriptions[socket]?.queuePosition?.roomId?.let(UUID::fromString)
+
     suspend fun onCommand(
         socket: SocketFence,
         requestId: String? = null,

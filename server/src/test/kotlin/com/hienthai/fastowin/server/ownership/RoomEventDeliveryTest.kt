@@ -28,10 +28,25 @@ import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertIs
+import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
 @OptIn(ExperimentalCoroutinesApi::class)
 class RoomEventDeliveryTest {
+    @Test
+    fun `current room id follows the published subscription cursor`() = runTest {
+        val rooms = RoomFeed()
+        val delivery = RoomEventDelivery(rooms)
+
+        delivery.register(rooms.host, rooms.applied()) {}
+
+        assertEquals(rooms.state.fence.roomId, delivery.currentRoomId(rooms.host))
+
+        delivery.unregister(rooms.host)
+
+        assertNull(delivery.currentRoomId(rooms.host))
+    }
+
     @Test
     fun `committed departure notifies both identities after membership removal`() = runTest {
         val rooms = RoomFeed()
