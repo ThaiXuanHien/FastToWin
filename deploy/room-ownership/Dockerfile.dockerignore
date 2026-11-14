@@ -1,0 +1,14 @@
+**
+!gradlew
+!gradle/libs.versions.toml
+!gradle/wrapper/gradle-wrapper.jar
+!gradle/wrapper/gradle-wrapper.properties
+!build.gradle.kts
+!settings.gradle.kts
+!gradle.properties
+!buildSrc/build.gradle.kts
+!buildSrc/src/**
+!protocol/build-server.gradle.kts
+!protocol/src/commonMain/**
+!server/build.gradle.kts
+!server/src/main/**

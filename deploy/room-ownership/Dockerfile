@@ -1,7 +1,8 @@
 FROM eclipse-temurin:17-jdk AS build
 WORKDIR /src
 COPY . .
-RUN chmod +x gradlew && ./gradlew :server:installDist --no-daemon --max-workers=2 --console=plain
+RUN sed -i 's/\r$//' gradlew \
+    && sh gradlew :server:installDist -PfastToWinServerOnly=true --no-daemon --max-workers=2 --console=plain
 
 FROM eclipse-temurin:17-jre-alpine
 RUN addgroup -S fasttowin && adduser -S -G fasttowin fasttowin

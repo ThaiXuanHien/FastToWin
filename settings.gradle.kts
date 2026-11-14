@@ -28,8 +28,10 @@ dependencyResolutionManagement {
 // This value also becomes the root npm package name for Kotlin/Wasm, so it
 // must follow npm naming rules (lowercase and no spaces).
 rootProject.name = "fast-to-win"
-include(":app")
-include(":shared")
 include(":protocol")
 include(":server")
-include(":webApp")
+if (providers.gradleProperty("fastToWinServerOnly").orNull == "true") {
+    project(":protocol").buildFileName = "build-server.gradle.kts"
+} else {
+    include(":app", ":shared", ":webApp")
+}
