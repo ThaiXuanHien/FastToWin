@@ -57,7 +57,11 @@ internal data class RoomAcceptanceSettings(
     fun matchAccountIndices(slot: Int, creationOrdinal: Int): List<Int> {
         require(slot >= 0 && slot * 2 + 1 < accountIds.size && creationOrdinal >= 0)
         val first = slot * 2
-        return if (productionLike && creationOrdinal % 2 == 1) listOf(first + 1, first) else listOf(first, first + 1)
+        // Offset Load cohorts so equal recycling progress starts half the slots on each owner.
+        // Each account pair still alternates creators; Fault and fixture ordering stay unchanged.
+        val parity = if (productionLike && suite == "Load") (creationOrdinal % 2) xor (slot % 2)
+            else creationOrdinal % 2
+        return if (productionLike && parity == 1) listOf(first + 1, first) else listOf(first, first + 1)
     }
 
     companion object {

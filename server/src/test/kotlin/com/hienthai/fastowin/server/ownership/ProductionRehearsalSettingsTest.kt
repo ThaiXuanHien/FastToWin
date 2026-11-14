@@ -123,6 +123,28 @@ class ProductionRehearsalSettingsTest {
     }
 
     @Test
+    fun productionLoadStaggersCreatorCohortsWhileEachPairStillAlternates() {
+        val parsed = ProductionRehearsalSettings.parse(values(), now)
+        val settings = parsed.acceptance(parsed.endpoints(::resolve))
+        for (ordinal in 0..64) {
+            val pairs = (0 until 20).map { settings.matchAccountIndices(it, ordinal) }
+            assertEquals(10, pairs.count { it.first() % 2 == 0 }, "A-routed creators at ordinal $ordinal")
+            assertEquals(10, pairs.count { it.first() % 2 == 1 }, "B-routed creators at ordinal $ordinal")
+            assertEquals(40, pairs.flatten().toSet().size)
+            for (slot in 0 until 20) {
+                assertEquals(settings.matchAccountIndices(slot, ordinal).reversed(), settings.matchAccountIndices(slot, ordinal + 1))
+            }
+        }
+        for (slot in 0 until 20) {
+            val fault = settings.copy(suite = "Fault")
+            assertEquals(listOf(slot * 2, slot * 2 + 1), fault.matchAccountIndices(slot, 0))
+            assertEquals(listOf(slot * 2 + 1, slot * 2), fault.matchAccountIndices(slot, 1))
+            val fixture = settings.copy(productionLike = false)
+            assertEquals(listOf(slot * 2, slot * 2 + 1), fixture.matchAccountIndices(slot, 1))
+        }
+    }
+
+    @Test
     fun `sole ingress requires committed identity and routes every public socket to A`() {
         val config = values() + mapOf(
             "FTW_REHEARSAL_TOPOLOGY" to "sole-ingress",
