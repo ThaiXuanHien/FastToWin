@@ -6,12 +6,26 @@ import java.sql.Connection
 import java.sql.PreparedStatement
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.atomic.AtomicLong
+import com.hienthai.fastowin.protocol.PlayerProfileSnapshot
+import com.hienthai.fastowin.server.PlayerProfileRepository
 
 /** Test-only execution counts. Never retain SQL, parameters, identifiers or exception text. */
 internal class OwnershipQueryProfile {
     private val counts = ConcurrentHashMap<String, AtomicLong>()
 
     fun snapshot(): Map<String, Long> = counts.mapValues { it.value.get() }
+
+    fun profileRepository(delegate: PlayerProfileRepository): PlayerProfileRepository =
+        object : PlayerProfileRepository by delegate {
+            override suspend fun findByPlayerId(playerId: String): PlayerProfileSnapshot? {
+                val caller = Throwable().stackTrace.firstOrNull { frame ->
+                    frame.className.startsWith("com.hienthai.fastowin.server.GameEngine")
+                }?.let { frame -> "${frame.className.substringAfterLast('.')}#${frame.methodName}" }
+                    ?: "unknown"
+                counts.computeIfAbsent("profile_call.$caller") { AtomicLong() }.incrementAndGet()
+                return delegate.findByPlayerId(playerId)
+            }
+        }
 
     fun connection(raw: Connection, node: String): Connection {
         require(node in listOf("a", "b", "control"))

@@ -3,6 +3,9 @@ package com.hienthai.fastowin.server.ownership
 import com.hienthai.fastowin.protocol.*
 import com.hienthai.fastowin.server.*
 import com.hienthai.fastowin.server.maintenance.*
+import com.hienthai.fastowin.server.moderation.ModerationService
+import com.hienthai.fastowin.server.moderation.InMemoryModerationRepository
+import com.hienthai.fastowin.server.moderation.PostgresModerationRepository
 import com.hienthai.fastowin.server.presence.PresenceConfiguration
 import com.hienthai.fastowin.server.presence.PresenceStore
 import com.hienthai.fastowin.server.presence.RedisPresenceStore
@@ -678,9 +681,14 @@ class RoomOwnershipProductionWebSocketTest {
                             override suspend fun load(userId: String) = StoredFriends(friends = sessions.filter { it.userId != userId }
                                 .map { FriendSnapshot(it.userId, it.displayName, it.displayName.uppercase()) })
                         }
-                        val engine = GameEngine(playerProfileRepository = PostgresPlayerProfileRepository(a),
+                        val profiles = PostgresPlayerProfileRepository(a).let { repository ->
+                            if (queryProfile == null) repository else queryProfile.profileRepository(repository)
+                        }
+                        val engine = GameEngine(playerProfileRepository = profiles,
                             friendRepository = friends, clanRepository = clans, presenceStore = presenceStore,
-                            productionPresenceFailClosed = true)
+                            productionPresenceFailClosed = true,
+                            moderationService = if (queryProfile == null) ModerationService(InMemoryModerationRepository())
+                                else ModerationService(PostgresModerationRepository(a)))
                         val maintenanceRuntime = MaintenanceRuntime(engine, maintenanceService, ownedWorkCount = pa::maintenanceWorkCount)
                         val sa = embeddedServer(Netty, host = "127.0.0.1", port = aPort) {
                             gameModule(engine = engine, rateLimiter = rateLimiter, authService = authA, roomOwnershipPilot = pa,
