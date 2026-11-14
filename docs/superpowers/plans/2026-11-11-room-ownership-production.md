@@ -125,6 +125,12 @@ The new regression was observed red (12settings cases,1failure) before this two-
 To shorten the later rollout window, a new local release draft is prepared at `.artifacts/room-production-release/20261114-cee03e9a-draft`. It pins commit `cee03e9a3accf5b7eab8205a9a4773e04715705a`, server JAR `129cf6678b9ed8695e1173fc6ec7eb6ed785496905157c50a4cc44936204275b`, the ordered backend context manifest and local image `sha256:3c3161f99f6de4e06b6a727b186082b9dd7141a06d7a938feb825784243a2dc3`. The image was inspected locally with user `fasttowin`, entrypoint `bin/server`, and the embedded JAR hash matched the candidate.
 
 The draft includes rollback and QA checklists, records the read-only production project/environment inventory and contains no secrets. Its status remains `DRAFT_NOT_EXECUTABLE`. Cloud Load and Topology are not accepted, production QA has not run, no production image was pushed, and no production service or policy was changed. The final manifest still requires exact current service identities, a database backup receipt, a maintenance window, rollback deadline and explicit production approval.
+
+## R13 Topology-only staging preparation (14 November 2026)
+
+A fresh Topology-only scope is prepared at `.artifacts/room-cloud-production-rehearsal-20261114-r13-topology/scope.json` with scope hash `aba967732e22974552fe0c543b6d5807845161384c3f14443676e5b69bec7d16`. It uses one phase, prefix `room-pilot-2db2190db15e`, the current candidate JAR `129cf6678b9ed8695e1173fc6ec7eb6ed785496905157c50a4cc44936204275b` and context manifest `361d12669a4007c3c3a626aef56c2749f6c52ec0f0a7ab926861fc11c57fb7bb`. The scope keeps six temporary services, 10.75 vCPU, 3.39 GB RAM and a three-hour window including 15 minutes cleanup.
+
+The package supports Topology validation only and intentionally defers Load. Its self-test passed and the offline suite passed 100/100 with no failures. It is not approved, does not bind the earlier Fault receipt because that receipt uses a different candidate, and has not created cloud services. A new exact-scope execution approval is required before launch. This does not accept Load or authorize production rollout.
 - Rollback must stop new opt-in room creation, drain active work, and verify no pending owned settlement before removing the route.
 
 ---
