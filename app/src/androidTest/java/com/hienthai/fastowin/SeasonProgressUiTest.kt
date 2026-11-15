@@ -132,6 +132,8 @@ class SeasonProgressUiTest {
         composeRule.onNodeWithTag("leaderboard_player_metric_gold").performClick()
         composeRule.onNodeWithTag("leaderboard_player_metric_filters").assertIsDisplayed()
         composeRule.onNodeWithTag("leaderboard_period_filters").assertDoesNotExist()
+        composeRule.onNodeWithTag("leaderboard_players_list")
+            .performScrollToNode(hasTestTag("leaderboard_player_HIEN001"))
         composeRule.onNodeWithText("12.500").assertIsDisplayed()
     }
 
@@ -169,6 +171,8 @@ class SeasonProgressUiTest {
         composeRule.onNodeWithTag("leaderboard_tab_clans").performClick()
         composeRule.onNodeWithTag("leaderboard_clan_metric_gold").performClick()
         composeRule.onNodeWithTag("leaderboard_clan_metric_filters").assertIsDisplayed()
+        composeRule.onNodeWithTag("leaderboard_clans_list")
+            .performScrollToNode(hasTestTag("leaderboard_clan_clan-fast"))
         composeRule.onNodeWithText("45.000").assertIsDisplayed()
     }
 
