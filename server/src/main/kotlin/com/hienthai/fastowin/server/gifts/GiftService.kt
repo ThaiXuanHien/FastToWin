@@ -11,6 +11,90 @@ class GiftService(val repository: GiftRepository, private val admins: AdminServi
     private val nowMillis: () -> Long = System::currentTimeMillis,
     private val newIntentAllowed: () -> Boolean = { true }) {
     fun receivedAt() = nowMillis()
+
+    suspend fun exchangePlays(userId: String, request: PlayCreditExchangeRequest): AdminOk = repository.transaction {
+        uuid(userId)
+        uuid(request.requestId)
+        if (!rewardActionPlayer(userId)) unauthorized()
+        if (!newIntentAllowed()) unavailable()
+        val offer = PLAY_CREDIT_OFFERS.firstOrNull { it.id == request.offerId } ?: invalid()
+        exchangePlayCredits(userId, offer, request.requestId, nowMillis())
+        AdminOk()
+    }
+
+    suspend fun listGiftCodes(context: GiftAdminContext, page: PageRequest): AdminPage<GiftCode> = repository.transaction(true) {
+        authorize(context, owner = true)
+        listCodes(page)
+    }
+
+    suspend fun publishGiftCode(context: GiftAdminContext, request: GiftCodePublishRequest): GiftCode = repository.transaction(true) {
+        val actor = authorize(context, mutation = true, owner = true)
+        mutation(request.reason, request.requestId)
+        val key = normalizedCode(request.code)
+        val reward = request.reward
+        val fingerprint = hashToken("gift-code-publish:" + Json.encodeToString(request.copy(code = key)))
+        val previous = giftCodeMutation(actor.id, request.requestId)
+        if (previous != null) {
+            if (previous != fingerprint) conflict()
+            return@transaction code(key) ?: missing()
+        }
+        val amounts = listOf(reward.gold, reward.xp, reward.gems, reward.plays)
+        if (amounts.any { it < 0 } || amounts.all { it == 0 } ||
+            request.expiresAt <= nowMillis() || request.expiresAt > 253402300799999L ||
+            (request.maximumClaims != null && request.maximumClaims <= 0)) invalid()
+        if (code(key) != null) conflict()
+        val published = GiftCode(key, reward, request.expiresAt, request.maximumClaims)
+        insertCode(published)
+        recordGiftCodeMutation(actor.id, request.requestId, fingerprint)
+        giftCodeAudit(actor.id, "GIFT_CODE_PUBLISH", key, request.requestId, request.reason)
+        published
+    }
+
+    suspend fun stopGiftCode(context: GiftAdminContext, input: String, request: GiftCodeStopRequest): AdminOk = repository.transaction(true) {
+        val actor = authorize(context, mutation = true, owner = true)
+        mutation(request.reason, request.requestId)
+        val key = normalizedCode(input)
+        val fingerprint = hashToken("gift-code-stop:$key:" + Json.encodeToString(request))
+        val previous = giftCodeMutation(actor.id, request.requestId)
+        if (previous != null) {
+            if (previous != fingerprint) conflict()
+            return@transaction AdminOk()
+        }
+        val current = code(key) ?: missing()
+        if (!current.stopped) {
+            stopCode(key)
+            giftCodeAudit(actor.id, "GIFT_CODE_STOP", key, request.requestId, request.reason)
+        }
+        recordGiftCodeMutation(actor.id, request.requestId, fingerprint)
+        AdminOk()
+    }
+
+    suspend fun redeemGiftCode(userId: String, request: GiftCodeRedeemRequest): GiftCodeRedeemResult = repository.transaction {
+        uuid(userId)
+        val key = normalizedCode(request.code)
+        if (!rewardActionPlayer(userId)) unauthorized()
+        val current = code(key) ?: throw AdminException(404, "GIFT_CODE_NOT_FOUND", "Code not found")
+        if (redeemed(key, userId)) throw AdminException(409, "GIFT_CODE_ALREADY_USED", "Code already used")
+        if (current.stopped) throw AdminException(409, "GIFT_CODE_STOPPED", "Code stopped")
+        val now = nowMillis()
+        if (now >= current.expiresAt) throw AdminException(409, "GIFT_CODE_EXPIRED", "Code expired")
+        if (current.maximumClaims != null && current.claims >= current.maximumClaims)
+            throw AdminException(409, "GIFT_CODE_EXHAUSTED", "Code exhausted")
+        if (!newIntentAllowed()) unavailable()
+        redeem(current, userId, now)
+        GiftCodeRedeemResult(current.reward)
+    }
+
+    private fun normalizedCode(value: String): String = value.trim().uppercase().also {
+        if (!it.matches(Regex("[A-Z0-9_-]{4,24}"))) invalid()
+    }
+
+    private fun GiftTransaction.giftCodeAudit(actor: String, action: String, code: String, requestId: String, reason: String) {
+        // A hash identifies the code in audit output without publishing it to other views.
+        admin.appendAudit(AuditEntry(UUID.randomUUID().toString(), actor, action, null,
+            requestId, reason, null, "codeHash=${hashToken(code)}", nowMillis()))
+    }
+
     fun requireOrigin(origin: String?) { (admins ?: unavailable()).requireOrigin(origin) }
     private fun GiftTransaction.authorize(context: GiftAdminContext, mutation: Boolean = false, owner: Boolean = false): AdminIdentity {
         val service = admins ?: unavailable()
@@ -144,4 +228,4 @@ class GiftService(val repository: GiftRepository, private val admins: AdminServi
 internal fun uuid(id: String) { if (runCatching { UUID.fromString(id).toString() == id.lowercase() }.getOrDefault(false).not()) invalid() }
 internal fun gift(c: GiftCampaign, r: GiftRecipient, now: Long) = MailboxGift(c.id, c.draft.titleVi, c.draft.titleEn, c.draft.bodyVi, c.draft.bodyEn,
     c.draft.gold, c.draft.xp, c.draft.availableAtEpochMillis, c.draft.expiresAtEpochMillis!!,
-    when { r.claimedAt != null -> GiftState.CLAIMED; c.state == CampaignState.CANCELLED -> GiftState.CANCELLED; now >= c.draft.expiresAtEpochMillis -> GiftState.EXPIRED; else -> GiftState.AVAILABLE }, r.claimedAt, c.compensation, c.draft.gems, c.clanRace)
+    when { r.claimedAt != null -> GiftState.CLAIMED; c.state == CampaignState.CANCELLED -> GiftState.CANCELLED; now >= c.draft.expiresAtEpochMillis -> GiftState.EXPIRED; else -> GiftState.AVAILABLE }, r.claimedAt, c.compensation, c.draft.gems, c.clanRace, c.draft.plays)

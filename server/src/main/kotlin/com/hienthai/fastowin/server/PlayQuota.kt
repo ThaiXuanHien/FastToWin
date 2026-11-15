@@ -26,7 +26,10 @@ object PlayQuotaRules {
             .toEpochMilli()
 
     fun remaining(matchesConsumed: Int, bonusMatchesGranted: Int): Int =
-        (BASE_MATCHES + bonusMatchesGranted - matchesConsumed).coerceAtLeast(0)
+        (BASE_MATCHES.toLong() + bonusMatchesGranted - matchesConsumed).coerceIn(0, Int.MAX_VALUE.toLong()).toInt()
+
+    fun totalRemaining(daily: Int, banked: Long): Int =
+        (daily + banked.coerceAtMost(Int.MAX_VALUE.toLong())).coerceAtMost(Int.MAX_VALUE.toLong()).toInt()
 }
 
 enum class PlayQuotaConsumptionStatus {

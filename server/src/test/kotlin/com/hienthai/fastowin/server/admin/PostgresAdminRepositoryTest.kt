@@ -12,6 +12,82 @@ import java.util.UUID
 import kotlin.test.*
 
 class PostgresAdminRepositoryTest {
+    @Test fun `support-created account self-deletion removes its creation receipt and retains the audit`() = runTest {
+        database { source ->
+            val service = service(source)
+            service.bootstrapOwner("owner@example.com", "GoodPassword123!")
+            val owner = login(service)
+            val request = CreatePlayerRequest("delete-supported@example.com", "Supported", "Only-A-Local-Fixture-123!", "Support", "delete-support-player")
+            val created = service.createPlayer(owner.token, owner.response.csrfToken, "http://localhost:8080", request)
+            val repository = PostgresAuthRepository(source)
+            val auth = AuthenticationService(repository, PasswordHasher(1_000))
+            val signedIn = assertIs<AuthResult.Success>(auth.login(request.email, request.password, "test")).session
+            assertIs<AccountActionResult.Success>(auth.deleteAccount(signedIn.accessToken, request.password))
+            assertNull(repository.findActiveAccount(request.email))
+            assertNull(auth.authenticateAccessToken(signedIn.accessToken))
+            source.connection.use { connection ->
+                connection.prepareStatement("SELECT count(*) FROM admin_player_creation_requests WHERE user_id=?").use { statement ->
+                    statement.setObject(1, UUID.fromString(created.id))
+                    statement.executeQuery().use { rows -> assertTrue(rows.next()); assertEquals(0, rows.getInt(1)) }
+                }
+            }
+            assertEquals(1, service.audit(owner.token, PageRequest()).items.count {
+                it.action == "PLAYER_SUPPORT_CREATE" && it.targetId == created.id
+            })
+        }
+    }
+    @Test fun `support-created player can sign in and refresh without claiming email proof and retries are audited once`() = runTest {
+        database { source ->
+            val service = service(source); service.bootstrapOwner("owner@example.com", "GoodPassword123!"); val owner = login(service)
+            val request = CreatePlayerRequest("supported@example.com", "Supported player", "Only-A-Local-Fixture-123!", "OTP delivery support", "support-player")
+            val created = service.createPlayer(owner.token, owner.response.csrfToken, "http://localhost:8080", request)
+            assertFalse(created.emailVerified); assertTrue(created.supportEmailVerificationExempt)
+            assertEquals(409, assertFailsWith<AdminException> { service.createPlayer(owner.token, owner.response.csrfToken, "http://localhost:8080", request.copy(requestId = "duplicate-email")) }.status)
+            assertEquals(400, assertFailsWith<AdminException> { service.createPlayer(owner.token, owner.response.csrfToken, "http://localhost:8080", request.copy(password = "aaaaaaaaaaaa")) }.status)
+            service.createAccount(owner.token, owner.response.csrfToken, "http://localhost:8080", CreateAdminRequest("operator@example.com", "GoodPassword123!", AdminRole.OPERATOR, "Operator", "player-operator"))
+            val operator = login(service, "operator@example.com")
+            assertEquals(403, assertFailsWith<AdminException> { service.createPlayer(operator.token, operator.response.csrfToken, "http://localhost:8080", request) }.status)
+            assertEquals(created, service.createPlayer(owner.token, owner.response.csrfToken, "http://localhost:8080", request))
+            assertEquals(409, assertFailsWith<AdminException> { service.createPlayer(owner.token, owner.response.csrfToken, "http://localhost:8080", request.copy(password = "DifferentPassword123!")) }.status)
+            val auth = AuthenticationService(PostgresAuthRepository(source), PasswordHasher(1_000))
+            val signedIn = assertIs<AuthResult.Success>(auth.login(request.email, request.password, "test")).session
+            assertFalse(signedIn.emailVerified); assertTrue(signedIn.supportEmailVerificationExempt)
+            val account = PostgresAuthRepository(source).findActiveSession(hashToken(signedIn.accessToken), System.currentTimeMillis())!!
+            assertFalse(account.emailVerified); assertTrue(account.supportEmailVerificationExempt)
+            val refreshed = assertIs<AuthResult.Success>(auth.refresh(signedIn.refreshToken)).session
+            assertFalse(refreshed.emailVerified); assertTrue(refreshed.supportEmailVerificationExempt)
+            val audit = service.audit(owner.token, PageRequest()).items
+            assertEquals(1, audit.count { it.action == "PLAYER_SUPPORT_CREATE" })
+            assertFalse(audit.toString().contains(request.password)); assertFalse(audit.toString().contains(request.email))
+            source.connection.use { c -> c.createStatement().use { s -> s.execute("ALTER TABLE admin_audit ADD CONSTRAINT reject_player_creation CHECK(action <> 'PLAYER_SUPPORT_CREATE') NOT VALID") } }
+            assertEquals(503, assertFailsWith<AdminException> { service.createPlayer(owner.token, owner.response.csrfToken, "http://localhost:8080", request.copy(email = "rollback@example.com", requestId = "rollback-player")) }.status)
+            assertNull(PostgresAuthRepository(source).findActiveAccount("rollback@example.com"))
+        }
+    }
+    @Test fun `commerce overview counts verified receipts and grants exactly in its seven day interval`() = runTest {
+        database { source ->
+            val until = java.time.Instant.parse("2026-11-14T12:00:00Z").toEpochMilli()
+            val from = java.time.Instant.parse("2026-11-07T17:00:00Z").toEpochMilli()
+            val auth = AuthenticationService(PostgresAuthRepository(source), PasswordHasher(1_000))
+            val ids = (1..2).map { assertIs<AuthResult.Success>(auth.register("buyer$it@example.com", "GoodPassword123!", "Buyer $it", "test")).session.userId }
+            source.connection.use { c ->
+                c.prepareStatement("INSERT INTO store_purchases(id,user_id,store,product_id,transaction_id,gems_granted,verified_at) VALUES (?,?,'GOOGLE_PLAY','fixture',?,10,?)").use { s ->
+                    listOf(from - 1, from, from + 1, until - 1, until).forEachIndexed { i, at ->
+                        s.setObject(1, UUID.randomUUID()); s.setObject(2, UUID.fromString(ids[i % 2])); s.setString(3, "fixture-$i"); s.setTimestamp(4, java.sql.Timestamp(at)); s.executeUpdate()
+                    }
+                }
+                c.prepareStatement("INSERT INTO rewarded_ad_grants(id,user_id,provider,provider_transaction_id,matches_granted,verified_at) VALUES (?,?,'FIXTURE',?,2,?)").use { s ->
+                    listOf(from - 1, from, until - 1, until).forEachIndexed { i, at ->
+                        s.setObject(1, UUID.randomUUID()); s.setObject(2, UUID.fromString(ids[0])); s.setString(3, "fixture-ad-$i"); s.setTimestamp(4, java.sql.Timestamp(at)); s.executeUpdate()
+                    }
+                }
+            }
+            val commerce = PostgresAdminRepository(source).transaction { playerCommerce(from, until) }
+            assertEquals("3", commerce.iapPurchases); assertEquals("2", commerce.iapBuyers); assertEquals("2", commerce.rewardedAdViews)
+            assertEquals(from, commerce.from); assertEquals(until, commerce.until); assertEquals("RECORDED", commerce.coverage)
+            assertEquals(until - 1, commerce.freshness)
+        }
+    }
     @Test fun `player overview aggregates persisted totals once and honors Bangkok boundaries and directory population`() = runTest {
         database { source ->
             val now = java.time.Instant.parse("2026-10-15T02:30:00Z").toEpochMilli()

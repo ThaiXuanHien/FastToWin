@@ -4,6 +4,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.tooling.preview.Preview
 import com.android.tools.screenshot.PreviewTest
 import com.hienthai.fastowin.ui.screens.LeaderboardScreen
+import com.hienthai.fastowin.ui.screens.LeaderboardPlayerDialog
 
 @PreviewTest
 @Preview(name = "player_clans_vi_phone", widthDp = 375, heightDp = 1100)
@@ -23,8 +24,30 @@ fun leaderboardWithClanIdentity() = ArcadeScreenshotFrame {
     LeaderboardScreen(
         state = state.copy(profile = null, leaderboard = leaderboard.copy(
             seasonTopPlayers = entries,
-            seasonCurrentPlayer = entries[1]
+            seasonCurrentPlayer = entries[1].copy(
+                rank = 42,
+                displayName = "Người Chơi Thần Tốc Đồng Hành",
+                playerCode = "OUTSIDE42"
+            )
         )),
-        onBack = {}, onRefresh = {}, onOpenFriendProfile = {}
+        onBack = {}, onRefresh = {}
+    )
+}
+
+@PreviewTest
+@Preview(name = "player_profile_vi_phone", widthDp = 375, heightDp = 812)
+@Preview(name = "player_profile_vi_large_text", widthDp = 320, heightDp = 932, fontScale = 1.6f)
+@Preview(name = "player_profile_vi_desktop", widthDp = 1024, heightDp = 768)
+@Composable
+fun leaderboardPlayerProfile() = ArcadeScreenshotFrame {
+    val state = ArcadeScreenshotFixtures.leaderboardState()
+    LeaderboardPlayerDialog(
+        entry = requireNotNull(state.leaderboard).seasonTopPlayers.first(),
+        state = state.copy(isClanSocialReady = true),
+        onDismiss = {},
+        onRefreshSocial = {},
+        onSendFriendRequest = {},
+        onRespondFriendRequest = { _, _ -> },
+        onUpgradeGuest = null
     )
 }

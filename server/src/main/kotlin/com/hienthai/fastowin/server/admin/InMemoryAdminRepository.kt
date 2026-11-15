@@ -55,7 +55,7 @@ class InMemoryAdminRepository : AdminRepository {
                 val history = next.wallet[id].orEmpty()
                 if (history.any { it.sourceType == campaign.walletSourceType() && it.sourceId == campaign.id }) conflict()
                 next.users[id] = user.copy(gold=balance.gold,xp=balance.xp,gems=balance.gems,level=PlayerProgression.levelForExperience(balance.xp))
-                next.wallet[id] = history + WalletEntry(UUID.randomUUID().toString(),campaign.walletSourceType(),campaign.id,campaign.draft.gold,campaign.draft.gems,campaign.draft.xp,now)
+                next.wallet[id] = history + WalletEntry(UUID.randomUUID().toString(),campaign.walletSourceType(),campaign.id,campaign.draft.gold,campaign.draft.gems,campaign.draft.xp,now,campaign.draft.plays)
                 return balance
             }
             override fun accountByEmail(email: String) = next.accounts.values.firstOrNull { it.identity.email == email }
@@ -74,6 +74,12 @@ class InMemoryAdminRepository : AdminRepository {
             override fun accounts(page: PageRequest) = paginate(next.accounts.values.map { it.identity }.sortedBy { it.id }, page)
             override fun audit(page: PageRequest) = paginate(next.audits.sortedWith(compareByDescending<AuditEntry> { it.createdAtEpochMillis }.thenByDescending { it.id }), page)
             fun available() { if (!next.playerStorageAvailable) unavailable() }
+            // This dev repository has no shared authentication store or receipt ledger.
+            override fun playerCommerce(from: Long, until: Long) = PlayerCommerceOverview(from,until,null,null,null,"UNAVAILABLE")
+            override fun playerCreation(actorId: String, requestId: String): PlayerCreationReceipt? = null
+            override fun putPlayerCreation(actorId: String, requestId: String, receipt: PlayerCreationReceipt) { unavailable() }
+            override fun playerPasswordHash(id: String): String? = null
+            override fun createSupportPlayer(id: String, email: String, displayName: String, passwordHash: String, now: Long): UserDetail = unavailable()
             override fun playerOverview(todayFrom: Long, todayUntil: Long): PlayerOverviewStats {
                 available()
                 val users = next.users.values

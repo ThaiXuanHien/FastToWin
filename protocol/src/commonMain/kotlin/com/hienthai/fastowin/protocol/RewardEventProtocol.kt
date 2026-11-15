@@ -14,7 +14,8 @@ import kotlinx.serialization.Serializable
 @Serializable data class MatchRewardBreakdown(
     val baseGold:Int=0,val bonusGold:Int=0,val totalGold:Int=0,
     val baseXp:Int=0,val bonusXp:Int=0,val totalXp:Int=0,
-    val sources:List<RewardEventSourceSnapshot> = emptyList()
+    val sources:List<RewardEventSourceSnapshot> = emptyList(),
+    val clanBonusGold: Int = 0
 )
 /** Player-safe HTTP contract. Administrative identities, audit reasons and preview tokens stay server-side. */
 @Serializable data class RewardEventPublicView(

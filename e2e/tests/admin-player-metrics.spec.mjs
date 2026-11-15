@@ -8,6 +8,7 @@ const overview = {
   totalPlayers: '42', registeredPlayers: '30', guestPlayers: '12', playableAccounts: '40', matchesToday: '9',
   recordedParticipations: '100', recordedWins: '45', recordedLosses: '45', recordedDraws: '10',
   playedProfiles: '20', clanCount: '3', clanMembers: '10', averageElo: '1456.5', maxElo: 2100,
+  commerce: { from: today - 6 * day, until: now, iapPurchases: '7', iapBuyers: '4', rewardedAdViews: '14' },
 };
 function install(fixture, { status = 'COMPLETE', summary = '17', values = ['1', '2', '3', '4', '5', '6', '7'], registrationStatus = status } = {}) {
   fixture.handlers.set('/admin/api/player-overview', async (_, send) => { send(200, overview); return true; });
@@ -22,7 +23,7 @@ function install(fixture, { status = 'COMPLETE', summary = '17', values = ['1', 
     }] });
     send(200, { range: { from, until }, comparisonRange: { from: from - (until - from), until: from },
       timezone: 'Asia/Bangkok', bucket: 'DAY', snapshotAt: now,
-      metrics: [group('ACTIVE_PLAYERS', values, summary), group('REGISTRATIONS', ['1','2','0','1','2','1','3'], '10')] }); return true;
+      metrics: [group('ACTIVE_PLAYERS', values, summary), group('REGISTRATIONS', status === 'COMPLETE' ? ['1','2','0','1','2','1','3'] : values, '10')] }); return true;
   });
 }
 const metric = (page, label) => page.locator('.metric-card').filter({ has: page.locator('.metric-lbl', { hasText: label }) }).locator('.metric-val');
@@ -30,8 +31,10 @@ for (const width of [360, 1440]) test(`player dashboard uses real aggregates and
   await page.setViewportSize({ width, height: 1000 }); await page.clock.setFixedTime(now); install(fixture); await login(page, fixture);
   await expect(metric(page, /^Tổng người chơi$/)).toHaveText('42');
   await expect(metric(page, /^Trận đấu hôm nay$/)).toHaveText('9');
-  await expect(metric(page, /^Kết nối game hôm nay$/)).toHaveText('7');
-  await expect(metric(page, /^Kết nối game 7 ngày$/)).toHaveText('17'); // Distinct period total is not sum of daily counts (28).
+  await expect(metric(page, /^Lượt mua IAP · 7 ngày$/)).toHaveText('7');
+  await expect(metric(page, /^Người mua IAP · 7 ngày$/)).toHaveText('4');
+  await expect(metric(page, /^Lượt xem quảng cáo thưởng · 7 ngày$/)).toHaveText('14');
+  await expect(page.getByText(/Kết nối game|Điểm Elo trung bình|Tài khoản khách/)).toHaveCount(0);
   await expect(metric(page, /^Đăng ký mới hôm nay$/)).toHaveText('3');
   await expect(page.locator('.bar-chart-svg .chart-bar')).toHaveCount(7);
   await expect(page.getByText('VIP: 1.250', { exact: true })).toHaveCount(0);
@@ -46,7 +49,7 @@ test('missing activity stays unknown while actual zero and large exact values re
   await page.clock.setFixedTime(now);
   install(fixture, { status: 'PARTIAL', summary: null, values: ['9007199254740993', '0', null, '4', '5', '6', '7'] });
   await login(page, fixture);
-  await expect(metric(page, /^Kết nối game 7 ngày$/)).toHaveText('—');
+  await expect(metric(page, /^Lượt mua IAP · 7 ngày$/)).toHaveText('7');
   const chart = page.locator('.trend-chart-card');
   await chart.getByText('Dữ liệu theo ngày', { exact: true }).click();
   await expect(chart.getByText('9.007.199.254.740.993', { exact: true }).first()).toBeVisible();
@@ -58,7 +61,7 @@ test('missing activity stays unknown while actual zero and large exact values re
 test('Support never requests or displays restricted aggregate statistics', async ({ page, fixture }) => {
   fixture.role = 'SUPPORT'; await login(page, fixture);
   expect(fixture.calls.some(c => ['/admin/api/player-overview','/admin/api/analytics'].includes(c.route))).toBe(false);
-  await expect(page.locator('.dashboard-metrics-grid .metric-val')).toHaveText(['—', '—', '—', '—']);
+  await expect(page.locator('.dashboard-metrics-grid .metric-val')).toHaveText(['—', '—', '—', '—', '—', '—']);
 });
 test('profile and directory show persisted level/results and unknown playtime', async ({ page, fixture }) => {
   install(fixture);
@@ -74,7 +77,7 @@ test('unavailable sources show unknown rather than zero or demo figures', async 
   install(fixture, { status: 'UNAVAILABLE', summary: null, values: Array(7).fill(null) });
   fixture.handlers.set('/admin/api/player-overview', async (_, send) => { send(503, { code: 'STORAGE_UNAVAILABLE', message: 'Kho dữ liệu chưa sẵn sàng.' }); return true; });
   await login(page, fixture);
-  await expect(page.locator('.dashboard-metrics-grid .metric-val')).toHaveText(['—', '—', '—', '—']);
+  await expect(page.locator('.dashboard-metrics-grid .metric-val')).toHaveText(['—', '—', '—', '—', '—', '—']);
   await expect(page.locator('.trend-chart-card')).toContainText('Chưa tải được tổng quan hồ sơ');
   await expect(page.locator('.bar-chart-svg .chart-bar')).toHaveCount(0);
   await expect(page.locator('.trend-chart-card .badge-growth')).toHaveText('—');
@@ -95,5 +98,72 @@ test('registration and activity coverage remain independently visible', async ({
   install(fixture, { registrationStatus: 'PARTIAL' }); await login(page, fixture);
   await expect(metric(page, /^Đăng ký mới hôm nay$/)).toHaveText('3');
   await expect(page.locator('.trend-chart-card')).toContainText('Nguồn đăng ký: Một phần');
-  await expect(page.locator('.trend-chart-card')).toContainText('Nguồn kết nối game: Đầy đủ');
+  await expect(page.locator('.trend-chart-card')).not.toContainText('Nguồn kết nối game');
+});
+
+test('Owner creates a player through the support form with a stable retry key', async ({ page, fixture }) => {
+  const requests = [];
+  fixture.handlers.set('/admin/api/users', async (call, send) => {
+    if (call.method !== 'POST') return false;
+    requests.push(call);
+    if (requests.length === 1) {
+      send(503, { code: 'STORAGE_UNAVAILABLE', message: 'Kho dữ liệu chưa sẵn sàng.' });
+    } else {
+      send(200, { ...player, emailVerified: false, displayName: 'Người chơi hỗ trợ' });
+    }
+    return true;
+  });
+  await login(page, fixture);
+  await page.getByRole('button', { name: 'Tạo tài khoản', exact: true }).click();
+  const dialog = page.getByRole('dialog', { name: 'Tạo tài khoản người chơi' });
+  await dialog.getByLabel('Email').fill('supported@example.test');
+  await dialog.getByLabel('Tên hiển thị').fill('Người chơi hỗ trợ');
+  await dialog.getByLabel('Mật khẩu ban đầu').fill('Only-A-Local-Fixture-123!');
+  await dialog.getByLabel('Lý do hỗ trợ').fill('Người chơi không nhận được mã.');
+  await dialog.getByRole('button', { name: 'Tạo tài khoản', exact: true }).click();
+  await expect(dialog.getByRole('alert')).toContainText('Kho dữ liệu chưa sẵn sàng.');
+  await dialog.getByRole('button', { name: 'Tạo tài khoản', exact: true }).click();
+  await expect(dialog).toHaveCount(0);
+  await expect(page.getByText(/Chưa xác minh email/)).toBeVisible();
+  expect(requests[0].headers['x-admin-csrf']).toBe('fixture-csrf');
+  expect(requests[0].body.requestId).toMatch(/^[0-9a-f-]{36}$/);
+  expect(requests[1].body.requestId).toBe(requests[0].body.requestId);
+});
+
+for (const width of [360, 1440]) test(`support player form preserves focus, secrets and pending guards at ${width}`, async ({ page, fixture }) => {
+  await page.setViewportSize({ width, height: 800 }); install(fixture);
+  let release;
+  fixture.handlers.set('/admin/api/users', async (call, send) => {
+    if (call.method !== 'POST') return false;
+    await new Promise(resolve => { release = resolve; });
+    send(200, { ...player, emailVerified: false, supportEmailVerificationExempt: true }); return true;
+  });
+  await login(page, fixture);
+  const opener = page.getByRole('button', { name: 'Tạo tài khoản', exact: true });
+  await opener.click();
+  let dialog = page.getByRole('dialog', { name: 'Tạo tài khoản người chơi' });
+  await expect(dialog.getByLabel('Email', { exact: true })).toBeFocused();
+  await dialog.getByLabel('Mật khẩu ban đầu').fill('Abandoned-Fixture-123!');
+  await page.keyboard.press('Escape'); await expect(dialog).toHaveCount(0); await expect(opener).toBeFocused();
+  await opener.click(); dialog = page.getByRole('dialog', { name: 'Tạo tài khoản người chơi' });
+  await expect(dialog.getByLabel('Mật khẩu ban đầu')).toBeEmpty();
+  await dialog.getByLabel('Email', { exact: true }).fill('supported@example.test');
+  await dialog.getByLabel('Tên hiển thị').fill('Người chơi hỗ trợ');
+  await dialog.getByLabel('Mật khẩu ban đầu').fill('Only-A-Local-Fixture-123!');
+  await dialog.getByLabel('Lý do hỗ trợ').fill('Người chơi không nhận được mã.');
+  await dialog.getByRole('button', { name: 'Tạo tài khoản', exact: true }).scrollIntoViewIfNeeded();
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+  await page.screenshot({ path: `../.artifacts/admin-player-metrics-20261015/support-form-${width}.png` });
+  await dialog.getByRole('button', { name: 'Tạo tài khoản', exact: true }).click();
+  await expect.poll(() => typeof release).toBe('function');
+  await expect(dialog.getByLabel('Email', { exact: true })).toBeDisabled();
+  await expect(dialog.getByRole('button', { name: 'Hủy', exact: true })).toBeDisabled();
+  await page.keyboard.press('Escape'); await expect(dialog).toBeVisible();
+  release(); await expect(dialog).toHaveCount(0);
+});
+
+for (const role of ['OPERATOR', 'SUPPORT']) test(`${role} cannot open support player provisioning`, async ({ page, fixture }) => {
+  fixture.role = role; install(fixture); await login(page, fixture);
+  await expect(page.getByRole('button', { name: 'Tạo tài khoản', exact: true })).toHaveCount(0);
+  expect(fixture.calls.some(call => call.method === 'POST' && call.route === '/admin/api/users')).toBe(false);
 });

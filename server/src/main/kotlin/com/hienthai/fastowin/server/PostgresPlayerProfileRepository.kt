@@ -1239,7 +1239,7 @@ class PostgresPlayerProfileRepository(
         dataSource.connection.use { connection ->
             connection.prepareStatement(
                 """
-                SELECT id, source_type, source_id, gold_delta, gems_delta, xp_delta, created_at
+                SELECT id, source_type, source_id, gold_delta, gems_delta, xp_delta, created_at, play_credit_delta
                 FROM wallet_transactions
                 WHERE user_id = ?
                 ORDER BY created_at DESC, id DESC
@@ -1259,7 +1259,8 @@ class PostgresPlayerProfileRepository(
                                     goldDelta = result.getInt("gold_delta"),
                                     gemsDelta = result.getInt("gems_delta"),
                                     xpDelta = result.getInt("xp_delta"),
-                                    createdAtEpochMillis = result.getTimestamp("created_at").toInstant().toEpochMilli()
+                                    createdAtEpochMillis = result.getTimestamp("created_at").toInstant().toEpochMilli(),
+                                    playCreditDelta = result.getInt("play_credit_delta")
                                 )
                             )
                         }

@@ -382,7 +382,16 @@ class GameController private constructor(
     }
 
     fun onStorePurchaseFinalized(result: ServerMessage.StorePurchaseResult) {
-        _uiState.update { it.copy(storePurchaseResult = result, profileNotice = messageMapper.message(result)) }
+        _uiState.update {
+            it.copy(
+                storePurchaseResult = result,
+                profileNotice = if (result.status == com.hienthai.fastowin.protocol.StorePurchaseStatus.GRANTED) {
+                    null
+                } else {
+                    messageMapper.message(result)
+                }
+            )
+        }
     }
 
     fun onStorePurchaseFinalizationObserved(accountUserId: String?, finalization: StoreFinalizationState) {
@@ -812,6 +821,12 @@ class GameController private constructor(
         }
     }
 
+    fun dismissProgressionReward() {
+        _uiState.update { state ->
+            state.copy(progressionRewardQueue = state.progressionRewardQueue.drop(1))
+        }
+    }
+
     fun openNotification(notificationId: String) {
         val notification = _uiState.value.notifications.firstOrNull { it.id == notificationId } ?: return
         if (notification.isServerAnnouncement() || _uiState.value.isMatchStarted) return
@@ -1095,9 +1110,23 @@ class GameController private constructor(
         val checkIn = _uiState.value.profile?.progression?.dailyCheckIn ?: return
         if (checkIn.claimedToday || _uiState.value.isDailyCheckInClaiming) return
         _uiState.update {
-            it.copy(isDailyCheckInClaiming = true, error = null)
+            it.copy(isDailyCheckInClaiming = true, dailyCheckInResult = null, error = null)
         }
         scope.launch { sendMessage(ClientMessage.ClaimDailyCheckIn) }
+    }
+
+    fun clearDailyCheckInResult() {
+        _uiState.update { it.copy(dailyCheckInResult = null) }
+    }
+
+    fun clearMissionRewardResult(missionCode: String) {
+        _uiState.update {
+            if (it.missionRewardResult?.missionCode == missionCode) {
+                it.copy(missionRewardResult = null)
+            } else {
+                it
+            }
+        }
     }
 
     fun claimMissionReward(missionCode: String) {
@@ -1106,7 +1135,7 @@ class GameController private constructor(
             .firstOrNull { it.code == missionCode } ?: return
         if (!mission.completed || mission.rewardClaimed || _uiState.value.claimingMissionCode != null) return
         _uiState.update {
-            it.copy(claimingMissionCode = missionCode, profileNotice = null, error = null)
+            it.copy(claimingMissionCode = missionCode, missionRewardResult = null, profileNotice = null, error = null)
         }
         scope.launch { sendMessage(ClientMessage.ClaimMissionReward(missionCode)) }
     }
@@ -1200,7 +1229,7 @@ class GameController private constructor(
                     val state = _uiState.value
                     if (state.isTournamentOpen) sendMessage(ClientMessage.GetPublicTournaments(state.publicTournamentFilters.toQuery()))
                     state.viewedFriendUserId?.let { sendMessage(ClientMessage.GetFriendProfile(it)) }
-                    state.currentClan?.id?.let { sendMessage(ClientMessage.GetClanInfo(it)) }
+                    (state.viewedLeaderboardClanId ?: state.currentClan?.id)?.let { sendMessage(ClientMessage.GetClanInfo(it)) }
                     if (state.isClanOpen) sendMessage(ClientMessage.GetClanList())
                     state.matchDetail?.summary?.matchId?.let { sendMessage(ClientMessage.GetMatchDetail(it)) }
                 }
@@ -1223,7 +1252,8 @@ class GameController private constructor(
                 if (playerId != null && playerId != message.playerId) {
                     ugc.clearSession()
                     _uiState.update { it.copy(notifications = emptyList(), hasLoadedNotifications = false,
-                        isNotificationsLoading = false, notificationsError = null, dismissedNotificationIds = emptySet()) }
+                        isNotificationsLoading = false, notificationsError = null, dismissedNotificationIds = emptySet(),
+                        progressionRewardQueue = emptyList()) }
                     _uiState.update { it.copy(suppressedAvatarIds = emptySet(), invalidatedAvatarIds = emptySet()) }
                 }
                 sendMessage(ClientMessage.GetContentTerms)
@@ -1248,7 +1278,8 @@ class GameController private constructor(
                         sendMessage(ClientMessage.GetTournamentHub)
                         sendMessage(ClientMessage.GetPlayQuota)
                         if (_uiState.value.isClanOpen) {
-                            _uiState.value.currentClan?.id?.let { sendMessage(ClientMessage.GetClanInfo(it)) }
+                        (_uiState.value.viewedLeaderboardClanId ?: _uiState.value.currentClan?.id)
+                            ?.let { sendMessage(ClientMessage.GetClanInfo(it)) }
                         }
                         _uiState.value.viewedFriendUserId?.let { friendUserId ->
                             sendMessage(ClientMessage.GetFriendProfile(friendUserId))
@@ -1364,6 +1395,11 @@ class GameController private constructor(
                             newNotifications,
                             state.dismissedNotificationIds
                         ),
+                        progressionRewardQueue = state.progressionRewardQueue + newNotifications
+                            .filter { it.kind == AppNotificationKind.ACHIEVEMENT || it.kind == AppNotificationKind.COSMETIC }
+                            .filterNot { notification ->
+                                state.progressionRewardQueue.any { it.id == notification.id }
+                            },
                         error = editorProfileSaveFailure ?: state.error.takeIf { message.isBackgroundRefresh }
                     )
                 }
@@ -1374,7 +1410,9 @@ class GameController private constructor(
                 }
                 // Auto-load clan details when clanId changes while clan screen is open
                 val newClanId = message.profile.clanId
-                if (newClanId != null && newClanId != previousClanId && _uiState.value.isClanOpen) {
+                if (newClanId != null && newClanId != previousClanId && _uiState.value.isClanOpen &&
+                    _uiState.value.viewedLeaderboardClanId == null
+                ) {
                     requestedClanId = newClanId
                     sendMessage(ClientMessage.GetClanInfo(newClanId))
                 }
@@ -1415,8 +1453,16 @@ class GameController private constructor(
                 val pending = pendingRewardedAdClaim
                 if (pending != null && message.requestId != pending.receipt.requestId) return
                 pendingRewardedAdClaim = null
+                val notice = messageMapper.message(message)
                 _uiState.update {
-                    it.withRewardedAdBonus(message, messageMapper.message(message))
+                    it.withRewardedAdBonus(
+                        message,
+                        notice
+                    ).copy(
+                        profileNotice = notice.takeUnless {
+                            message.status == com.hienthai.fastowin.protocol.RewardedAdBonusStatus.GRANTED
+                        }
+                    )
                 }
             }
             is ServerMessage.GoldExchangeResult -> {
@@ -1425,10 +1471,7 @@ class GameController private constructor(
                         exchangingGoldRequestId = null,
                         goldExchangeResult = message,
                         profileNotice = when (message.status) {
-                            GoldExchangeStatus.GRANTED -> messageMapper.text(
-                                TextKey.GoldExchangeGranted,
-                                mapOf("gold" to message.receivedGold)
-                            )
+                            GoldExchangeStatus.GRANTED -> null
                             GoldExchangeStatus.ALREADY_GRANTED -> messageMapper.text(TextKey.GoldExchangeAlreadyGranted)
                             GoldExchangeStatus.INSUFFICIENT_GEMS -> messageMapper.text(TextKey.NotEnoughGems)
                             GoldExchangeStatus.INVALID_OFFER,
@@ -1452,6 +1495,7 @@ class GameController private constructor(
                 _uiState.update {
                     it.copy(
                         isDailyCheckInClaiming = false,
+                        dailyCheckInResult = message.takeIf { result -> result.claimed },
                         profileNotice = if (message.claimed) rewardNotice(
                             message.rewardGold,
                             message.rewardXp,
@@ -1465,11 +1509,8 @@ class GameController private constructor(
                 _uiState.update {
                     it.copy(
                         claimingMissionCode = null,
-                        profileNotice = if (message.claimed) rewardNotice(
-                            message.rewardGold,
-                            message.rewardXp,
-                            message.rewardGems
-                        ) else null,
+                        missionRewardResult = message.takeIf { result -> result.claimed },
+                        profileNotice = null,
                         error = null
                     )
                 }
@@ -1687,6 +1728,7 @@ class GameController private constructor(
             is ServerMessage.ClanInfoData -> {
                 _uiState.update { state ->
                     when {
+                        state.isClanOpen && state.viewedLeaderboardClanId?.let { it != message.clan.id } == true -> state
                         message.isPresenceRefresh -> {
                             val current = state.currentClan
                             if (current?.id != message.clan.id) state else {
@@ -1766,6 +1808,16 @@ class GameController private constructor(
                         clanNotice = notice,
                         error = null
                     )
+                }
+            }
+
+            is ServerMessage.ClanQuestRewardResult -> {
+                _uiState.update { state -> state.copy(clanQuestRewardResult = message.takeIf { it.claimed }) }
+            }
+
+            is ServerMessage.TournamentRewardResult -> {
+                _uiState.update { state ->
+                    state.copy(tournamentRewardResult = message)
                 }
             }
 
@@ -1923,13 +1975,17 @@ class GameController private constructor(
         when (error.code) {
             "FRIENDS_PRESENCE_UNAVAILABLE" -> {
                 _uiState.update { state ->
-                    if ((state.isFriendsOpen || state.isClanOpen) && state.isFriendsLoading) {
+                    if ((state.isFriendsOpen || state.isClanOpen || state.isLeaderboardOpen) && state.isFriendsLoading) {
                         state.copy(isFriendsLoading = false, error = localizedError)
                     } else state
                 }
                 return
             }
-            "CLAN_PRESENCE_UNAVAILABLE" -> {
+            "CLAN_PRESENCE_UNAVAILABLE", "CLAN_NOT_FOUND" -> {
+                if (error.code == "CLAN_NOT_FOUND" && error.requestId == null) {
+                    _uiState.update { it.copy(error = localizedError) }
+                    return
+                }
                 _uiState.update { state ->
                     val clanId = requestedClanId ?: state.currentClan?.id
                     if (state.isClanOpen && clanId != null && error.requestId == clanId) {
@@ -2265,10 +2321,15 @@ class GameController private constructor(
         scope.launch { sendMessage(ClientMessage.GetFriends) }
     }
 
-    fun openClan() {
+    fun openClan() = openClan(null)
+
+    fun openClan(clanId: String?) {
+        requestedClanId = clanId
         _uiState.update {
             it.copy(
                 isClanOpen = true,
+                viewedLeaderboardClanId = clanId,
+                currentClan = it.currentClan?.takeIf { clan -> clan.id == (clanId ?: it.profile?.clanId) },
                 isProfileOpen = false,
                 isProfileLoading = false,
                 isLeaderboardOpen = false,
@@ -2282,12 +2343,15 @@ class GameController private constructor(
             )
         }
         refreshClanSocial()
-        scope.launch { sendMessage(ClientMessage.GetClanList()) }
+        scope.launch {
+            if (clanId == null) sendMessage(ClientMessage.GetClanList())
+            else sendMessage(ClientMessage.GetClanInfo(clanId))
+        }
     }
 
     fun closeClan() {
         requestedClanId = null
-        _uiState.update { it.copy(isClanOpen = false, clanLoadError = null) }
+        _uiState.update { it.copy(isClanOpen = false, clanLoadError = null, viewedLeaderboardClanId = null) }
     }
 
     fun createClan(name: String, description: String) {
@@ -2332,8 +2396,15 @@ class GameController private constructor(
 
 
     fun claimClanQuestReward(clanId: String) {
-        _uiState.update { it.copy(error = null) }
-        scope.launch { sendMessage(ClientMessage.ClaimClanQuestReward(clanId)) }
+        val requestId = randomUuid()
+        _uiState.update { it.copy(clanQuestRewardResult = null, error = null) }
+        scope.launch { sendMessage(ClientMessage.ClaimClanQuestReward(clanId, requestId)) }
+    }
+
+    fun clearClanQuestRewardResult(requestId: String) {
+        _uiState.update {
+            if (it.clanQuestRewardResult?.requestId == requestId) it.copy(clanQuestRewardResult = null) else it
+        }
     }
 
     fun requestPlayQuota() {
@@ -2358,6 +2429,16 @@ class GameController private constructor(
         if (pending != null) sendPendingRewardedAdClaim(pending)
         else scope.launch { socket.sendMessage(receipt.toClaimMessage()) }
         return true
+    }
+
+    fun clearRewardedAdBonusResult(requestId: String) {
+        _uiState.update {
+            if (it.rewardedAdBonusResult?.requestId == requestId) {
+                it.copy(rewardedAdBonusResult = null)
+            } else {
+                it
+            }
+        }
     }
 
     private fun sendPendingRewardedAdClaim(pending: PendingRewardedAdClaim) {
@@ -2410,17 +2491,38 @@ class GameController private constructor(
         return true
     }
 
+    fun clearClanDonationResult(requestId: String) {
+        _uiState.update {
+            if (it.clanDonationResult?.requestId == requestId) {
+                it.copy(clanDonationResult = null)
+            } else {
+                it
+            }
+        }
+    }
+
+    fun clearTournamentRewardResult(requestId: String) {
+        _uiState.update {
+            if (it.tournamentRewardResult?.requestId == requestId) {
+                it.copy(tournamentRewardResult = null)
+            } else {
+                it
+            }
+        }
+    }
+
     fun openShop() {
         _uiState.update {
             it.copy(
                 isShopOpen = true,
                 isGemStoreCatalogLoading = true,
-                goldExchangeResult = null,
+                goldExchangeResult = it.goldExchangeResult?.takeIf { result -> result.status == GoldExchangeStatus.GRANTED },
                 profileNotice = null,
                 error = null
             )
         }
         scope.launch { sendMessage(ClientMessage.GetGemStoreCatalog) }
+        requestPlayQuota()
     }
 
     fun closeShop() {
@@ -2452,8 +2554,18 @@ class GameController private constructor(
         return true
     }
 
-    fun clearStorePurchaseResult() {
-        _uiState.update { it.copy(storePurchaseResult = null) }
+    fun clearStorePurchaseResult(requestId: String? = null) {
+        _uiState.update {
+            if (requestId == null || it.storePurchaseResult?.requestId == requestId) {
+                it.copy(storePurchaseResult = null)
+            } else {
+                it
+            }
+        }
+    }
+
+    fun clearGoldExchangeResult(requestId: String) {
+        _uiState.update { if (it.goldExchangeResult?.requestId == requestId) it.copy(goldExchangeResult = null) else it }
     }
 
     fun exchangeGemsForGold(offerId: String): Boolean {

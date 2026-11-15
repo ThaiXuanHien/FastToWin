@@ -7,19 +7,23 @@ import java.sql.Timestamp
 import java.time.LocalDate
 
 /** Historical identity and existence are read at cutoff, independent of live clan/member rows. */
-fun JdbcClanRaceStore.standingsAt(week:LocalDate,cutoffMillis:Long):List<ClanRaceStanding> = rows("""
+fun JdbcClanRaceStore.standingsAt(week:LocalDate,cutoffMillis:Long):List<ClanRaceStanding> {
+ ensureRacePools(week,cutoffMillis)
+ return rows("""
  WITH totals AS (
    SELECT clan_id,sum(score_units) AS score,max(occurred_at) AS reached FROM clan_race_events
    WHERE week_start=? AND occurred_at<? GROUP BY clan_id
  ), ranked AS (
-   SELECT row_number() OVER(ORDER BY t.score DESC,t.reached ASC,t.clan_id ASC) AS rank,t.*,v.name,v.logo_id,v.level
+   SELECT row_number() OVER(PARTITION BY p.pool_id ORDER BY t.score DESC,t.reached ASC,t.clan_id ASC) AS rank,t.*,v.name,v.logo_id,v.level,p.pool_id
    FROM totals t JOIN clan_race_clans c ON c.clan_id=t.clan_id
    JOIN clan_race_clan_versions v ON v.clan_id=t.clan_id AND v.valid_from<? AND (v.valid_until IS NULL OR v.valid_until>=?)
+   LEFT JOIN clan_race_pool_members p ON p.clan_id=t.clan_id AND p.week_start=?
    WHERE t.score>0 AND c.created_at<? AND (c.deleted_at IS NULL OR c.deleted_at>=?)
- ) SELECT * FROM ranked ORDER BY rank
-""",listOf(Date.valueOf(week),Timestamp(cutoffMillis),Timestamp(cutoffMillis),Timestamp(cutoffMillis),Timestamp(cutoffMillis),Timestamp(cutoffMillis))) {
+ ) SELECT * FROM ranked ORDER BY pool_id,rank
+""",listOf(Date.valueOf(week),Timestamp(cutoffMillis),Timestamp(cutoffMillis),Timestamp(cutoffMillis),Date.valueOf(week),Timestamp(cutoffMillis),Timestamp(cutoffMillis))) {
     val units=checkedRaceUnits(it.getBigDecimal("score").toBigIntegerExact())
-    ClanRaceStanding(it.getInt("rank"),it.getString("clan_id"),it.getString("name"),it.getString("logo_id"),it.getInt("level"),units.toString(),racePoints(units),it.getTimestamp("reached").time)
+    ClanRaceStanding(it.getInt("rank"),it.getString("clan_id"),it.getString("name"),it.getString("logo_id"),it.getInt("level"),units.toString(),racePoints(units),it.getTimestamp("reached").time,it.getString("pool_id"))
+ }
 }
 internal fun JdbcClanRaceStore.ownClan(player:String):String?=rows("SELECT clan_id FROM clan_members WHERE user_id=?",listOf(uuid(player))) { it.getString(1) }.singleOrNull()
 internal fun JdbcClanRaceStore.contributions(week:LocalDate,clan:String):List<ClanRaceContribution> = rows("""

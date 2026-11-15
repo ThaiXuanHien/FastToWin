@@ -16,6 +16,31 @@ import kotlin.test.assertTrue
 
 class PostgresPlayQuotaRepositoryTest {
     @Test
+    fun `banked credit is spent after daily quota and refunded to the bank across reset`() = runTest {
+        withPlayers { dataSource, player, _ ->
+            val repository = PostgresPlayQuotaRepository(dataSource)
+            val id = UUID.fromString(player)
+            dataSource.connection.use { connection ->
+                connection.prepareStatement(
+                    "INSERT INTO player_stats(user_id, play_credits, updated_at) VALUES (?, 2, CURRENT_TIMESTAMP) " +
+                        "ON CONFLICT (user_id) DO UPDATE SET play_credits=2"
+                ).use { statement ->
+                    statement.setObject(1, id)
+                    statement.executeUpdate()
+                }
+            }
+            repeat(10) { repository.consumeMatch(setOf(player), UUID.randomUUID().toString(), NOW) }
+            assertEquals(2L, repository.getSnapshot(player, NOW).bankedMatches)
+            val match = UUID.randomUUID().toString()
+            val prepared = repository.prepareMatch(setOf(player), match, NOW)
+            assertEquals(1L, prepared.quotas.getValue(player).bankedMatches)
+            repository.releaseMatch(setOf(player), match, emptySet())
+            assertEquals(2L, repository.getSnapshot(player, NEXT_DAY).bankedMatches)
+            assertEquals(12, repository.getSnapshot(player, NEXT_DAY).remainingMatches)
+        }
+    }
+
+    @Test
     fun `match consumption is atomic and idempotent for both players`() = runTest {
         withPlayers { dataSource, firstPlayerId, secondPlayerId ->
             val repository = PostgresPlayQuotaRepository(dataSource)

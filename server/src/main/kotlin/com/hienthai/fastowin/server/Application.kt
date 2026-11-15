@@ -218,7 +218,7 @@ fun Application.gameModule(
 
     routing { adMobRoutes(adMobService, authService, rateLimiter, rateLimitPolicies) }
     routing { storePurchaseRoutes(engine.storePurchaseService, authService, rateLimiter, rateLimitPolicies) }
-    routing { giftRoutes(giftService, authService, adminService != null) }
+    routing { giftRoutes(giftService, authService, adminService != null, rateLimiter) }
     if (adminService != null) compensationIncidentService?.let { service -> routing { compensationIncidentRoutes(service) } }
     if (adminService != null) compensationRoundService?.let { service -> routing { compensationRoundRoutes(service) } }
     routing { missionRoutes(missionService, authService, adminService != null); clanRaceRoutes(clanRaceService,authService,adminService != null) }
@@ -759,7 +759,7 @@ fun Application.gameModule(
                                 is ClientMessage.ConnectAccount -> {
                                     val account = authService.authenticateAccessToken(message.accessToken)
                                         ?: throw InvalidAccessTokenException()
-                                    if (!account.emailVerified) throw UnverifiedEmailException()
+                                    if (!account.emailVerified && !account.supportEmailVerificationExempt) throw UnverifiedEmailException()
                                     engine.connectAccount(account, message.resumeToken, message.protocolVersion).also {
                                         accountAccessToken = message.accessToken
                                         socketAccount = account

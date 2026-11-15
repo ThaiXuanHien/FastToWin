@@ -28,6 +28,10 @@ fun Route.adminRoutes(service: AdminService) {
             call.adminCookie("", service.configuration.secureCookie, expire = true); call.respond(AdminOk())
         } }
         get("/users") { call.adminResponse(service) { call.respond(service.users(call.adminToken(), call.request.queryParameters["q"].orEmpty(), call.adminPage())) } }
+        post("/users") { call.adminResponse(service) {
+            service.requireOrigin(call.request.header(HttpHeaders.Origin))
+            call.respond(service.createPlayer(call.adminToken(), call.request.header(ADMIN_CSRF_HEADER), call.request.header(HttpHeaders.Origin), call.adminBody<CreatePlayerRequest>()))
+        } }
         get("/player-overview") { call.adminResponse(service) { call.respond(service.playerOverview(call.adminToken())) } }
         get("/gift-recipient") { call.adminResponse(service) { call.respond(service.giftRecipient(call.adminToken(), call.request.queryParameters["q"].orEmpty())) } }
         get("/users/{id}") { call.adminResponse(service) { call.respond(service.user(call.adminToken(), call.adminId())) } }

@@ -56,6 +56,17 @@ fun racePrizeCardsPreview() = RaceFrame {
 }
 @PreviewTest @Preview(name = "race_vi_phone_375", widthDp = 375, heightDp = 1700) @Composable
 fun racePhone() = RaceFrame { ClanRaceScreen(raceFixture(), {}, {}) }
+@PreviewTest
+@Preview(name = "pool_vi_phone", widthDp = 375, heightDp = 1200)
+@Preview(name = "pool_vi_desktop", widthDp = 1024, heightDp = 1000)
+@Composable
+fun raceGroupedStandings() = RaceFrame {
+    val current = raceCurrent.copy(config = raceCurrent.config?.copy(poolingVersion = 1))
+    val standings = ClanRaceStandings(current.weekStart,
+        listOf(raceLeader.copy(poolId = "strength-1")), 0, 25, 2,
+        raceOwn.copy(rank = 2, poolId = "strength-1"), raceStart, "strength-1")
+    ClanRaceScreen(raceFixture().copy(current = current, standings = standings), {}, {})
+}
 @PreviewTest @Preview(name = "entry_vi_phone_375", widthDp = 375, heightDp = 900) @Composable
 fun raceClanEntry() = RaceFrame {
     val state = ArcadeScreenshotFixtures.clanState()

@@ -129,6 +129,7 @@ fun RewardBreakdownCard(breakdown: MatchRewardBreakdown?, persisted: Boolean = f
                 RewardBreakdownLine(TextKey.RewardResultTotal, breakdown.totalGold, breakdown.totalXp, true)
                 RewardBreakdownLine(TextKey.RewardResultBase, breakdown.baseGold, breakdown.baseXp)
                 RewardBreakdownLine(TextKey.RewardResultBonus, breakdown.bonusGold, breakdown.bonusXp)
+                if (breakdown.clanBonusGold > 0) RewardBreakdownLine(TextKey.RewardResultClanBonus, breakdown.clanBonusGold, 0)
                 Text(localized(TextKey.RewardResultSources), fontWeight = FontWeight.Bold)
                 if (breakdown.sources.isEmpty()) Text(localized(TextKey.RewardResultNoSources))
                 breakdown.sources.forEach { source ->

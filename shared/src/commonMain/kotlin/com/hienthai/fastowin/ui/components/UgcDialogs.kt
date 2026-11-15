@@ -3,6 +3,9 @@ package com.hienthai.fastowin.ui.components
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.selection.toggleable
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.rounded.Check
+import androidx.compose.material.icons.rounded.KeyboardArrowDown
+import androidx.compose.material.icons.rounded.KeyboardArrowUp
 import androidx.compose.material.icons.rounded.Report
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -12,8 +15,10 @@ import androidx.compose.ui.platform.LocalUriHandler
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.LiveRegionMode
 import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.liveRegion
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.selected
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.hienthai.fastowin.localization.*
@@ -135,7 +140,8 @@ fun ContentTermsDialog(state: UgcState, onChecked: (Boolean) -> Unit, onAccept: 
         }
         Row(Modifier.fillMaxWidth().heightIn(min = 48.dp).toggleable(state.termsChecked,
             enabled = !state.termsPending && state.terms != null, role = Role.Checkbox, onValueChange = onChecked)
-            .testTag("ugc_terms_checkbox"), verticalAlignment = Alignment.CenterVertically) {
+            .testTag("ugc_terms_checkbox"), verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(16.dp)) {
             Checkbox(state.termsChecked, null)
             Text(localized(TextKey.UgcTermsAgreement), Modifier.weight(1f), style = MaterialTheme.typography.bodyMedium)
         }
@@ -160,7 +166,7 @@ fun UgcReportDialog(draft: UgcReportDraft,
     onEdit: (UgcReportReason, String, UgcTargetType) -> Unit, onSubmit: () -> Unit,
     onDismiss: () -> Unit, onBlock: (() -> Unit)? = null) {
     val frozen = draft.request != null || draft.pending || draft.receipt != null
-    var reasonsExpanded by remember { mutableStateOf(false) }
+    var reasonsExpanded by remember(draft.targetId, frozen) { mutableStateOf(false) }
     ArcadeDialog(localized(TextKey.UgcReportTitle), onDismiss,
         subtitle = draft.targetLabel, showCloseButton = true, scrollableContent = true,
         modifier = Modifier.testTag("ugc_report_dialog"), fixedActions = {
@@ -193,16 +199,30 @@ fun UgcReportDialog(draft: UgcReportDraft,
                 enabled = { !frozen }, modifier = Modifier.fillMaxWidth(),
                 itemTestTag = { if (it == 1) "ugc_report_avatar" else "ugc_report_nickname" })
             else Text(localized(draft.targetType.labelKey()), fontWeight = FontWeight.Bold)
-            Text(localized(TextKey.UgcReportReason), style = MaterialTheme.typography.labelLarge)
-            Box {
-                OutlinedButton({ reasonsExpanded = true }, Modifier.fillMaxWidth().heightIn(min = 48.dp), enabled = !frozen) {
-                    Text(localized(draft.reason.labelKey()))
+            val reasonLabel = localized(TextKey.UgcReportReason)
+            Text(reasonLabel, style = MaterialTheme.typography.labelLarge)
+            BoxWithConstraints(Modifier.fillMaxWidth()) {
+                val dropdownWidth = maxWidth
+                OutlinedButton(
+                    onClick = { reasonsExpanded = !reasonsExpanded },
+                    modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp)
+                        .semantics { contentDescription = reasonLabel }.testTag("ugc_report_reason"),
+                    enabled = !frozen
+                ) {
+                    Text(localized(draft.reason.labelKey()), Modifier.weight(1f))
+                    Spacer(Modifier.width(8.dp))
+                    Icon(if (reasonsExpanded) Icons.Rounded.KeyboardArrowUp else Icons.Rounded.KeyboardArrowDown,
+                        contentDescription = null)
                 }
-                DropdownMenu(reasonsExpanded, { reasonsExpanded = false }) {
+                DropdownMenu(expanded = reasonsExpanded && !frozen,
+                    onDismissRequest = { reasonsExpanded = false }, modifier = Modifier.width(dropdownWidth)) {
                     UgcReportReason.entries.forEach { reason -> DropdownMenuItem(
                         text = { Text(localized(reason.labelKey())) },
                         onClick = { reasonsExpanded = false; onEdit(reason, draft.note, draft.targetType) },
-                        modifier = Modifier.heightIn(min = 48.dp)) }
+                        enabled = !frozen,
+                        trailingIcon = if (reason == draft.reason) ({ Icon(Icons.Rounded.Check, contentDescription = null) }) else null,
+                        modifier = Modifier.heightIn(min = 48.dp).semantics { selected = reason == draft.reason }
+                            .testTag("ugc_report_reason:${reason.name}")) }
                 }
             }
             AppOutlinedTextField(draft.note, { onEdit(draft.reason, it, draft.targetType) },

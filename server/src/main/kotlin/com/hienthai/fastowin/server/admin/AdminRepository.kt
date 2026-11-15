@@ -19,6 +19,11 @@ interface AdminTransaction {
     fun audit(page: PageRequest): AdminPage<AuditEntry>
     fun users(query: String, includeEmail: Boolean, page: PageRequest): AdminPage<UserSummary>
     fun playerOverview(todayFrom: Long, todayUntil: Long): PlayerOverviewStats
+    fun playerCommerce(from: Long, until: Long): PlayerCommerceOverview
+    fun playerCreation(actorId: String, requestId: String): PlayerCreationReceipt?
+    fun putPlayerCreation(actorId: String, requestId: String, receipt: PlayerCreationReceipt)
+    fun playerPasswordHash(id: String): String?
+    fun createSupportPlayer(id: String, email: String, displayName: String, passwordHash: String, now: Long): UserDetail
     fun user(id: String): UserDetail?
     fun giftRecipient(reference: String): UserSummary?
     fun matches(id: String, page: PageRequest): AdminPage<MatchEntry>

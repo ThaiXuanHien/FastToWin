@@ -4,6 +4,8 @@ const configStates = { DRAFT: 'Bản nháp · chưa mở đua', PUBLISHED: 'Đã
 const maximumUnits = 10n ** 38n - 1n;
 const integerText = value => new Intl.NumberFormat('vi-VN').format(BigInt(value));
 const rewardText = reward => Object.entries(assets).map(([key, label]) => `${integerText(reward[key] ?? 0)} ${label}`).join(' · ');
+const poolText = id => id ? `${id.startsWith('starter-') ? 'Nhóm tân binh' : 'Nhóm'} ${id.split('-').at(-1)} · ` : '';
+const pooledRace = race => race.state === 'DRAFT' || race.config.poolingVersion === 1;
 const bangkokTime = value => new Intl.DateTimeFormat('vi-VN', { dateStyle: 'medium', timeStyle: 'short', timeZone: 'Asia/Bangkok' }).format(new Date(value));
 export function raceWeek(now = Date.now()) {
   const parts = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Bangkok', year: 'numeric', month: '2-digit', day: '2-digit' }).formatToParts(new Date(now));
@@ -56,6 +58,7 @@ export function openClanRace(ui) {
   function facts(parent, entries) { const dl = node('dl', null, { class: 'facts' }); for (const [label, value] of entries) dl.append(append(node('div'), node('dt', label), node('dd', value))); parent.append(dl); }
   function definition(parent, race, budget = false) {
     parent.append(node('h3', race.publishedRevision ? 'Thưởng đã đóng băng' : 'Thưởng bản nháp · chưa phát hành'));
+    if (pooledRace(race)) parent.append(node('p', 'Mỗi nhóm tối đa 20 bang, xếp theo đóng góp bốn tuần trước rồi số thành viên đầu tuần. Chia nhóm cân bằng; bang chưa có lịch sử vào nhóm tân binh. Nhóm cố định trong tuần; mỗi nhóm có top 3 và quà riêng. Ngân sách dưới đây tính cho một nhóm. Tổng chi phụ thuộc số nhóm thực tế, chưa chốt trước đầu tuần.', { class: 'muted' }));
     facts(parent, [['Điểm / 1 Vàng', race.config.goldRate], ['Điểm / 1 Gem', race.config.gemRate]]);
     const rewards = node('div', null, { class: 'race-rewards' }); parent.append(rewards);
     for (const [rank, reward] of race.config.rewards.entries()) {
@@ -79,10 +82,10 @@ export function openClanRace(ui) {
     if (value.result) {
       const result = value.result; facts(parent, [['Revision đã chốt', String(result.revision)], ['Mốc chốt · Giờ Việt Nam (UTC+7)', bangkokTime(result.cutoffEpochMillis)], ['Đã chốt lúc · Giờ Việt Nam (UTC+7)', bangkokTime(result.settledAtEpochMillis)]]);
       parent.append(node('h3', 'Thưởng lịch sử · mỗi thành viên đủ điều kiện'));
-      for (const winner of result.winners) parent.append(append(node('section', null, { class: 'race-history' }), node('h4', `Top ${winner.standing.rank} · ${winner.standing.name}`), node('p', `${winner.standing.points} điểm · ${winner.eligibleMembers} thành viên đủ điều kiện`), node('p', rewardText(winner.reward))));
+      for (const winner of result.winners) parent.append(append(node('section', null, { class: 'race-history' }), node('h4', `${poolText(winner.standing.poolId)}Top ${winner.standing.rank} · ${winner.standing.name}`), node('p', `${winner.standing.points} điểm · ${winner.eligibleMembers} thành viên đủ điều kiện`), node('p', rewardText(winner.reward))));
       parent.append(node('h3', 'Bảng hạng tại mốc chốt'));
       if (!result.standings.length) parent.append(node('p', 'Không có bang có điểm dương tại mốc chốt.'));
-      for (const standing of result.standings) parent.append(node('p', `#${standing.rank} · ${standing.name} · cấp ${standing.level} · ${standing.points} điểm`, { class: 'race-history' }));
+      for (const standing of result.standings) parent.append(node('p', `${poolText(standing.poolId)}#${standing.rank} · ${standing.name} · cấp ${standing.level} · ${standing.points} điểm`, { class: 'race-history' }));
     }
     const delivery = value.delivery || {};
     facts(parent, [['Chờ phát', String(delivery.pending ?? 0)], ['Chờ đăng ký (trong chờ phát)', String(delivery.waitingRegistration ?? 0)], ['Phát lỗi (trong chờ phát)', String(delivery.failed ?? 0)], ['Đã phát vào hộp thư', String(delivery.delivered ?? 0)], ['Đã nhận (trong đã phát)', String(delivery.claimed ?? 0)], ['Tài khoản không khả dụng', String(delivery.accountUnavailable ?? 0)]]);
@@ -175,7 +178,7 @@ export function openClanRace(ui) {
     const examples = node('p', '', { class: 'muted', 'aria-live': 'polite' }); form.append(examples);
     function updateExamples() { const gold = rateUnits(controls.goldRate.value), gem = rateUnits(controls.gemRate.value); examples.textContent = gold != null && gem != null && gold * 100n <= maximumUnits ? `Ví dụ: 100 Vàng = ${points(gold * 100n)} điểm; 1 Gem = ${points(gem)} điểm. 1 Vàng = ${points(gold)} điểm. Quyên góp Vàng thực tế theo bội số 100.` : 'Nhập tỷ lệ để xem ví dụ chính xác.'; }
     for (const key of ['goldRate', 'gemRate']) controls[key].addEventListener('input', updateExamples); updateExamples();
-    form.append(node('h3', 'Thưởng mỗi thành viên đủ điều kiện'), node('p', 'Mỗi hạng có quà; hạng trước không thấp hơn theo từng tài sản và cao hơn ít nhất một tài sản. Tối đa 50 người/hạng, 150 người/3 hạng; không chia quỹ.', { id: 'race-reward-hint', class: 'muted' }));
+    form.append(node('h3', 'Thưởng mỗi thành viên đủ điều kiện'), node('p', 'Mỗi nhóm có top 3 riêng; hạng trước không thấp hơn theo từng tài sản và cao hơn ít nhất một tài sản. Mỗi nhóm tối đa 50 người/hạng, 150 người/3 hạng; không chia quỹ. Tổng ngân sách nhân theo số nhóm thực tế.', { id: 'race-reward-hint', class: 'muted' }));
     for (let rank = 0; rank < 3; rank++) {
       const group = node('fieldset', null, { class: 'race-reward-fields' }); group.append(node('legend', `Top ${rank + 1} · mỗi thành viên`)); form.append(group);
       for (const [key, label] of Object.entries(assets)) { const control = field(group, `Top ${rank + 1} · ${label}`, `race-${rank}-${key}`, 'text', { inputmode: 'numeric', maxlength: '10', 'aria-describedby': 'race-reward-hint' }); controls[`${rank}-${key}`] = control; control.value = race?.config.rewards[rank][key] ?? ''; control.readOnly = clone; }
@@ -198,7 +201,7 @@ export function openClanRace(ui) {
       try {
         const data = await api(path(race.weekStart) + '/preview', task, {}); if (!task.current()) return;
         const result = node('div', null, { class: 'stack' }); definition(result, data.race, true);
-        facts(result, [['Tuần và phiên bản', `${data.race.weekStart} · ${data.race.version}`], ['Bắt đầu (bao gồm) · Giờ Việt Nam (UTC+7)', bangkokTime(data.startEpochMillis)], ['Chốt (không bao gồm) · Giờ Việt Nam (UTC+7)', bangkokTime(data.endEpochMillis)], ['100 Vàng', data.gold100Points + ' điểm'], ['1 Gem', data.gem1Points + ' điểm'], ['Số người tối đa', `${data.maximumRecipientsPerRank} / hạng · ${data.maximumRecipients} / 3 hạng`], ['Ngân sách tối đa (3 hạng)', rewardText(data.maximumBudget)], ['Máy chủ xác nhận lúc · Giờ Việt Nam (UTC+7)', bangkokTime(data.serverNowEpochMillis)]]);
+        facts(result, [['Tuần và phiên bản', `${data.race.weekStart} · ${data.race.version}`], ['Bắt đầu (bao gồm) · Giờ Việt Nam (UTC+7)', bangkokTime(data.startEpochMillis)], ['Chốt (không bao gồm) · Giờ Việt Nam (UTC+7)', bangkokTime(data.endEpochMillis)], ['100 Vàng', data.gold100Points + ' điểm'], ['1 Gem', data.gem1Points + ' điểm'], [data.budgetPerPool ? 'Số người tối đa / nhóm' : 'Số người tối đa', `${data.maximumRecipientsPerRank} / hạng · ${data.maximumRecipients} / 3 hạng`], [data.budgetPerPool ? 'Ngân sách tối đa / nhóm (3 hạng)' : 'Ngân sách tối đa (3 hạng)', rewardText(data.maximumBudget)], ['Máy chủ xác nhận lúc · Giờ Việt Nam (UTC+7)', bangkokTime(data.serverNowEpochMillis)]]);
         content.insertBefore(result, actions); notices.status.textContent = ''; retry.remove();
         if (owner() && data.race.state === 'DRAFT' && data.race.weekStart > raceWeek(data.serverNowEpochMillis)) actions.append(button('Tiếp tục phát hành', () => { surface.finish(); confirm(data.race, 'publish', data); }, { class: 'primary' }));
       } catch (error) { if (task.current() && error.name !== 'AbortError') notices.fail(error); }
@@ -209,7 +212,7 @@ export function openClanRace(ui) {
     if (!owner() || !future(race) || (action === 'publish' && race.state !== 'DRAFT')) return;
     const label = action === 'publish' ? 'Phát hành tuần đua' : 'Ngừng tuần tương lai', surface = raceModal(label), form = node('form', null, { class: 'stack modal-form', novalidate: '' }); surface.dialog.append(form); const notices = feedback(form);
     form.append(node('p', action === 'publish' ? `Phát hành tuần ${race.weekStart}, phiên bản ${race.version}. Cấu hình được đóng băng; chỉ bắt đầu từ tuần này, không mở bù tuần hiện tại.` : `Ngừng tuần tương lai ${race.weekStart}. Tuần hiện tại, lịch sử và quyền thưởng đã chốt được giữ nguyên.`));
-    if (action === 'publish') { definition(form, race, true); facts(form, [['Ngân sách tối đa (150 người)', rewardText(previewData.maximumBudget)], ['Mốc chốt · Giờ Việt Nam (UTC+7)', bangkokTime(previewData.endEpochMillis)]]); }
+    if (action === 'publish') { definition(form, race, true); facts(form, [[previewData.budgetPerPool ? 'Ngân sách tối đa / nhóm (150 người)' : 'Ngân sách tối đa (150 người)', rewardText(previewData.maximumBudget)], ['Mốc chốt · Giờ Việt Nam (UTC+7)', bangkokTime(previewData.endEpochMillis)]]); }
     const reason = field(form, 'Lý do thay đổi', 'race-reason', 'textarea', { maxlength: '500', required: '' }), submit = node('button', label, { type: 'submit', class: 'primary' }); form.append(append(node('div', null, { class: 'modal-actions' }), surface.cancel, submit));
     mutation(form, submit, notices, surface, path(race.weekStart) + '/' + action, () => { if (errors(form, notices, reasonError(reason), { reason })) return null; return { expectedVersion: race.version, reason: reason.value.trim() }; }, saved => { surface.finish(); detail(saved.weekStart, action === 'publish' ? 'Đã phát hành; cấu hình tuần được đóng băng.' : 'Đã ngừng tuần tương lai.'); }, race.weekStart, 'POST', true); surface.show(reason);
   }

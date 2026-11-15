@@ -101,6 +101,8 @@ import com.hienthai.fastowin.protocol.CosmeticType
 import com.hienthai.fastowin.protocol.MatchType
 import com.hienthai.fastowin.protocol.PlayQuotaSnapshot
 import com.hienthai.fastowin.ui.components.ArcadeActionButton
+import com.hienthai.fastowin.ui.components.RewardReceiptAmounts
+import com.hienthai.fastowin.ui.components.RewardReceiptDialog
 import com.hienthai.fastowin.ui.components.ArcadeActionStyle
 import com.hienthai.fastowin.ui.components.ArcadeDialog
 import com.hienthai.fastowin.ui.components.ArcadePanel
@@ -139,12 +141,23 @@ internal fun HomeDashboard(
     onOpenTournament: () -> Unit,
     onOpenShop: () -> Unit,
     onClaimDailyCheckIn: () -> Unit,
+    onDismissDailyCheckInReward: () -> Unit = {},
     onUpgradeGuest: () -> Unit,
     onLogout: () -> Unit,
     onPlayQuotaExhausted: () -> Unit = {},
     modifier: Modifier = Modifier
 ) {
     val profile = state.profile
+    state.dailyCheckInResult?.let { result ->
+        RewardReceiptDialog(
+            RewardReceiptAmounts(
+                gold = result.rewardGold.toLong(),
+                xp = result.rewardXp.toLong(),
+                gems = result.rewardGems.toLong()
+            ),
+            onDismiss = onDismissDailyCheckInReward
+        )
+    }
     val displayName = profile?.displayName ?: state.player.name
     val avatarId = profile?.avatarId ?: state.player.avatarId
     val avatarImageUrl = profile?.userId?.let { userId ->
@@ -1006,7 +1019,7 @@ fun MatchTypePickerDialog(
         onDismissRequest = onDismiss
     ) {
         Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-            val remainingMatches = quota?.remainingMatches ?: 0
+            val remainingMatches = quota?.dailyMatchesRemaining ?: 0
             val totalMatches = (quota?.baseMatches ?: 10) + (quota?.bonusMatchesGranted ?: 0)
             Text(
                 text = localized(
@@ -1022,6 +1035,9 @@ fun MatchTypePickerDialog(
                 fontWeight = FontWeight.Black,
                 color = Color(0xFFFFE28B)
             )
+            if (quota != null && quota.bankedMatches > 0) {
+                Text("${localized(TextKey.BankedPlays)} · ${quota.bankedMatches}")
+            }
             ModeChoice(
                 title = localized(TextKey.CasualMatch),
                 subtitle = localized(TextKey.CasualMatchDescription),

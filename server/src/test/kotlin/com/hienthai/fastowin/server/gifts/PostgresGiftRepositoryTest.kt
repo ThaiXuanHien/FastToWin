@@ -8,6 +8,7 @@ import io.ktor.client.statement.bodyAsText
 import io.ktor.http.*
 import io.ktor.server.testing.testApplication
 import kotlinx.serialization.json.Json
+import kotlinx.serialization.encodeToString
 import com.zaxxer.hikari.HikariConfig
 import com.zaxxer.hikari.HikariDataSource
 import kotlinx.coroutines.*
@@ -96,6 +97,246 @@ class PostgresGiftRepositoryTest {
         assertEquals(23, result.awardedGems); assertEquals(before.gems + 23, result.gems)
         assertEquals(before.gold, result.gold); assertEquals(before.xp, result.xp)
         assertEquals(23L, number("SELECT gems_delta FROM wallet_transactions WHERE source_id='${campaign.id}'"))
+    } }
+    @Test fun `gift code and gift claims bank plays and exchanges debit gems once`() = runTest { database {
+        val quota = PostgresPlayQuotaRepository(source)
+        val campaign = draft(request().copy(gold = 0, xp = 0, plays = 3))
+        assertEquals(3L, gifts.preview(owner, campaign.id, GiftPreviewRequest(1)).totalPlays)
+        publish(campaign)
+        gifts.deliverDueBatch()
+        assertEquals(3, gifts.claim(player, campaign.id).gift.plays)
+        assertEquals(3, gifts.claim(player, campaign.id).gift.plays)
+
+        val code = "FIRSTPLAYS"
+        gifts.publishGiftCode(owner, GiftCodePublishRequest(
+            code, GiftCodeReward(gems = 20, plays = 2), now + 1000, 1, "Fixture", "publish-code"
+        ))
+        val other = register()
+        val outcomes = coroutineScope {
+            listOf(player, other).map { candidate ->
+                async(Dispatchers.IO) {
+                    candidate to runCatching { gifts.redeemGiftCode(candidate, GiftCodeRedeemRequest(code)) }
+                }
+            }.awaitAll()
+        }
+        val winner = outcomes.single { it.second.isSuccess }.first
+        val failure = outcomes.single { it.second.isFailure }.second.exceptionOrNull()
+        assertEquals("GIFT_CODE_EXHAUSTED", assertIs<AdminException>(failure).code)
+        val repeated = assertFailsWith<AdminException> { gifts.redeemGiftCode(winner, GiftCodeRedeemRequest(code)) }
+        assertEquals("GIFT_CODE_ALREADY_USED", repeated.code)
+        val exchange = PlayCreditExchangeRequest("plays_5", UUID.randomUUID().toString())
+        val gemsBefore = repository.transaction { balance(winner).gems }
+        val bankBefore = quota.getSnapshot(winner, now).bankedMatches
+        gifts.exchangePlays(winner, exchange)
+        gifts.exchangePlays(winner, exchange)
+        assertEquals(gemsBefore - 20, repository.transaction { balance(winner).gems })
+        assertEquals(bankBefore + 5, quota.getSnapshot(winner, now).bankedMatches)
+        assertEquals(10, quota.getSnapshot(winner, now).dailyMatchesRemaining)
+    } }
+    @Test fun `credit exchanges reject changed replay and roll back on ledger failure`() = runTest { database {
+        balance()
+        sql("UPDATE player_stats SET gems=100 WHERE user_id='$player'")
+        val request = PlayCreditExchangeRequest("plays_5", UUID.randomUUID().toString())
+        gifts.exchangePlays(player, request)
+        error(409) { gifts.exchangePlays(player, request.copy(offerId = "plays_15")) }
+        assertEquals(80, balance().gems)
+        assertEquals(5L, PostgresPlayQuotaRepository(source).getSnapshot(player, now).bankedMatches)
+        sql("ALTER TABLE wallet_transactions ADD CONSTRAINT reject_plays CHECK (source_type <> 'PLAY_CREDIT_EXCHANGE') NOT VALID")
+        error(503) { gifts.exchangePlays(player, request.copy(requestId = UUID.randomUUID().toString())) }
+        assertEquals(80, balance().gems)
+        assertEquals(5L, PostgresPlayQuotaRepository(source).getSnapshot(player, now).bankedMatches)
+    } }
+    @Test fun `gift code reads and mutations require current owner access and protected mutation context`() = runTest { database {
+        val input = GiftCodePublishRequest("PRIVATECODE", GiftCodeReward(plays = 2), now + 1000, null, "Fixture", "publish-code-auth")
+        gifts.publishGiftCode(owner, input)
+        val stop = GiftCodeStopRequest("Stop", "stop-code-auth")
+        for (context in listOf(operator, support)) {
+            error(403) { gifts.listGiftCodes(context, PageRequest()) }
+            error(403) { gifts.publishGiftCode(context, input) }
+            error(403) { gifts.stopGiftCode(context, input.code, stop) }
+        }
+        for (context in listOf(owner.copy(csrfToken = null), owner.copy(csrfToken = "0".repeat(64)),
+            owner.copy(origin = null), owner.copy(origin = "http://evil.test"))) {
+            error(403) { gifts.publishGiftCode(context, input) }
+            error(403) { gifts.stopGiftCode(context, input.code, stop) }
+        }
+        error(401) { gifts.listGiftCodes(owner.copy(token = null), PageRequest()) }
+        error(401) { gifts.publishGiftCode(owner.copy(token = "player-token"), input) }
+        // Keep the old session valid so this proves authorization reads the current role,
+        // independently of the normal changeAccess session revocation path.
+        val ownerId = admin.session(owner.token).admin.id
+        sql("UPDATE admin_accounts SET role='OPERATOR' WHERE id='$ownerId'")
+        error(403) { gifts.listGiftCodes(owner, PageRequest()) }
+        error(403) { gifts.publishGiftCode(owner, input) }
+        error(403) { gifts.stopGiftCode(owner, input.code, stop) }
+        sql("UPDATE admin_accounts SET role='OWNER',active=FALSE WHERE id='$ownerId'")
+        error(401) { gifts.listGiftCodes(owner, PageRequest()) }
+        error(401) { gifts.stopGiftCode(owner, input.code, stop) }
+        assertEquals(1L, number("SELECT count(*) FROM gift_codes WHERE NOT stopped"))
+        assertEquals(1L, number("SELECT count(*) FROM gift_code_admin_requests"))
+    } }
+    @Test fun `quota reservations and refunds wait for user locks before locking credit balances`() = runTest { database {
+        val quota = PostgresPlayQuotaRepository(source)
+        balance()
+        sql("UPDATE player_stats SET play_credits=2 WHERE user_id='$player'")
+        repeat(10) { quota.consumeMatch(setOf(player), UUID.randomUUID().toString(), now) }
+        val match = UUID.randomUUID().toString()
+        suspend fun whileWalletOwnsUser(operation: suspend () -> Unit) = withContext(Dispatchers.Default) {
+            withTimeout(10_000) {
+                coroutineScope {
+                    source.connection.use { wallet ->
+                        wallet.autoCommit = false
+                        try {
+                            val walletPid = wallet.createStatement().use { statement ->
+                                statement.executeQuery("SELECT pg_backend_pid() FROM users WHERE id='$player' FOR UPDATE").use { rows ->
+                                    assertTrue(rows.next()); rows.getInt(1)
+                                }
+                            }
+                            val quotaWork = async(Dispatchers.IO) { operation() }
+                            // Wait for PostgreSQL to report the actual lock dependency. No timing-based sleep
+                            // can accidentally let the wallet finish before the quota has reached its lock.
+                            while (number("SELECT count(*) FROM pg_stat_activity WHERE $walletPid=ANY(pg_blocking_pids(pid))") == 0L) delay(10)
+                            wallet.createStatement().use { statement ->
+                                statement.execute("SET LOCAL lock_timeout='500ms'")
+                                assertEquals(1, statement.executeUpdate("UPDATE player_stats SET gems=gems+1 WHERE user_id='$player'"))
+                            }
+                            wallet.commit()
+                            quotaWork.await()
+                        } finally { wallet.rollback() }
+                    }
+                }
+            }
+        }
+        whileWalletOwnsUser {
+            assertEquals(PlayQuotaConsumptionStatus.CONSUMED, quota.prepareMatch(setOf(player), match, now).status)
+        }
+        assertEquals(1L, quota.getSnapshot(player, now).bankedMatches)
+        whileWalletOwnsUser { quota.releaseMatch(setOf(player), match, emptySet()) }
+        assertEquals(2L, quota.getSnapshot(player, now).bankedMatches)
+        assertEquals(0L, number("SELECT count(*) FROM play_quota_match_consumptions WHERE match_id='$match'"))
+    } }
+    @Test fun `gift code expiry is exclusive and stopped exhausted and inactive accounts never receive rewards`() = runTest { database {
+        fun input(code: String) = GiftCodePublishRequest(code, GiftCodeReward(gold = 3, xp = 4, gems = 5, plays = 6), now + 1000, 1, "Fixture", code)
+        val expires = input("EXACTEXPIRY")
+        val stopped = input("STOPPEDCODE")
+        val limited = input("ONECLAIM")
+        listOf(expires, stopped, limited).forEach { gifts.publishGiftCode(owner, it) }
+        gifts.stopGiftCode(owner, stopped.code, GiftCodeStopRequest("Stop", "stop-boundary"))
+        val before = balance()
+        assertEquals("GIFT_CODE_STOPPED", assertFailsWith<AdminException> {
+            gifts.redeemGiftCode(player, GiftCodeRedeemRequest(stopped.code))
+        }.code)
+        now = expires.expiresAt
+        assertEquals("GIFT_CODE_EXPIRED", assertFailsWith<AdminException> {
+            gifts.redeemGiftCode(player, GiftCodeRedeemRequest(expires.code))
+        }.code)
+        assertEquals(before, balance())
+        assertEquals(0L, number("SELECT count(*) FROM gift_code_redemptions"))
+        now--
+        sql("UPDATE users SET status='BLOCKED' WHERE id='$player'")
+        error(401) { gifts.redeemGiftCode(player, GiftCodeRedeemRequest(limited.code)) }
+        sql("UPDATE users SET status='ACTIVE' WHERE id='$player'")
+        val result = gifts.redeemGiftCode(player, GiftCodeRedeemRequest("  oneclaim  "))
+        assertEquals(limited.reward, result.reward)
+        assertEquals("GIFT_CODE_ALREADY_USED", assertFailsWith<AdminException> {
+            gifts.redeemGiftCode(player, GiftCodeRedeemRequest(limited.code))
+        }.code)
+        val other = register()
+        assertEquals("GIFT_CODE_EXHAUSTED", assertFailsWith<AdminException> {
+            gifts.redeemGiftCode(other, GiftCodeRedeemRequest(limited.code))
+        }.code)
+        assertEquals(before.gold + 3, balance().gold)
+        assertEquals(6L, PostgresPlayQuotaRepository(source).getSnapshot(player, now).bankedMatches)
+        assertEquals(1L, number("SELECT count(*) FROM gift_code_redemptions"))
+        assertEquals(1L, number("SELECT sum(claims) FROM gift_codes"))
+        assertEquals(1L, number("SELECT count(*) FROM wallet_transactions WHERE source_type='GIFT_CODE'"))
+    } }
+    @Test fun `gift code redemption rolls back balances ledger identity and capacity after late failure`() = runTest { database {
+        val code = "ROLLBACKCODE"
+        val reward = GiftCodeReward(gold = 3, xp = 4, gems = 5, plays = 6)
+        gifts.publishGiftCode(owner, GiftCodePublishRequest(code, reward, now + 1000, 1, "Fixture", "publish-rollback"))
+        val before = balance()
+        fun assertUnpaid() {
+            assertEquals(0L, number("SELECT count(*) FROM gift_code_redemptions"))
+            assertEquals(0L, number("SELECT claims FROM gift_codes WHERE code='$code'"))
+            assertEquals(0L, number("SELECT count(*) FROM wallet_transactions WHERE source_type='GIFT_CODE'"))
+            assertEquals(0L, number("SELECT play_credits FROM player_stats WHERE user_id='$player'"))
+        }
+        // Failure after stats and ledger writes must release the user's one-use identity.
+        sql("ALTER TABLE gift_code_redemptions ADD CONSTRAINT reject_redemption CHECK (code <> '$code')")
+        error(503) { gifts.redeemGiftCode(player, GiftCodeRedeemRequest(code)) }
+        assertEquals(before, balance()); assertUnpaid()
+        sql("ALTER TABLE gift_code_redemptions DROP CONSTRAINT reject_redemption")
+        // Failure at the final global-capacity update must roll back the redemption too.
+        sql("ALTER TABLE gift_codes ADD CONSTRAINT reject_claim_counter CHECK (claims=0)")
+        error(503) { gifts.redeemGiftCode(player, GiftCodeRedeemRequest(code)) }
+        assertEquals(before, balance()); assertUnpaid()
+        sql("ALTER TABLE gift_codes DROP CONSTRAINT reject_claim_counter")
+        gifts = GiftService(PostgresGiftRepository(source), admin, { now })
+        assertEquals(reward, gifts.redeemGiftCode(player, GiftCodeRedeemRequest(code)).reward)
+        assertEquals(before.gold + 3, balance().gold)
+        assertEquals(before.xp + 4, balance().xp)
+        assertEquals(before.gems + 5, balance().gems)
+        assertEquals(6L, PostgresPlayQuotaRepository(source).getSnapshot(player, now).bankedMatches)
+        assertEquals(1L, number("SELECT claims FROM gift_codes WHERE code='$code'"))
+    } }
+    @Test fun `gift code audit failures roll back publication and stopping and preserve replay semantics`() = runTest { database {
+        val input = GiftCodePublishRequest("AUDITCODE", GiftCodeReward(plays = 2), now + 1000, 1, "Fixture", "publish-audit-code")
+        sql("ALTER TABLE admin_audit ADD CONSTRAINT reject_code_audit CHECK (action NOT IN ('GIFT_CODE_PUBLISH','GIFT_CODE_STOP'))")
+        error(503) { gifts.publishGiftCode(owner, input) }
+        assertEquals(0L, number("SELECT count(*) FROM gift_codes"))
+        assertEquals(0L, number("SELECT count(*) FROM gift_code_admin_requests"))
+        sql("ALTER TABLE admin_audit DROP CONSTRAINT reject_code_audit")
+        gifts.publishGiftCode(owner, input)
+        assertEquals(input.code, gifts.publishGiftCode(owner, input).code)
+        error(409) { gifts.publishGiftCode(owner, input.copy(reward = GiftCodeReward(plays = 3))) }
+        val stop = GiftCodeStopRequest("Stop", "stop-audit-code")
+        sql("ALTER TABLE admin_audit ADD CONSTRAINT reject_stop_audit CHECK (action <> 'GIFT_CODE_STOP')")
+        error(503) { gifts.stopGiftCode(owner, input.code, stop) }
+        assertEquals(1L, number("SELECT count(*) FROM gift_codes WHERE NOT stopped"))
+        assertEquals(1L, number("SELECT count(*) FROM gift_code_admin_requests"))
+        sql("ALTER TABLE admin_audit DROP CONSTRAINT reject_stop_audit")
+        gifts.stopGiftCode(owner, input.code, stop)
+        gifts.stopGiftCode(owner, input.code, stop)
+        error(409) { gifts.stopGiftCode(owner, input.code, stop.copy(reason = "Changed")) }
+        assertEquals(1L, number("SELECT count(*) FROM admin_audit WHERE action='GIFT_CODE_PUBLISH'"))
+        assertEquals(1L, number("SELECT count(*) FROM admin_audit WHERE action='GIFT_CODE_STOP'"))
+    } }
+    @Test fun `player http responses wallet and audit do not expose gift code inventory or submitted secrets`() = runTest { database {
+        val account = assertIs<AuthResult.Success>(auth.register("code-reader@example.com", "GoodPassword123!", "Reader", "test")).session
+        val code = "SECRETPLAYCODE"
+        gifts.publishGiftCode(owner, GiftCodePublishRequest(code, GiftCodeReward(plays = 2), now + 1000, null, "Fixture", "publish-private-code"))
+        val actualAuth = auth; val actualGifts = gifts; val actualAdmin = admin
+        testApplication {
+            application { gameModule(authService = actualAuth, giftService = actualGifts, adminService = actualAdmin) }
+            for (path in listOf("/admin/api/gift-codes", "/api/gift-codes")) {
+                val response = client.get(path) { bearerAuth(account.accessToken) }
+                assertTrue(response.status == HttpStatusCode.Unauthorized || response.status == HttpStatusCode.NotFound)
+                assertFalse(response.bodyAsText().contains(code))
+            }
+            val redeemed = client.post("/api/gift-codes/redeem") {
+                bearerAuth(account.accessToken); contentType(ContentType.Application.Json)
+                setBody(Json.encodeToString(GiftCodeRedeemRequest(code)))
+            }
+            assertEquals(HttpStatusCode.OK, redeemed.status)
+            assertEquals("no-store", redeemed.headers[HttpHeaders.CacheControl])
+            assertFalse(redeemed.bodyAsText().contains(code))
+            val repeat = client.post("/api/gift-codes/redeem") {
+                bearerAuth(account.accessToken); contentType(ContentType.Application.Json)
+                setBody(Json.encodeToString(GiftCodeRedeemRequest(code)))
+            }
+            assertEquals(HttpStatusCode.Conflict, repeat.status)
+            assertFalse(repeat.bodyAsText().contains(code))
+        }
+        val history = PostgresPlayerProfileRepository(source).loadWalletHistory(account.userId)
+        assertEquals(1, history.size)
+        assertEquals("GIFT_CODE", history.single().sourceType)
+        assertEquals(hashToken(code), history.single().sourceId)
+        assertFalse(Json.encodeToString(history).contains(code))
+        val audits = admin.audit(owner.token, PageRequest()).items
+        val published = audits.single { it.action == "GIFT_CODE_PUBLISH" }
+        assertEquals("codeHash=${hashToken(code)}", published.afterSummary)
+        assertFalse(Json.encodeToString(audits).contains(code))
     } }
     @Test fun `gem overflow and ledger failure roll back every reward and claim marker`() = runTest { database {
         val campaign = publish(draft(request().copy(gems = 5))); gifts.deliverDueBatch(); balance()

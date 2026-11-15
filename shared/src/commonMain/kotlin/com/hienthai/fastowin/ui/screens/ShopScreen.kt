@@ -10,6 +10,7 @@ import androidx.compose.material.icons.filled.Payments
 import androidx.compose.material.icons.filled.MonetizationOn
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.testTag
@@ -33,11 +34,15 @@ import com.hienthai.fastowin.ui.components.ArcadeActionStyle
 import com.hienthai.fastowin.ui.components.ArcadePanel
 import com.hienthai.fastowin.ui.components.ArcadeDialog
 import com.hienthai.fastowin.ui.components.ArcadeSegmentedControl
+import com.hienthai.fastowin.ui.components.RewardReceiptDialog
+import com.hienthai.fastowin.ui.components.RewardReceiptAmounts
+import com.hienthai.fastowin.protocol.GoldExchangeStatus
+import com.hienthai.fastowin.protocol.ServerMessage
 import com.hienthai.fastowin.ui.layout.ResponsiveScreen
 import com.hienthai.fastowin.resources.Res
 import com.hienthai.fastowin.resources.arcade_shop_chest
 
-enum class ShopTab { GEMS, GOLD }
+enum class ShopTab { GEMS, GOLD, PLAYS }
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -54,14 +59,40 @@ fun ShopScreen(
     exchangeNotice: String? = null,
     unreadNotifications: Int = 0,
     onNotifications: () -> Unit = {},
-    initialTab: ShopTab = ShopTab.GEMS
+    initialTab: ShopTab = ShopTab.GEMS,
+    quota: com.hienthai.fastowin.protocol.PlayQuotaSnapshot? = null,
+    onExchangePlays: (suspend (String, String) -> Unit)? = null,
+    goldExchangeResult: ServerMessage.GoldExchangeResult? = null,
+    onDismissGoldExchangeResult: (String) -> Unit = {},
+    storePurchaseResult: ServerMessage.StorePurchaseResult? = null,
+    onDismissStorePurchaseResult: (String) -> Unit = {}
 ) {
     SystemBackHandler(onBack = onClose)
     var selectedTab by remember(initialTab) { mutableStateOf(initialTab) }
     var confirmingOffer by remember { mutableStateOf<GoldExchangeOffer?>(null) }
+    var acknowledgedGoldRequest by rememberSaveable { mutableStateOf<String?>(null) }
+    var acknowledgedStoreRequest by rememberSaveable { mutableStateOf<String?>(null) }
+    goldExchangeResult?.takeIf {
+        it.status == GoldExchangeStatus.GRANTED && it.receivedGold > 0 && it.requestId != acknowledgedGoldRequest
+    }?.let { receipt ->
+        RewardReceiptDialog(RewardReceiptAmounts(gold = receipt.receivedGold.toLong()), onDismiss = {
+            acknowledgedGoldRequest = receipt.requestId
+            onDismissGoldExchangeResult(receipt.requestId)
+        })
+    }
+    storePurchaseResult?.takeIf {
+        it.status == com.hienthai.fastowin.protocol.StorePurchaseStatus.GRANTED &&
+            it.gemsGranted > 0 && it.requestId != acknowledgedStoreRequest
+    }?.let { receipt ->
+        RewardReceiptDialog(RewardReceiptAmounts(gems = receipt.gemsGranted.toLong()), onDismiss = {
+            acknowledgedStoreRequest = receipt.requestId
+            onDismissStorePurchaseResult(receipt.requestId)
+        })
+    }
     val tabs = listOf(
         ShopTab.GEMS to localized(TextKey.GemTab),
-        ShopTab.GOLD to localized(TextKey.GoldTab)
+        ShopTab.GOLD to localized(TextKey.GoldTab),
+        ShopTab.PLAYS to localized(TextKey.PlayCredits)
     )
     
     val gold = progression?.gold ?: 0
@@ -102,6 +133,7 @@ fun ShopScreen(
         containerColor = androidx.compose.ui.graphics.Color.Transparent,
         topBar = {
             FastToWinHeader(
+                modifier = Modifier.testTag("shop_header"),
                 title = localized(TextKey.Shop),
                 gold = gold,
                 gems = gems,
@@ -117,17 +149,22 @@ fun ShopScreen(
             applySafeDrawingInsets = false
         ) { contentModifier ->
             Column(
-                modifier = contentModifier,
+                modifier = contentModifier.padding(top = 16.dp),
                 verticalArrangement = Arrangement.spacedBy(12.dp)
             ) {
                 ArcadeFeatureHero(
+                    modifier = Modifier.testTag("shop_feature_hero"),
                     illustration = Res.drawable.arcade_shop_chest,
-                    title = localized(if (selectedTab == ShopTab.GEMS) TextKey.GemVault else TextKey.GoldVault),
-                    subtitle = if (selectedTab == ShopTab.GEMS) {
-                        localized(TextKey.GemVaultDescription)
-                    } else {
-                        localized(TextKey.GoldVaultDescription)
-                    },
+                    title = localized(when (selectedTab) {
+                        ShopTab.GEMS -> TextKey.GemVault
+                        ShopTab.GOLD -> TextKey.GoldVault
+                        ShopTab.PLAYS -> TextKey.PlayCredits
+                    }),
+                    subtitle = localized(when (selectedTab) {
+                        ShopTab.GEMS -> TextKey.GemVaultDescription
+                        ShopTab.GOLD -> TextKey.GoldVaultDescription
+                        ShopTab.PLAYS -> TextKey.PlayCreditsDescription
+                    }),
                     accent = if (selectedTab == ShopTab.GEMS) ArcadePalette.Mint400 else ArcadePalette.Gold400
                 )
                 ArcadeSegmentedControl(
@@ -147,7 +184,7 @@ fun ShopScreen(
                         onBuy = onBuyGems,
                         modifier = Modifier.weight(1f)
                     )
-                } else {
+                } else if (selectedTab == ShopTab.GOLD) {
                     GoldExchangeList(
                         offers = GOLD_EXCHANGE_OFFERS,
                         gems = gems,
@@ -157,7 +194,7 @@ fun ShopScreen(
                         onExchange = { confirmingOffer = it },
                         modifier = Modifier.weight(1f)
                     )
-                }
+                } else PlayCreditShop(quota, gems, onExchangePlays, Modifier.weight(1f))
             }
         }
     }

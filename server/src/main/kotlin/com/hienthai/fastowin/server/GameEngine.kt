@@ -57,6 +57,7 @@ import com.hienthai.fastowin.protocol.TournamentMatchPhase
 import com.hienthai.fastowin.protocol.TournamentMatchSnapshot
 import com.hienthai.fastowin.protocol.TournamentPhase
 import com.hienthai.fastowin.protocol.TournamentPlayerSnapshot
+import com.hienthai.fastowin.protocol.TournamentRewardType
 import com.hienthai.fastowin.protocol.TournamentSnapshot
 import com.hienthai.fastowin.protocol.TournamentScheduleSnapshot
 import com.hienthai.fastowin.protocol.PROTOCOL_VERSION
@@ -527,6 +528,9 @@ class GameEngine(
             }
             val deliveries = persistenceMutex.withLock {
                 if (start.candidate == null) {
+                    // Freeze clan eligibility during start admission before the event catalog read.
+                    // Later roster/level changes and retries use the durable candidate unchanged.
+                    val clanLevels = start.playerIds.associateWith { clanRepository.getClanByUserId(it)?.level ?: 0 }
                     var candidate: StoredActiveRoom? = null
                     repeat(20) {
                         if (candidate == null) {
@@ -542,6 +546,7 @@ class GameEngine(
                                     detached.matchId = start.matchId
                                     val actualStart = nowMillis()
                                     detached.startMatch(actualStart, timeAttackMillis, catalog.snapshot(actualStart, room.matchType))
+                                    detached.clanLevels = clanLevels
                                     detached.toStoredRoom()
                                 } finally { mutex.unlock() }
                             }
@@ -742,7 +747,7 @@ class GameEngine(
         if (message is ClientMessage.GetClanList) return getClanList(playerId, message.query)
         if (message is ClientMessage.InviteToClan) return inviteToClan(playerId, message.playerCode)
         if (message is ClientMessage.KickClanMember) return kickClanMember(playerId, message.clanId, message.memberId)
-        if (message is ClientMessage.ClaimClanQuestReward) return claimClanQuestReward(playerId, message.clanId)
+        if (message is ClientMessage.ClaimClanQuestReward) return claimClanQuestReward(playerId, message.clanId, message.requestId)
         if (message is ClientMessage.DonateToClan) return donateToClan(playerId, message)
         if (message is ClientMessage.UpdateAvatar) return updateAvatar(playerId, message.base64Data)
         if (message is ClientMessage.UpdateClanLogo) return updateClanLogo(playerId, message.clanId, message.logoId)
@@ -1502,7 +1507,8 @@ class GameEngine(
                 if (hostCancellation) tournamentRepository.cancelWithRefund(candidate, playerProfileRepository) else tournamentRepository.save(candidate)
                 tournaments[tournamentId] = candidate.toTournament()
                 tournamentInvitations.entries.removeAll { it.value.tournamentId == tournamentId && (hostCancellation || it.value.inviteeId == playerId) }
-                listOf(Delivery(ServerMessage.TournamentUpdated(candidate), tournament.playerIds())) +
+                tournamentRewardDeliveries(candidate, tournament.playerIds()) +
+                    listOf(Delivery(ServerMessage.TournamentUpdated(candidate), tournament.playerIds())) +
                     if (tournament.visibility == TournamentVisibility.PUBLIC) listOf(publicTournamentsInvalidated()) else emptyList()
             }
         } ?: return@withLock null
@@ -1529,6 +1535,7 @@ class GameEngine(
                 val snapshot = tournament.snapshot()
                 snapshotToSave = snapshot
                 listOf(
+                    *tournamentRewardDeliveries(snapshot, tournament.playerIds()).toTypedArray(),
                     Delivery(ServerMessage.TournamentUpdated(snapshot), tournament.playerIds()),
                     Delivery(ServerMessage.TournamentNotice(
                         legacyFallback("Chủ giải đã hủy giải đấu."),
@@ -2477,7 +2484,12 @@ class GameEngine(
             playerId,
             command.requestId,
             grant.status,
-            grant.quota.withRewardedAdAvailability()
+            grant.quota.withRewardedAdAvailability(),
+            grantedMatches = if (grant.status == RewardedAdBonusStatus.GRANTED) {
+                PlayQuotaRules.REWARDED_AD_MATCHES
+            } else {
+                0
+            }
         ))
     }
 
@@ -2485,9 +2497,10 @@ class GameEngine(
         playerId: String,
         requestId: String,
         status: RewardedAdBonusStatus,
-        quota: com.hienthai.fastowin.protocol.PlayQuotaSnapshot
+        quota: com.hienthai.fastowin.protocol.PlayQuotaSnapshot,
+        grantedMatches: Int = 0
     ) = Delivery(
-        ServerMessage.RewardedAdBonusResult(requestId, status, quota),
+        ServerMessage.RewardedAdBonusResult(requestId, status, quota, grantedMatches),
         setOf(playerId)
     )
 
@@ -3845,8 +3858,42 @@ class GameEngine(
             pendingRoomRemovals.remove(roomId)
         }
         generated.forEach { rooms[it.id] = it }
-        return listOf(Delivery(ServerMessage.TournamentUpdated(snapshot.copy(serverTimeEpochMillis = nowMillis())), recipients)) +
+        val rewardDeliveries = tournamentRewardDeliveries(snapshot, recipients)
+        return rewardDeliveries + listOf(Delivery(ServerMessage.TournamentUpdated(snapshot.copy(serverTimeEpochMillis = nowMillis())), recipients)) +
             generated.map { Delivery(ServerMessage.GameStarted(it.snapshot()), it.playerIds()) }
+    }
+
+    private fun tournamentRewardDeliveries(snapshot: TournamentSnapshot, recipients: Set<String>): List<Delivery> = when (snapshot.phase) {
+        TournamentPhase.FINISHED -> snapshot.championPlayerId?.let { championId ->
+            if (championId in recipients && snapshot.prizePool > 0) listOf(
+                Delivery(
+                    ServerMessage.TournamentRewardResult(
+                        requestId = "tournament-prize:${snapshot.tournamentId}",
+                        tournamentId = snapshot.tournamentId,
+                        type = TournamentRewardType.PRIZE,
+                        goldGranted = snapshot.prizePool
+                    ),
+                    setOf(championId)
+                )
+            ) else emptyList()
+        } ?: emptyList()
+        TournamentPhase.CANCELLED -> if (snapshot.entryFee > 0) {
+            (snapshot.players + snapshot.recordedPlayers)
+                .map { it.playerId }
+                .distinct()
+                .map { playerId ->
+                    Delivery(
+                        ServerMessage.TournamentRewardResult(
+                            requestId = "tournament-refund:${snapshot.tournamentId}:$playerId",
+                            tournamentId = snapshot.tournamentId,
+                            type = TournamentRewardType.ENTRY_REFUND,
+                            goldGranted = snapshot.entryFee
+                        ),
+                        setOf(playerId)
+                    )
+                }
+        } else emptyList()
+        else -> emptyList()
     }
 
     private suspend fun advanceTournamentAfterMatch(matchId: String): List<Delivery> = persistenceMutex.withLock {
@@ -4011,6 +4058,7 @@ class GameEngine(
             maintenanceAborted = maintenanceAborted,
             activationPending = activationPending,
             eventRewards = eventRewards,
+            clanLevels = clanLevels,
             pendingCompletedMatch = pendingCompletedMatches[matchId],
             readyPlayerIds = readyPlayerIds.toSet(),
             rematchRequestedPlayerIds = rematchRequestedPlayerIds.toSet(),
@@ -4043,6 +4091,7 @@ class GameEngine(
         gameMode = gameMode,
         matchType = matchType,
         eventRewards = eventRewards,
+        clanLevels = clanLevels,
         intentionalLeavePlayerIds = intentionalLeavePlayerIds.toMutableSet(),
         guestId = guest?.playerId,
         extraGuestIds = guests.map { it.playerId }.toMutableSet(),
@@ -4155,7 +4204,7 @@ class GameEngine(
                     winnerId() == id -> MatchOutcome.WIN
                     else -> MatchOutcome.LOSS
                 }
-                RewardEconomy.matchRewardBreakdown(matchType, outcome, id in intentionalLeavePlayerIds, eventRewards)
+                RewardEconomy.matchRewardBreakdown(matchType, outcome, id in intentionalLeavePlayerIds, eventRewards, clanLevels[id] ?: 0)
             } else emptyMap(),
             phase = phase,
             players = playerIds().mapNotNull { id ->
@@ -4330,7 +4379,8 @@ class GameEngine(
                 }
             },
             events = selectionEvents.toList(),
-            eventRewards = eventRewards
+            eventRewards = eventRewards,
+            clanLevels = clanLevels
         ).also { pendingCompletedMatches[it.matchId] = it }
     }
 
@@ -4461,6 +4511,7 @@ class GameEngine(
         var maintenanceAborted: Boolean = false,
         var activationPending: Boolean = false,
         var eventRewards: MatchRewardEventSnapshot = MatchRewardEventSnapshot(),
+        var clanLevels: Map<String, Int> = emptyMap(),
         val readyPlayerIds: MutableSet<String> = mutableSetOf(),
         val rematchRequestedPlayerIds: MutableSet<String> = mutableSetOf(),
         var rematchExpiresAtEpochMillis: Long? = null,
@@ -4849,8 +4900,8 @@ class GameEngine(
         reportPresenceFailure: Boolean = false
     ): List<Delivery> {
         val clan = clanRepository.getClanById(clanId)
-            ?: return listOf(error(playerId, "CLAN_NOT_FOUND", legacyFallback("Không tìm thấy clan.")))
-        val snapshot = clanInfo(clan)
+            ?: return listOf(error(playerId, "CLAN_NOT_FOUND", legacyFallback("Không tìm thấy clan."), requestId = clanId))
+        val snapshot = clanInfo(if (clan.ownerId == playerId) clan else clan.copy(joinRequests = emptyList()))
         return when {
             snapshot != null -> listOf(Delivery(snapshot, setOf(playerId)))
             reportPresenceFailure -> listOf(error(
@@ -5011,7 +5062,7 @@ class GameEngine(
         }
     }
 
-    private suspend fun claimClanQuestReward(playerId: String, clanId: String): List<Delivery> {
+    private suspend fun claimClanQuestReward(playerId: String, clanId: String, requestId: String): List<Delivery> {
         val clan = clanRepository.getClanById(clanId)
             ?: return listOf(error(playerId, "CLAN_NOT_FOUND", "Kh\u00f4ng t\u00ecm th\u1ea5y bang h\u1ed9i."))
         
@@ -5031,7 +5082,17 @@ class GameEngine(
 
         val claimed = clanRepository.claimQuestReward(clanId, playerId)
         if (claimed) {
-            return getClanInfo(playerId, clanId) + loadProfile(playerId)
+            return getClanInfo(playerId, clanId) + loadProfile(playerId) + Delivery(
+                ServerMessage.ClanQuestRewardResult(
+                    requestId = requestId.ifBlank { "clan-quest:$clanId:$playerId" },
+                    clanId = clanId,
+                    claimed = true,
+                    rewardGold = quest.rewardGold,
+                    rewardXp = quest.rewardXp,
+                    rewardGems = quest.rewardGems
+                ),
+                setOf(playerId)
+            )
         }
         
         return listOf(error(playerId, "CLAIM_FAILED", "Kh\u00f4ng th\u1ec3 nh\u1eadn th\u01b0\u1edfng."))
@@ -5046,7 +5107,7 @@ class GameEngine(
         const val MAX_REWARDED_AD_PROOF_LENGTH = 2_048
         const val MAX_REQUESTS_PER_MATCH = 2_000
         const val MAX_NOTIFICATION_SYNC_BATCH = 20
-        const val LEADERBOARD_SIZE = 100
+        const val LEADERBOARD_SIZE = 30
         const val DEFAULT_TOURNAMENT_PLAYER_COUNT = 4
         val SUPPORTED_TOURNAMENT_PLAYER_COUNTS = setOf(4, 8, 16)
         const val MAX_TOURNAMENT_NAME_LENGTH = 48

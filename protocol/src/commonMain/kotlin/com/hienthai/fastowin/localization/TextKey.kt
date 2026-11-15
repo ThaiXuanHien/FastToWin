@@ -2,6 +2,10 @@ package com.hienthai.fastowin.localization
 
 /** Stable keys shared by clients and the backend. Never use player input as a key. */
 enum class TextKey {
+    RewardResultClanBonus, ClanRacePoolStarter, ClanRacePoolStrength, ClanRacePoolRules,
+    PlayCredits, PlayCreditsDescription, DailyPlaysRemaining, BankedPlays, PlayCreditOffer, PlayCreditExchange, PlayCreditConfirmation,
+    PlayCreditExchanged, RewardsReceived, GiftCode, GiftCodeEntry, GiftCodeRedeem, GiftCodeRedeemed,
+    GiftCodeInvalid, GiftCodeExpired, GiftCodeExhausted, GiftCodeAlreadyUsed,
     ClanRaceMailboxIntro, ClanRaceGiftExpires,
     ClanRaceSettlementFailed,
     ClanRaceError, ClanRaceForbidden, ClanRaceConflict,
@@ -256,7 +260,8 @@ ClanRaceTitle, ClanRacePrizes, ClanRacePerMember, ClanRaceEligibility, ClanRaceW
 
     KnockoutArena, KnockoutArenaDescription, TournamentLobby, ChampionName,
     TournamentUpdating, TournamentCancelled, TournamentLobbySummary, BracketInProgress,
-    TournamentPrizeAwarded, CreateAnotherTournament, JoinInvitations,
+    TournamentPrizeAwarded, TournamentPrizeReceived, TournamentEntryRefundReceived,
+    CreateAnotherTournament, JoinInvitations,
     RecentTournaments, TournamentInvitationTitle, TournamentInvitationDescription,
     DecideLater, ChooseTournamentMode, CreatePrivateTournament, TournamentSize,
     TournamentFourFormat, TournamentEightFormat, TournamentSixteenFormat,

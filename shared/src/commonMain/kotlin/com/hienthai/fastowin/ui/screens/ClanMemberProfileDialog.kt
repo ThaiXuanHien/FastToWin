@@ -38,6 +38,15 @@ internal data class ClanMemberFriendAction(
     val requestId: String? = null
 )
 
+internal val ClanMemberFriendAction.textKey: TextKey
+    get() = when (type) {
+        ClanMemberFriendActionType.SEND -> TextKey.AddFriend
+        ClanMemberFriendActionType.ACCEPT -> TextKey.AcceptFriend
+        ClanMemberFriendActionType.ALREADY_FRIENDS -> TextKey.AlreadyFriends
+        ClanMemberFriendActionType.REQUEST_SENT -> TextKey.FriendRequestSent
+        ClanMemberFriendActionType.BLOCKED -> TextKey.Blocked
+    }
+
 internal fun clanMemberFriendAction(
     userId: String,
     playerCode: String,
@@ -85,15 +94,8 @@ fun ClanMemberProfileDialog(
         fixedActions = {
             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 action?.let {
-                    val key = when (it.type) {
-                        ClanMemberFriendActionType.SEND -> TextKey.AddFriend
-                        ClanMemberFriendActionType.ACCEPT -> TextKey.AcceptFriend
-                        ClanMemberFriendActionType.ALREADY_FRIENDS -> TextKey.AlreadyFriends
-                        ClanMemberFriendActionType.REQUEST_SENT -> TextKey.FriendRequestSent
-                        ClanMemberFriendActionType.BLOCKED -> TextKey.Blocked
-                    }
                     ArcadeActionButton(
-                        label = localized(if (isSocialLoading) TextKey.Processing else key),
+                        label = localized(if (isSocialLoading) TextKey.Processing else it.textKey),
                         enabled = it.enabled,
                         onClick = {
                             when (it.type) {

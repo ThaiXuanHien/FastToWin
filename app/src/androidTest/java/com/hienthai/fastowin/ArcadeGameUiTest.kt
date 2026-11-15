@@ -1,5 +1,8 @@
 package com.hienthai.fastowin
 
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.test.DeviceConfigurationOverride
 import androidx.compose.ui.test.ExperimentalTestApi
 import androidx.compose.ui.test.FontScale
@@ -21,6 +24,7 @@ import com.hienthai.fastowin.ui.theme.FastToWinTheme
 import org.junit.Rule
 import org.junit.Test
 import org.junit.Assert.assertTrue
+import org.junit.Assert.assertEquals
 import kotlin.math.max
 import kotlin.math.min
 
@@ -36,6 +40,31 @@ class ArcadeGameUiTest {
     @Test
     fun fiftyNumberBoard_landscape_reachesLastNumberWithoutLegacyErrorText() =
         assertFiftyNumberBoard(width = 720.dp, height = 400.dp, fontScale = 1f)
+
+    @Test
+    fun scoreBecomingTiedOrCloseKeepsTheBoardInPlace() {
+        var state by mutableStateOf(gameState().let {
+            it.copy(
+                player = it.player.copy(score = 90, correctSelections = 3),
+                opponent = it.opponent.copy(score = 50, correctSelections = 3)
+            )
+        })
+        composeRule.setContent {
+            DeviceConfigurationOverride(DeviceConfigurationOverride.ForcedSize(DpSize(375.dp, 812.dp))) {
+                FastToWinTheme {
+                    GameScreen(state, onNumberClick = {}, onFinish = {},
+                        preferences = AppPreferences(soundEnabled = false, vibrationEnabled = false,
+                            visualEffectsEnabled = true))
+                }
+            }
+        }
+        val initialBoardBounds = composeRule.onNodeWithTag("game_board").fetchSemanticsNode().boundsInRoot
+        composeRule.runOnIdle { state = state.copy(opponent = state.opponent.copy(score = 90)) }
+        assertEquals(initialBoardBounds, composeRule.onNodeWithTag("game_board").fetchSemanticsNode().boundsInRoot)
+        composeRule.runOnIdle { state = state.copy(opponent = state.opponent.copy(score = 80)) }
+        assertEquals(initialBoardBounds, composeRule.onNodeWithTag("game_board").fetchSemanticsNode().boundsInRoot)
+        composeRule.onNodeWithTag("game_number_50").assertIsDisplayed()
+    }
 
     private fun assertFiftyNumberBoard(width: Dp, height: Dp, fontScale: Float) {
         composeRule.setContent {

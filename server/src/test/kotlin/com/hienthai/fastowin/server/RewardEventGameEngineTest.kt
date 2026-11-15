@@ -9,6 +9,25 @@ import java.util.UUID
 import kotlin.test.*
 
 class RewardEventGameEngineTest {
+    @Test fun `clan level captured at start survives membership changes and restart`() = runTest {
+        var level = 10
+        val clans = object : ClanRepository by NoOpClanRepository {
+            override suspend fun getClanByUserId(userId: String) = ClanSnapshot("clan", "Clan", "", userId, emptyList(), 0, level=level)
+        }
+        val rooms = InMemoryActiveRoomRepository()
+        val source = MutableSource().apply { before = { level = 1 } }
+        val engine = GameEngine(clanRepository=clans, activeRoomRepository=rooms, eventRewardSource=source)
+        val (host, guest, room) = waiting(engine)
+        engine.handle(host, ClientMessage.SetReady(room, true)); engine.handle(guest, ClientMessage.SetReady(room, true))
+        level = 1
+        val results = mutableListOf<CompletedMatch>()
+        val restored = GameEngine(clanRepository=clans, activeRoomRepository=rooms, matchResultRepository=MatchResultRepository { results += it })
+        restored.connectAccount(AuthenticatedAccount(UUID.fromString(host), "host"))
+        finish(restored, host, room)
+        assertEquals(10, results.single().clanLevels[host])
+        val snapshot = restored.connectAccount(AuthenticatedAccount(UUID.fromString(host), "host")).currentGame
+        assertEquals(8, snapshot?.rewardBreakdowns?.get(host)?.clanBonusGold)
+    }
     @Test fun `matchmaking source failure releases hidden room and both accounts can retry without reconnect`() = runTest {
         val quota = InMemoryPlayQuotaRepository(); val stored = InMemoryActiveRoomRepository()
         val source = MutableSource().apply { fail = true }

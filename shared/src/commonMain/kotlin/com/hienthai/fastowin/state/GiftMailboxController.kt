@@ -17,7 +17,9 @@ data class GiftMailboxState(
     val isClaimingAll: Boolean = false,
     val pendingIds: Set<String> = emptySet(),
     val itemErrors: Map<String, String> = emptyMap(),
-    val loadError: String? = null
+    val loadError: String? = null,
+    val lastClaimedGift: GiftClaimResult? = null,
+    val lastClaimedBatch: List<GiftClaimResult> = emptyList()
 ) {
     val hasMore: Boolean get() = items.size < total
     val hasAvailable: Boolean get() = items.any { it.state == GiftState.AVAILABLE }
@@ -129,7 +131,8 @@ class GiftMailboxController(
             // A route reset fences the view; the accepted claim still changed this account.
             if (closed) return
             refreshProfile()
-            applyReceipt(receipt, updateItems = fence == generation)
+            val newlyClaimed = applyReceipt(receipt, updateItems = fence == generation)
+            if (newlyClaimed) _state.value = _state.value.copy(lastClaimedGift = receipt, lastClaimedBatch = emptyList())
         } catch (cancelled: CancellationException) {
             throw cancelled
         } catch (error: Exception) {
@@ -152,6 +155,7 @@ class GiftMailboxController(
         countVersion++
         claimAllInFlight = true
         _state.value = initial.copy(isClaimingAll = true, loadError = null)
+        val claimedReceipts = mutableListOf<GiftClaimResult>()
         try {
             // Collect all server pages before claiming: the visible page is not the audience.
             var page = 0
@@ -181,7 +185,10 @@ class GiftMailboxController(
                     for (id in batch) {
                         val item = results[id]
                         val receipt = accepted[id]
-                        if (receipt != null) applyReceipt(receipt, updateItems = fence == generation)
+                        if (receipt != null) {
+                            applyReceipt(receipt, updateItems = fence == generation)
+                            claimedReceipts += receipt
+                        }
                         else if (fence == generation) markError(id, item?.error?.code ?: "NETWORK_ERROR")
                     }
                     if (fence != generation) return
@@ -191,6 +198,9 @@ class GiftMailboxController(
                     if (fence != generation) return
                     batch.forEach { markError(it, error.code()) }
                 }
+            }
+            if (fence == generation && claimedReceipts.isNotEmpty()) {
+                _state.value = _state.value.copy(lastClaimedGift = null, lastClaimedBatch = claimedReceipts.toList())
             }
         } catch (cancelled: CancellationException) {
             throw cancelled
@@ -226,7 +236,11 @@ class GiftMailboxController(
         gateway.close()
     }
 
-    private fun applyReceipt(receipt: GiftClaimResult, updateItems: Boolean = true) {
+    fun dismissLastClaimedGift() {
+        _state.value = _state.value.copy(lastClaimedGift = null, lastClaimedBatch = emptyList())
+    }
+
+    private fun applyReceipt(receipt: GiftClaimResult, updateItems: Boolean = true): Boolean {
         val id = receipt.gift.campaignId
         countVersion++
         val newlyClaimed = receipt.gift.state == GiftState.CLAIMED && appliedReceiptIds.add(id)
@@ -235,6 +249,7 @@ class GiftMailboxController(
             items = if (updateItems) _state.value.items.map { if (it.campaignId == id) receipt.gift else it } else _state.value.items,
             itemErrors = if (updateItems) _state.value.itemErrors - id else _state.value.itemErrors
         )
+        return newlyClaimed
     }
 
     private fun markError(id: String, code: String) {

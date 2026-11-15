@@ -64,7 +64,7 @@ class LocalizedSocialShopUiTest {
     fun vietnameseLeaderboardUsesLocalizedTitle() {
         render(AppLanguage.VIETNAMESE) {
             LeaderboardScreen(
-                state = GameState(), onBack = {}, onRefresh = {}, onOpenFriendProfile = {}
+                state = GameState(), onBack = {}, onRefresh = {}
             )
         }
         composeRule.onNodeWithText("Xếp hạng").assertIsDisplayed()

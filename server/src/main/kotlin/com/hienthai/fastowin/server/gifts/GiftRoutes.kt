@@ -2,6 +2,11 @@ package com.hienthai.fastowin.server.gifts
 
 import com.hienthai.fastowin.protocol.*
 import com.hienthai.fastowin.server.AuthenticationService
+import com.hienthai.fastowin.server.InMemoryRateLimiter
+import com.hienthai.fastowin.server.RateLimiter
+import com.hienthai.fastowin.server.RateLimitPolicy
+import com.hienthai.fastowin.server.RateLimitUnavailableException
+import com.hienthai.fastowin.server.stableRateLimitKey
 import com.hienthai.fastowin.server.admin.*
 import io.ktor.http.*
 import io.ktor.server.application.*
@@ -14,7 +19,30 @@ import kotlinx.serialization.SerializationException
 import kotlinx.serialization.json.Json
 
 private val giftJson = Json { ignoreUnknownKeys = false }
-fun Route.giftRoutes(service: GiftService, auth: AuthenticationService, adminEnabled: Boolean) {
+fun Route.giftRoutes(service: GiftService, auth: AuthenticationService, adminEnabled: Boolean, limiter: RateLimiter = InMemoryRateLimiter()) {
+    if (adminEnabled) route("/admin/api/gift-codes") {
+        get { call.giftResponse { call.respond(service.listGiftCodes(call.context(), call.page())) } }
+        post { call.giftResponse {
+            service.requireOrigin(call.request.header(HttpHeaders.Origin))
+            call.respond(service.publishGiftCode(call.context(), call.body<GiftCodePublishRequest>(4096)))
+        } }
+        post("/{id}/stop") { call.giftResponse {
+            service.requireOrigin(call.request.header(HttpHeaders.Origin))
+            call.respond(service.stopGiftCode(call.context(), call.id(), call.body<GiftCodeStopRequest>(4096)))
+        } }
+    }
+    post("/api/gift-codes/redeem") { call.giftResponse {
+        val player = call.player(auth)
+        if (call.allowGiftAction(limiter, "gift-code-player", player, 8)) {
+            call.respond(service.redeemGiftCode(player, call.body<GiftCodeRedeemRequest>(1024)))
+        }
+    } }
+    post("/api/play-credits/exchange") { call.giftResponse {
+        val player = call.player(auth)
+        if (call.allowGiftAction(limiter, "play-credit-exchange-player", player, 16)) {
+            call.respond(service.exchangePlays(player, call.body<PlayCreditExchangeRequest>(1024)))
+        }
+    } }
     if (adminEnabled) route("/admin/api/gift-campaigns") {
         get { call.giftResponse { call.respond(service.list(call.context(),call.page()).adminResponse()) } }
         post { call.giftResponse { service.requireOrigin(call.request.header(HttpHeaders.Origin)); call.respond(service.create(call.context(),call.body<GiftDraftRequest>()).adminResponse()) } }
@@ -27,6 +55,15 @@ fun Route.giftRoutes(service: GiftService, auth: AuthenticationService, adminEna
     // Keep the legacy HTTP prefix and the network-only PWA namespace on one handler.
     route("/gifts/mailbox") { playerMailboxRoutes(service, auth) }
     route("/api/gifts/mailbox") { playerMailboxRoutes(service, auth) }
+}
+private suspend fun ApplicationCall.allowGiftAction(limiter: RateLimiter, bucket: String, player: String, capacity: Int): Boolean {
+    val result = try {
+        limiter.consume(bucket, stableRateLimitKey(player), RateLimitPolicy(capacity, 60_000))
+    } catch (_: RateLimitUnavailableException) { unavailable() }
+    if (result.allowed) return true
+    response.header(HttpHeaders.RetryAfter, ((result.retryAfterMillis + 999) / 1000).toString())
+    respond(HttpStatusCode.TooManyRequests, GiftError("RATE_LIMITED", "Try again later"))
+    return false
 }
 private fun Route.playerMailboxRoutes(service: GiftService, auth: AuthenticationService) {
     get { call.giftResponse { call.respond(service.mailbox(call.player(auth),call.page())) } }
@@ -55,14 +92,14 @@ private suspend fun ApplicationCall.player(auth: AuthenticationService): String 
         unavailable()
     }
 }
-private suspend inline fun <reified T> ApplicationCall.body(): T {
+private suspend inline fun <reified T> ApplicationCall.body(limit: Int = 524288): T {
     if (!request.contentType().match(ContentType.Application.Json)) invalid()
-    val channel = receiveChannel(); val buffer = ByteArray(524289); var size = 0
+    val channel = receiveChannel(); val buffer = ByteArray(limit + 1); var size = 0
     while (!channel.isClosedForRead) {
         if (size == buffer.size) invalid()
         val n = channel.readAvailable(buffer,size,buffer.size-size); if (n < 0) break; size += n
     }
-    if (size > 524288) invalid()
+    if (size > limit) invalid()
     return try { giftJson.decodeFromString<T>(buffer.copyOf(size).toString(Charsets.UTF_8)) } catch (_: SerializationException) { invalid() }
 }
 private suspend fun ApplicationCall.giftResponse(block: suspend () -> Unit) {

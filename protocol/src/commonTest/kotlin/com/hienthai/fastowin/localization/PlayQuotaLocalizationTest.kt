@@ -38,7 +38,11 @@ class PlayQuotaLocalizationTest {
             "RewardedAdCancelled",
             "RewardedAdUnavailable",
             "RewardedAdUseMobile",
-            "OnlineAccountRequired"
+            "OnlineAccountRequired",
+            "PlayCredits", "PlayCreditsDescription", "DailyPlaysRemaining", "BankedPlays",
+            "PlayCreditOffer", "PlayCreditExchange", "PlayCreditConfirmation", "PlayCreditExchanged", "RewardsReceived",
+            "GiftCode", "GiftCodeEntry", "GiftCodeRedeem", "GiftCodeRedeemed",
+            "GiftCodeInvalid", "GiftCodeExpired", "GiftCodeExhausted", "GiftCodeAlreadyUsed"
         )
     }
 }

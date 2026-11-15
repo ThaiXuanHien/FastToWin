@@ -41,7 +41,7 @@ private fun JdbcClanRaceStore.settle(week:LocalDate,now:Long):Boolean {
     val config=published(week)?:return false
     setTime(now)
     val standings=standingsAt(week,cutoff)
-    val winners=standings.take(3).map { standing ->
+    val winners=standings.filter { it.rank<=3 }.map { standing ->
         ClanRaceWinner(standing,config.rewards[standing.rank-1],eligibleAt(week,standing.clanId,cutoff).size)
     }
     val revision=rows("SELECT revision FROM clan_race_revisions WHERE week_start=?",listOf(Date.valueOf(week))) { it.getLong(1) }.single()

@@ -129,6 +129,30 @@ class AdminService(
         }
     }
 
+    suspend fun createPlayer(token: String?, csrfToken: String?, origin: String?, request: CreatePlayerRequest): UserDetail {
+        requireOrigin(origin)
+        val email = normalizeEmail(request.email); val name = request.displayName.trim()
+        validateMutation(request.reason, request.requestId); validatePassword(request.password, true)
+        if (name.isEmpty() || name.length > 32 || name.any(Char::isISOControl) ||
+            !request.password.any(Char::isUpperCase) || !request.password.any(Char::isLowerCase) ||
+            !request.password.any(Char::isDigit) || !request.password.any { !it.isLetterOrDigit() } || request.password.any(Char::isISOControl)) invalid()
+        repository.transaction { principal(token, csrfToken, true, ownerOnly = true) }
+        val hash = withContext(Dispatchers.Default) { passwordHasher.hash(request.password) }
+        val signature = fingerprint("support-player", email, name, request.reason)
+        return withContext(Dispatchers.Default) { repository.transaction {
+            val actor = principal(token, csrfToken, true, true).second.identity
+            playerCreation(actor.id, request.requestId)?.let { receipt ->
+                if (receipt.fingerprint != signature || !passwordHasher.verify(request.password, playerPasswordHash(receipt.userId) ?: conflict())) conflict()
+                return@transaction user(receipt.userId) ?: conflict()
+            }
+            val created = createSupportPlayer(UUID.randomUUID().toString(), email, name, hash, nowMillis())
+            auditEntry(actor.id, "PLAYER_SUPPORT_CREATE", created.id, request.requestId, request.reason,
+                after = "accountType=REGISTERED;emailVerified=false;supportEmailVerificationExempt=true")
+            putPlayerCreation(actor.id, request.requestId, PlayerCreationReceipt(signature, created.id))
+            created
+        } }
+    }
+
     suspend fun users(token: String?, query: String, page: PageRequest): AdminPage<UserSummary> = repository.transaction {
         val actor = principal(token).second.identity
         val q = query.trim(); if (q.length > 128 || q.any(Char::isISOControl)) invalid()
@@ -148,7 +172,7 @@ class AdminService(
         PlayerOverviewResponse(snapshotAt, todayFrom, snapshotAt, stats.totalPlayers, stats.registeredPlayers,
             stats.guestPlayers, stats.playableAccounts, stats.matchesToday, stats.recordedParticipations,
             stats.recordedWins, stats.recordedLosses, stats.recordedDraws, stats.playedProfiles, stats.clanCount,
-            stats.clanMembers, stats.averageElo, stats.maxElo)
+            stats.clanMembers, stats.averageElo, stats.maxElo, playerCommerce(todayFrom - 6 * 86_400_000L, snapshotAt))
     }
     suspend fun user(token: String?, id: String): UserDetail = repository.transaction {
         val actor = principal(token).second.identity; uuid(id)

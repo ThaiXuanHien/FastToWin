@@ -58,8 +58,9 @@ class PostgresPlayQuotaRepository(
                     s.executeQuery().use { r -> buildSet { while (r.next()) add(r.getString(1)) } }
                 }
                 check(existingParticipants.isEmpty() || existingParticipants == userIds) { "Quota match participants changed" }
+                lockUsers(connection, parsedUserIds)
                 ensureDailyRows(connection, parsedUserIds, quotaDate)
-                val quotas = loadSnapshots(connection, parsedUserIds, nowMillis, lockRows = true)
+                val quotas = loadSnapshots(connection, parsedUserIds, nowMillis, lockRows = true, lockCredits = true)
                 val existingReceipts = existingMatchReceiptCount(
                     connection = connection,
                     userIds = parsedUserIds,
@@ -86,23 +87,19 @@ class PostgresPlayQuotaRepository(
                     )
                 }
 
-                insertMatchReceipts(connection, parsedUserIds, parsedMatchId, quotaDate)
+                val creditUsers = parsedUserIds.filter { quotas.getValue(it.toString()).dailyMatchesRemaining == 0 }.toSet()
+                val dailyUsers = parsedUserIds.filterNot { it in creditUsers }
+                insertMatchReceipts(connection, parsedUserIds, parsedMatchId, quotaDate, creditUsers)
                 if (reserved) connection.prepareStatement("UPDATE play_quota_match_consumptions SET reservation_state='RESERVED' WHERE match_id=?").use {
                     it.setObject(1, parsedMatchId); it.executeUpdate()
                 }
-                incrementConsumedMatches(connection, parsedUserIds, quotaDate)
+                if (dailyUsers.isNotEmpty()) incrementConsumedMatches(connection, dailyUsers, quotaDate)
+                creditUsers.forEach { changeBankedMatches(connection, it, -1) }
+                val updatedQuotas = loadSnapshots(connection, parsedUserIds, nowMillis)
                 connection.commit()
                 PlayQuotaConsumption(
                     status = PlayQuotaConsumptionStatus.CONSUMED,
-                    quotas = quotas.mapValues { (_, quota) ->
-                        quota.copy(
-                            matchesConsumed = quota.matchesConsumed + 1,
-                            remainingMatches = PlayQuotaRules.remaining(
-                                matchesConsumed = quota.matchesConsumed + 1,
-                                bonusMatchesGranted = quota.bonusMatchesGranted
-                            )
-                        )
-                    }
+                    quotas = updatedQuotas
                 )
             } catch (error: Throwable) {
                 connection.rollback()
@@ -116,6 +113,18 @@ class PostgresPlayQuotaRepository(
     private fun lockMatch(connection: Connection, matchId: String) {
         connection.prepareStatement("SELECT pg_advisory_xact_lock(hashtextextended(?, 0))").use {
             it.setString(1, "quota:$matchId"); it.execute()
+        }
+    }
+
+    private fun lockUsers(connection: Connection, userIds: List<UUID>) {
+        val placeholders = userIds.joinToString(",") { "?" }
+        // Wallet mutations and account deletion lock users before stats. Acquire the
+        // receipt foreign-key lock first so quota stats locks cannot invert that order.
+        connection.prepareStatement(
+            "SELECT id FROM users WHERE id IN ($placeholders) ORDER BY id FOR KEY SHARE"
+        ).use { statement ->
+            userIds.forEachIndexed { index, userId -> statement.setObject(index + 1, userId) }
+            statement.executeQuery().use { rows -> while (rows.next()) { /* Hold each participant lock until commit. */ } }
         }
     }
 
@@ -139,12 +148,17 @@ class PostgresPlayQuotaRepository(
             c.autoCommit = false
             try {
                 lockMatch(c, matchId)
-                val receipts = c.prepareStatement("SELECT user_id, quota_date, reservation_state FROM play_quota_match_consumptions WHERE match_id=? ORDER BY user_id FOR UPDATE").use { s ->
+                lockUsers(c, parseUserIds(userIds))
+                val receipts = c.prepareStatement("SELECT user_id, quota_date, reservation_state, used_play_credit FROM play_quota_match_consumptions WHERE match_id=? ORDER BY user_id FOR UPDATE").use { s ->
                     s.setObject(1, UUID.fromString(matchId))
-                    s.executeQuery().use { r -> buildList { while(r.next()) add(Triple(r.getString(1), r.getDate(2), r.getString(3))) } }
+                    s.executeQuery().use { r ->
+                        buildList {
+                            while (r.next()) add(ReservationReceipt(r.getObject(1, UUID::class.java), r.getDate(2), r.getString(3), r.getBoolean(4)))
+                        }
+                    }
                 }
-                if (receipts.isNotEmpty() && receipts.any { it.third == "RESERVED" }) {
-                    check(receipts.map { it.first }.toSet() == userIds && receipts.all { it.third == "RESERVED" }) { "Reservation identity mismatch" }
+                if (receipts.any { it.state == "RESERVED" }) {
+                    check(receipts.map { it.userId.toString() }.toSet() == userIds && receipts.all { it.state == "RESERVED" }) { "Reservation identity mismatch" }
                     // Durable results and snapshots win over a stale caller, including uncertain save outcomes.
                     val durable = matchId in durableMatchIds || c.prepareStatement("""
                         SELECT EXISTS(SELECT 1 FROM matches WHERE id=?) OR EXISTS(
@@ -157,11 +171,12 @@ class PostgresPlayQuotaRepository(
                     if (durable) c.prepareStatement("UPDATE play_quota_match_consumptions SET reservation_state='FINALIZED' WHERE match_id=?").use {
                         it.setObject(1, UUID.fromString(matchId)); it.executeUpdate()
                     } else {
-                        receipts.forEach { (user, date, _) ->
+                        receipts.filterNot { it.usedCredit }.forEach { (user, date) ->
                             c.prepareStatement("UPDATE daily_play_quotas SET matches_consumed=matches_consumed-1, updated_at=CURRENT_TIMESTAMP WHERE user_id=? AND quota_date=?").use {
-                                it.setObject(1, UUID.fromString(user)); it.setDate(2, date); check(it.executeUpdate() == 1)
+                                it.setObject(1, user); it.setDate(2, date); check(it.executeUpdate() == 1)
                             }
                         }
+                        receipts.filter { it.usedCredit }.forEach { changeBankedMatches(c, it.userId, 1) }
                         c.prepareStatement("DELETE FROM play_quota_match_consumptions WHERE match_id=? AND reservation_state='RESERVED'").use {
                             it.setObject(1, UUID.fromString(matchId)); it.executeUpdate()
                         }
@@ -248,9 +263,8 @@ class PostgresPlayQuotaRepository(
             status = RewardedAdBonusStatus.GRANTED,
             quota = quota.copy(
                 bonusMatchesGranted = updatedBonus,
-                remainingMatches = PlayQuotaRules.remaining(
-                    matchesConsumed = quota.matchesConsumed,
-                    bonusMatchesGranted = updatedBonus
+                remainingMatches = PlayQuotaRules.totalRemaining(
+                    PlayQuotaRules.remaining(quota.matchesConsumed, updatedBonus), quota.bankedMatches
                 )
             )
         )
@@ -286,7 +300,8 @@ class PostgresPlayQuotaRepository(
         connection: Connection,
         userIds: List<UUID>,
         nowMillis: Long,
-        lockRows: Boolean = false
+        lockRows: Boolean = false,
+        lockCredits: Boolean = false
     ): Map<String, PlayQuotaSnapshot> {
         val quotaDate = PlayQuotaRules.quotaDate(nowMillis)
         val rows = mutableMapOf<UUID, DailyQuotaRow>()
@@ -311,19 +326,40 @@ class PostgresPlayQuotaRepository(
                 }
             }
         }
+        val balances = loadCreditBalances(connection, userIds, placeholders, lockCredits)
         return userIds.associate { userId ->
             val row = rows[userId] ?: DailyQuotaRow()
+            val daily = PlayQuotaRules.remaining(row.matchesConsumed, row.bonusMatchesGranted)
+            val banked = balances[userId] ?: 0
             userId.toString() to PlayQuotaSnapshot(
                 quotaDate = quotaDate.toString(),
                 baseMatches = PlayQuotaRules.BASE_MATCHES,
                 matchesConsumed = row.matchesConsumed,
                 bonusMatchesGranted = row.bonusMatchesGranted,
-                remainingMatches = PlayQuotaRules.remaining(
-                    matchesConsumed = row.matchesConsumed,
-                    bonusMatchesGranted = row.bonusMatchesGranted
-                ),
-                nextResetAtEpochMillis = PlayQuotaRules.nextResetAtEpochMillis(nowMillis)
+                remainingMatches = PlayQuotaRules.totalRemaining(daily, banked),
+                nextResetAtEpochMillis = PlayQuotaRules.nextResetAtEpochMillis(nowMillis),
+                bankedMatches = banked
             )
+        }
+    }
+
+    private fun loadCreditBalances(connection: Connection, ids: List<UUID>, placeholders: String, lock: Boolean): Map<UUID, Long> {
+        val lockClause = if (lock) " FOR UPDATE" else ""
+        return connection.prepareStatement(
+            "SELECT user_id, play_credits FROM player_stats WHERE user_id IN ($placeholders) ORDER BY user_id$lockClause"
+        ).use { statement ->
+            ids.forEachIndexed { index, id -> statement.setObject(index + 1, id) }
+            statement.executeQuery().use { rows ->
+                buildMap { while (rows.next()) put(rows.getObject(1, UUID::class.java), rows.getLong(2)) }
+            }
+        }
+    }
+
+    private fun changeBankedMatches(connection: Connection, userId: UUID, amount: Int) {
+        connection.prepareStatement("UPDATE player_stats SET play_credits=play_credits+? WHERE user_id=?").use { statement ->
+            statement.setInt(1, amount)
+            statement.setObject(2, userId)
+            check(statement.executeUpdate() == 1)
         }
     }
 
@@ -353,18 +389,20 @@ class PostgresPlayQuotaRepository(
         connection: Connection,
         userIds: List<UUID>,
         matchId: UUID,
-        quotaDate: LocalDate
+        quotaDate: LocalDate,
+        creditUsers: Set<UUID>
     ) {
         connection.prepareStatement(
             """
-            INSERT INTO play_quota_match_consumptions (user_id, match_id, quota_date)
-            VALUES (?, ?, ?)
+            INSERT INTO play_quota_match_consumptions (user_id, match_id, quota_date, used_play_credit)
+            VALUES (?, ?, ?, ?)
             """.trimIndent()
         ).use { statement ->
             userIds.forEach { userId ->
                 statement.setObject(1, userId)
                 statement.setObject(2, matchId)
                 statement.setDate(3, Date.valueOf(quotaDate))
+                statement.setBoolean(4, userId in creditUsers)
                 statement.addBatch()
             }
             statement.executeBatch()
@@ -395,4 +433,6 @@ class PostgresPlayQuotaRepository(
         val matchesConsumed: Int = 0,
         val bonusMatchesGranted: Int = 0
     )
+
+    private data class ReservationReceipt(val userId: UUID, val date: Date, val state: String, val usedCredit: Boolean)
 }

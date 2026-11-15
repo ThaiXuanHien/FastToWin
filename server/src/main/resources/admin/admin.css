@@ -791,7 +791,7 @@ p {
 /* Dashboard Top KPI Cards Grid */
 .dashboard-metrics-grid {
   display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
+  grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 24px;
   width: 100%;
 }
@@ -854,6 +854,7 @@ p {
 }
 .mini-cards-stack {
   display: grid;
+  align-content: start;
   grid-template-columns: 1fr;
   gap: 12px;
 }
@@ -1961,6 +1962,17 @@ dd {
   transition: background 0.15s var(--easing);
 }
 .gift-row:last-child { border-bottom: 0; }
+.gift-code-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 14px 16px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  overflow-wrap: anywhere;
+}
 .gift-row:hover { background: #fafafa; }
 .gift-row .row-meta { font-size: 0.8125rem; }
 .gift-row > .icon-button .tooltip { right: 0; left: auto; }

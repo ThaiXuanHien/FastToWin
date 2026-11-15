@@ -95,6 +95,34 @@ internal class JdbcAdminTransaction(private val connection: Connection) : AdminT
         }
         return page.result(items,count("SELECT count(*) $from",values))
     }
+    override fun playerCommerce(from: Long, until: Long): PlayerCommerceOverview = rows("""
+        SELECT (SELECT count(*)::text FROM store_purchases WHERE verified_at>=? AND verified_at<?) AS purchases,
+            (SELECT count(DISTINCT user_id)::text FROM store_purchases WHERE verified_at>=? AND verified_at<?) AS buyers,
+            (SELECT count(*)::text FROM rewarded_ad_grants WHERE verified_at>=? AND verified_at<?) AS ads,
+            (SELECT max(verified_at) FROM (SELECT verified_at FROM store_purchases WHERE verified_at<?
+                UNION ALL SELECT verified_at FROM rewarded_ad_grants WHERE verified_at<?) recorded) AS freshness
+        """, listOf(Timestamp(from),Timestamp(until),Timestamp(from),Timestamp(until),Timestamp(from),Timestamp(until),Timestamp(until),Timestamp(until))) {
+        PlayerCommerceOverview(from,until,it.getString("purchases"),it.getString("buyers"),it.getString("ads"),freshness=it.getTimestamp("freshness")?.time)
+    }.single()
+    override fun playerCreation(actorId: String, requestId: String): PlayerCreationReceipt? = rows(
+        "SELECT fingerprint,user_id FROM admin_player_creation_requests WHERE actor_id=? AND request_id=?", listOf(UUID.fromString(actorId),requestId)) {
+        PlayerCreationReceipt(it.getString("fingerprint"),it.getString("user_id"))
+    }.singleOrNull()
+    override fun putPlayerCreation(actorId: String, requestId: String, receipt: PlayerCreationReceipt) {
+        update("INSERT INTO admin_player_creation_requests(actor_id,request_id,fingerprint,user_id) VALUES (?,?,?,?)",
+            UUID.fromString(actorId),requestId,receipt.fingerprint,UUID.fromString(receipt.userId))
+    }
+    override fun playerPasswordHash(id: String): String? = rows("SELECT password_hash FROM users WHERE id=?",listOf(UUID.fromString(id))) { it.getString(1) }.singleOrNull()
+    override fun createSupportPlayer(id: String, email: String, displayName: String, passwordHash: String, now: Long): UserDetail {
+        if (count("SELECT count(*) FROM users WHERE email_normalized=? AND status<>'DELETED'",listOf(email)) != 0L) conflict()
+        val userId = UUID.fromString(id); val at = Timestamp(now)
+        update("""INSERT INTO users(id,account_type,status,email_normalized,password_hash,support_email_verification_exempt,created_at,updated_at)
+            VALUES (?,'REGISTERED','ACTIVE',?,?,TRUE,?,?)""",userId,email,passwordHash,at,at)
+        update("INSERT INTO profiles(user_id,display_name,player_code,avatar_url,gender,created_at,updated_at) VALUES (?,?,?,?,'MALE',?,?)",
+            userId,displayName,id.replace("-", "").take(10).uppercase(),com.hienthai.fastowin.protocol.DEFAULT_MALE_AVATAR_ID,at,at)
+        com.hienthai.fastowin.server.analytics.AnalyticsFacts.recordRegistration(connection,id,now)
+        return user(id) ?: unavailable()
+    }
     override fun playerOverview(todayFrom: Long, todayUntil: Long): PlayerOverviewStats = rows("""
         WITH population AS (
             SELECT u.id,u.account_type,u.status,COALESCE(ps.total_matches,0) AS total_matches,
@@ -129,7 +157,7 @@ internal class JdbcAdminTransaction(private val connection: Connection) : AdminT
         listOf(reference, reference.lowercase(java.util.Locale.ROOT))) {
         UserSummary(it.getString("id"),it.getString("display_name"),it.getString("email_normalized"),it.getString("account_type"),it.getString("status"),it.getTimestamp("created_at").time,it.getString("player_code"),PlayerProgression.levelForExperience(it.getInt("xp")))
     }.singleOrNull()
-    override fun user(id: String): UserDetail? = rows("""SELECT u.id,p.display_name,p.player_code,u.email_normalized,u.account_type,u.status,u.created_at,
+    override fun user(id: String): UserDetail? = rows("""SELECT u.id,p.display_name,p.player_code,u.email_normalized,u.account_type,u.status,u.created_at,u.email_verified_at,u.support_email_verification_exempt,
         COALESCE(ps.experience_points,0) AS xp,COALESCE(ps.gold,0) AS gold,COALESCE(ps.gems,0) AS gems,COALESCE(ps.elo_rating,1000) AS elo,
         COALESCE(ps.total_matches,0) AS total_matches,COALESCE(ps.wins,0) AS wins,COALESCE(ps.losses,0) AS losses,COALESCE(ps.draws,0) AS draws,
         c.id AS clan_id,c.name AS clan_name,(SELECT max(s.last_seen_at) FROM sessions s WHERE s.user_id=u.id) AS last_activity
@@ -137,7 +165,7 @@ internal class JdbcAdminTransaction(private val connection: Connection) : AdminT
         LEFT JOIN clan_members cm ON cm.user_id=u.id LEFT JOIN clans c ON c.id=cm.clan_id WHERE u.id=?""", listOf(UUID.fromString(id))) {
         val xp=it.getInt("xp")
         UserDetail(it.getString("id"),it.getString("display_name"),it.getString("email_normalized"),it.getString("account_type"),it.getString("status"),it.getTimestamp("created_at").time,
-            PlayerProgression.levelForExperience(xp),xp,it.getInt("gold"),it.getInt("gems"),it.getInt("elo"),it.getString("clan_id"),it.getString("clan_name"),it.getTimestamp("last_activity")?.time,it.getString("player_code"),it.getInt("total_matches"),it.getInt("wins"),it.getInt("losses"),it.getInt("draws"))
+            PlayerProgression.levelForExperience(xp),xp,it.getInt("gold"),it.getInt("gems"),it.getInt("elo"),it.getString("clan_id"),it.getString("clan_name"),it.getTimestamp("last_activity")?.time,it.getString("player_code"),it.getInt("total_matches"),it.getInt("wins"),it.getInt("losses"),it.getInt("draws"),it.getTimestamp("email_verified_at") != null,it.getBoolean("support_email_verification_exempt"))
     }.singleOrNull()
     override fun matches(id: String, page: PageRequest): AdminPage<MatchEntry> {
         val from="FROM match_players mp JOIN matches m ON m.id=mp.match_id WHERE mp.user_id=?"
@@ -148,10 +176,10 @@ internal class JdbcAdminTransaction(private val connection: Connection) : AdminT
         return page.result(items,count("SELECT count(*) $from",values))
     }
     override fun wallet(id: String, giftsOnly: Boolean, page: PageRequest): AdminPage<WalletEntry> {
-        val from="FROM wallet_transactions WHERE user_id=?" + if (giftsOnly) " AND source_type IN ('ADMIN_GIFT','COMPENSATION')" else ""
+        val from="FROM wallet_transactions WHERE user_id=?" + if (giftsOnly) " AND source_type IN ('ADMIN_GIFT','COMPENSATION','GIFT_CODE')" else ""
         val values=listOf(UUID.fromString(id))
-        val items=rows("SELECT id,source_type,source_id,gold_delta,gems_delta,xp_delta,created_at $from ORDER BY created_at DESC,id LIMIT ? OFFSET ?",values+listOf(page.pageSize,page.offset)) {
-            WalletEntry(it.getString("id"),it.getString("source_type"),it.getString("source_id"),it.getInt("gold_delta"),it.getInt("gems_delta"),it.getInt("xp_delta"),it.getTimestamp("created_at").time)
+        val items=rows("SELECT id,source_type,source_id,gold_delta,gems_delta,xp_delta,created_at,play_credit_delta $from ORDER BY created_at DESC,id LIMIT ? OFFSET ?",values+listOf(page.pageSize,page.offset)) {
+            WalletEntry(it.getString("id"),it.getString("source_type"),it.getString("source_id"),it.getInt("gold_delta"),it.getInt("gems_delta"),it.getInt("xp_delta"),it.getTimestamp("created_at").time,it.getInt("play_credit_delta"))
         }
         return page.result(items,count("SELECT count(*) $from",values))
     }

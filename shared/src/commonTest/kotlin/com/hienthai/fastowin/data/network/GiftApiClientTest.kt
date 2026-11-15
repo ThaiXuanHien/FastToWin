@@ -18,6 +18,36 @@ import kotlin.test.assertFailsWith
 import kotlin.test.assertTrue
 
 class GiftApiClientTest {
+    @Test fun `play exchange retries auth with the same receipt and gift code uses standalone endpoint`() = runTest {
+        val exchangeBodies = mutableListOf<String>()
+        val client = HttpClient(MockEngine { request ->
+            val body = (request.body as OutgoingContent.ByteArrayContent).bytes().decodeToString()
+            when (request.url.encodedPath) {
+                "/api/play-credits/exchange" -> {
+                    exchangeBodies += body
+                    if (exchangeBodies.size == 1) {
+                        respond("""{"code":"UNAUTHORIZED","message":"expired"}""", HttpStatusCode.Unauthorized)
+                    } else {
+                        assertEquals("Bearer fresh", request.headers[HttpHeaders.Authorization])
+                        respond("""{"ok":true}""", headers = headersOf(HttpHeaders.ContentType, ContentType.Application.Json.toString()))
+                    }
+                }
+                "/api/gift-codes/redeem" -> {
+                    assertEquals("""{"code":"PLAYWEEK"}""", body)
+                    respond("""{"reward":{"gold":0,"xp":0,"gems":10,"plays":5}}""",
+                        headers = headersOf(HttpHeaders.ContentType, ContentType.Application.Json.toString()))
+                }
+                else -> error("Unexpected endpoint")
+            }
+        }) { install(ContentNegotiation) { json(ProtocolJson) } }
+        val api = GiftApiClient("ws://localhost:8080/game", { force -> if (force) "fresh" else "stale" }, client = client)
+        api.exchangePlays("plays_5", "same-receipt")
+        assertEquals(2, exchangeBodies.size)
+        assertEquals(exchangeBodies.first(), exchangeBodies.last())
+        assertTrue(exchangeBodies.first().contains("same-receipt"))
+        assertEquals(5, api.redeemCode("PLAYWEEK").reward.plays)
+        api.close()
+    }
 
     @Test fun `Gem claim receipt decodes awarded amount wallet and mailbox summary`() = runTest {
         val client = HttpClient(MockEngine { request ->

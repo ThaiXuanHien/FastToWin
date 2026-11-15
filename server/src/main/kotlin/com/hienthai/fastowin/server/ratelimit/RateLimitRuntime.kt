@@ -42,5 +42,5 @@ private val sharedBuckets = setOf(
     "password-reset-confirm-ip", "password-reset-confirm-account", "email-verification-request-ip",
     "email-verification-request-account", "email-verification-confirm-ip", "email-verification-confirm-account",
     "websocket-connect-ip", "create-room-player", "create-room-ip", "join-room-player", "join-room-ip",
-    "join-room-ip-room", "admin-login-ip", "admin-login-account"
+    "join-room-ip-room", "admin-login-ip", "admin-login-account", "gift-code-player", "play-credit-exchange-player"
 )

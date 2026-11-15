@@ -16,7 +16,7 @@ internal fun ClanRaceEntitlement.gift(available:Long):GiftCampaign {
     val expires=Math.addExact(available,7L*24*60*60*1000)
     val context=ClanRaceMailboxContext(id,weekStart,raceWeekMillis(LocalDate.parse(weekStart)),cutoffEpochMillis,
         standing.clanId,standing.name,standing.rank,standing.scoreUnits,standing.points,true,cutoffEpochMillis,
-        available,expires,reward,"CLAN_WEEKLY_RACE")
+        available,expires,reward,"CLAN_WEEKLY_RACE",standing.poolId)
     val draft=GiftDraftRequest(
         titleVi=legacyFallback("Quà đua top bang tuần $weekStart"),titleEn=legacyFallback("Weekly clan race reward: $weekStart"),
         bodyVi=legacyFallback("Bang ${standing.name} đạt hạng ${standing.rank}. Bạn đã đóng góp trong lần gia nhập còn hiệu lực tại thời điểm chốt tuần."),

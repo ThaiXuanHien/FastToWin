@@ -1,6 +1,7 @@
 package com.hienthai.fastowin.screenshot
 
 import androidx.compose.runtime.Composable
+import androidx.compose.ui.tooling.preview.Preview
 import com.android.tools.screenshot.PreviewTest
 import com.hienthai.fastowin.platform.StoreBillingState
 import com.hienthai.fastowin.platform.StoreProductPrice
@@ -9,6 +10,8 @@ import com.hienthai.fastowin.state.MissionState
 import com.hienthai.fastowin.ui.screens.ClanScreen
 import com.hienthai.fastowin.ui.screens.LeaderboardScreen
 import com.hienthai.fastowin.ui.screens.NotificationsScreen
+import com.hienthai.fastowin.ui.screens.ProfileSection
+import com.hienthai.fastowin.ui.screens.ProfileSectionScreen
 import com.hienthai.fastowin.ui.screens.ShopScreen
 import com.hienthai.fastowin.ui.screens.ShopTab
 import com.hienthai.fastowin.ui.screens.TournamentScreen
@@ -37,12 +40,65 @@ fun shopGoldCatalog() = ArcadeScreenshotFrame {
 @PreviewTest
 @ArcadeScreenshotDevices
 @Composable
+fun shopPlayCredits() = ArcadeScreenshotFrame {
+    ShopScreen(
+        progression = ArcadeScreenshotFixtures.profile().progression,
+        onClose = {},
+        isAccount = true,
+        initialTab = ShopTab.PLAYS,
+        quota = PlayQuotaSnapshot(
+            quotaDate = "2026-11-14",
+            baseMatches = 5,
+            matchesConsumed = 3,
+            bonusMatchesGranted = 0,
+            remainingMatches = 17,
+            nextResetAtEpochMillis = ArcadeScreenshotFixtures.NOW_MILLIS + 86_400_000,
+            bankedMatches = 15
+        ),
+        onExchangePlays = { _, _ -> }
+    )
+}
+
+@PreviewTest
+@Preview(name = "plays_large_text", widthDp = 375, heightDp = 1100, fontScale = 1.6f)
+@Composable
+fun shopPlayCreditsLargeText() = shopPlayCredits()
+
+@PreviewTest
+@ArcadeScreenshotDevices
+@Composable
+fun profileGiftCode() = ArcadeScreenshotFrame {
+    ProfileSectionScreen(
+        state = ArcadeScreenshotFixtures.homeState(),
+        profile = ArcadeScreenshotFixtures.profile(),
+        section = ProfileSection.GIFT_CODE,
+        isExternalProfile = false,
+        canEdit = true,
+        onBack = {},
+        onRefresh = {},
+        onOpenMatchDetail = {},
+        onCloseMatchDetail = {},
+        onEquipCosmetics = { _, _ -> },
+        onClaimMissionReward = {},
+        onSave = { _, _ -> },
+        onOpenNotifications = {},
+        onRedeemGiftCode = { GiftCodeRedeemResult(GiftCodeReward(plays = 5)) }
+    )
+}
+
+@PreviewTest
+@Preview(name = "code_large_text", widthDp = 375, heightDp = 1000, fontScale = 1.6f)
+@Composable
+fun profileGiftCodeLargeText() = profileGiftCode()
+
+@PreviewTest
+@ArcadeScreenshotDevices
+@Composable
 fun playerLeaderboard() = ArcadeScreenshotFrame {
     LeaderboardScreen(
         state = ArcadeScreenshotFixtures.leaderboardState(),
         onBack = {},
         onRefresh = {},
-        onOpenFriendProfile = {}
     )
 }
 

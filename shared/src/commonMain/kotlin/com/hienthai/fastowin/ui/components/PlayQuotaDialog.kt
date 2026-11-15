@@ -44,7 +44,7 @@ fun PlayQuotaExhaustedDialog(
                 Text(
                     text = localized(
                         TextKey.OnlineMatchesRemaining,
-                        "remaining" to (quota?.remainingMatches ?: 0),
+                        "remaining" to (quota?.dailyMatchesRemaining ?: 0),
                         "total" to ((quota?.baseMatches ?: 10) + (quota?.bonusMatchesGranted ?: 0))
                     ),
                     modifier = Modifier.fillMaxWidth().testTag("online_quota_dialog_remaining"),

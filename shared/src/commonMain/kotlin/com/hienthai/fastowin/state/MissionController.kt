@@ -12,7 +12,8 @@ data class MissionState(
     val isLoading: Boolean = false,
     val loadError: String? = null,
     val pendingIds: Set<String> = emptySet(),
-    val itemErrors: Map<String, String> = emptyMap()
+    val itemErrors: Map<String, String> = emptyMap(),
+    val lastClaimedReward: MissionClaimResponse? = null
 )
 
 /** Owns only server snapshots and request intent; reward calculation stays on the server. */
@@ -94,7 +95,7 @@ class MissionController(
             claimed += id
             mutableState.value = mutableState.value.copy(items = mutableState.value.items.map {
                 if (it.instanceId == id) it.copy(state = MissionClaimState.CLAIMED) else it
-            })
+            }, lastClaimedReward = receipt)
             if (walletReconciled.add(id)) refreshProfile()
         } catch (cancelled: CancellationException) {
             throw cancelled
@@ -104,6 +105,10 @@ class MissionController(
         } finally {
             if (current(fence)) mutableState.value = mutableState.value.copy(pendingIds = mutableState.value.pendingIds - id)
         }
+    }
+
+    fun clearLastClaimedReward() {
+        mutableState.value = mutableState.value.copy(lastClaimedReward = null)
     }
 
     fun close() {

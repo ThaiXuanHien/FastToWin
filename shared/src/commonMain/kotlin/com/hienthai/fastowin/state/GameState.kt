@@ -186,11 +186,16 @@ data class GameState(
     val clanList: List<com.hienthai.fastowin.protocol.ClanSummarySnapshot> = emptyList(),
     val pendingClanJoinIds: Set<String> = emptySet(),
     val currentClan: com.hienthai.fastowin.protocol.ClanSnapshot? = null,
+    val viewedLeaderboardClanId: String? = null,
     val clanNotice: String? = null,
     val clanLoadError: String? = null,
     val donatingClanRequestId: String? = null,
     val clanDonationResult: com.hienthai.fastowin.protocol.ServerMessage.ClanDonationResult? = null,
+    val clanQuestRewardResult: ServerMessage.ClanQuestRewardResult? = null,
+    val tournamentRewardResult: ServerMessage.TournamentRewardResult? = null,
     val profileNotice: String? = null,
+    val dailyCheckInResult: ServerMessage.DailyCheckInResult? = null,
+    val missionRewardResult: ServerMessage.MissionRewardResult? = null,
     val profileSaveError: String? = null,
     val profile: PlayerProfileSnapshot? = null,
     val avatarRevision: Long = 0L,
@@ -233,7 +238,8 @@ data class GameState(
     val tournamentInvitationPrompt: TournamentInvitationSnapshot? = null,
     val tournamentNotice: String? = null,
     val notifications: List<AppNotification> = emptyList(),
-    val dismissedNotificationIds: Set<String> = emptySet()
+    val dismissedNotificationIds: Set<String> = emptySet(),
+    val progressionRewardQueue: List<AppNotification> = emptyList()
 ) {
     val pendingSocialInvitationCount: Int
         get() = social.incomingRequests.size + roomInvitations.size

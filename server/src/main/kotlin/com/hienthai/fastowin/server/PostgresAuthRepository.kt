@@ -44,7 +44,7 @@ class PostgresAuthRepository(private val dataSource: DataSource) : AuthRepositor
             dataSource.connection.use { connection ->
                 connection.prepareStatement(
                     """
-                    SELECT u.id, u.password_hash, u.email_verified_at, p.display_name
+                    SELECT u.id, u.password_hash, u.email_verified_at, u.support_email_verification_exempt, p.display_name
                     FROM users u
                     JOIN profiles p ON p.user_id = u.id
                     WHERE u.email_normalized = ? AND u.account_type = 'REGISTERED' AND u.status = 'ACTIVE'
@@ -56,7 +56,8 @@ class PostgresAuthRepository(private val dataSource: DataSource) : AuthRepositor
                             userId = result.getObject("id", UUID::class.java),
                             passwordHash = result.getString("password_hash"),
                             displayName = result.getString("display_name"),
-                            emailVerified = result.getTimestamp("email_verified_at") != null
+                            emailVerified = result.getTimestamp("email_verified_at") != null,
+                            supportEmailVerificationExempt = result.getBoolean("support_email_verification_exempt")
                         )
                     }
                 }
@@ -68,7 +69,7 @@ class PostgresAuthRepository(private val dataSource: DataSource) : AuthRepositor
             dataSource.connection.use { connection ->
                 connection.prepareStatement(
                     """
-                    SELECT u.id, u.password_hash, u.email_verified_at, p.display_name
+                    SELECT u.id, u.password_hash, u.email_verified_at, u.support_email_verification_exempt, p.display_name
                     FROM users u
                     JOIN profiles p ON p.user_id = u.id
                     WHERE u.id = ? AND u.account_type = 'REGISTERED' AND u.status = 'ACTIVE'
@@ -80,7 +81,8 @@ class PostgresAuthRepository(private val dataSource: DataSource) : AuthRepositor
                             userId = result.getObject("id", UUID::class.java),
                             passwordHash = result.getString("password_hash"),
                             displayName = result.getString("display_name"),
-                            emailVerified = result.getTimestamp("email_verified_at") != null
+                            emailVerified = result.getTimestamp("email_verified_at") != null,
+                            supportEmailVerificationExempt = result.getBoolean("support_email_verification_exempt")
                         )
                     }
                 }
@@ -282,7 +284,7 @@ class PostgresAuthRepository(private val dataSource: DataSource) : AuthRepositor
         dataSource.connection.use { connection ->
             connection.prepareStatement(
                 """
-                SELECT u.id, u.email_verified_at, p.display_name, s.id AS session_id
+                SELECT u.id, u.email_verified_at, u.support_email_verification_exempt, p.display_name, s.id AS session_id
                 FROM sessions s
                 JOIN users u ON u.id = s.user_id
                 JOIN profiles p ON p.user_id = u.id
@@ -300,7 +302,8 @@ class PostgresAuthRepository(private val dataSource: DataSource) : AuthRepositor
                         userId = result.getObject("id", UUID::class.java),
                         displayName = result.getString("display_name"),
                         sessionId = result.getObject("session_id", UUID::class.java),
-                        emailVerified = result.getTimestamp("email_verified_at") != null
+                        emailVerified = result.getTimestamp("email_verified_at") != null,
+                        supportEmailVerificationExempt = result.getBoolean("support_email_verification_exempt")
                     )
                 }
             }

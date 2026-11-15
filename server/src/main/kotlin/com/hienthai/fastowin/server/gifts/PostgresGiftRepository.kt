@@ -1,6 +1,8 @@
 package com.hienthai.fastowin.server.gifts
 
 import com.hienthai.fastowin.server.admin.*
+import com.hienthai.fastowin.protocol.GiftCodeReward
+import com.hienthai.fastowin.protocol.PlayCreditOffer
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.encodeToString
@@ -56,6 +58,9 @@ internal class JdbcGiftTransaction(private val c: Connection) : GiftTransaction 
         com.hienthai.fastowin.server.activity.JdbcActivityReader(c).registeredRecipients(from, until, now)
     override fun registeredPlayers() = rows("SELECT id,created_at FROM users WHERE account_type='REGISTERED' AND status <> 'DELETED' ORDER BY id") { GiftPlayer(it.getString(1), it.getTimestamp(2).time) }
     override fun activePlayer(id: String) = rows("SELECT id FROM users WHERE id=? AND account_type='REGISTERED' AND status <> 'DELETED' FOR KEY SHARE", listOf(id(id))) { it.getString(1) }.isNotEmpty()
+    override fun rewardActionPlayer(id: String) = rows(
+        "SELECT id FROM users WHERE id=? AND account_type='REGISTERED' AND status='ACTIVE' FOR SHARE", listOf(id(id))
+    ) { true }.isNotEmpty()
     override fun request(actor: String, requestId: String) = rows("SELECT fingerprint,safe_result FROM admin_gift_requests WHERE actor_id=? AND request_id=?", listOf(id(actor), requestId)) {
         GiftRequestRecord(it.getString(1), Json.decodeFromString<GiftCampaignDetail>(it.getString(2)))
     }.singleOrNull()
@@ -85,7 +90,7 @@ internal class JdbcGiftTransaction(private val c: Connection) : GiftTransaction 
         val claimed = it.getLong("claimed"); val cancelled = campaign.state == CampaignState.CANCELLED
         GiftCounters(it.getLong("eligible"), if (cancelled) 0 else it.getLong("pending"), it.getLong("delivered"), claimed,
             if (!cancelled && now >= campaign.draft.expiresAtEpochMillis!!) it.getLong("delivered_unclaimed") else 0,
-            if (cancelled) it.getLong("unclaimed") else 0, it.getLong("skipped"), Math.multiplyExact(claimed,campaign.draft.gold.toLong()), Math.multiplyExact(claimed,campaign.draft.xp.toLong()), Math.multiplyExact(claimed,campaign.draft.gems.toLong()))
+            if (cancelled) it.getLong("unclaimed") else 0, it.getLong("skipped"), Math.multiplyExact(claimed,campaign.draft.gold.toLong()), Math.multiplyExact(claimed,campaign.draft.xp.toLong()), Math.multiplyExact(claimed,campaign.draft.gems.toLong()), Math.multiplyExact(claimed,campaign.draft.plays.toLong()))
     }.single()
     override fun mailbox(userId: String, now: Long, page: PageRequest): Pair<List<Pair<GiftCampaign, GiftRecipient>>, Long> {
         val from = "FROM admin_gift_recipients r JOIN admin_gift_campaigns c ON c.id=r.campaign_id WHERE r.user_id=? AND r.delivery='DELIVERED' AND c.available_at <= ?"
@@ -105,10 +110,81 @@ internal class JdbcGiftTransaction(private val c: Connection) : GiftTransaction 
         return rows("SELECT gold,experience_points,gems FROM player_stats WHERE user_id=? FOR UPDATE", listOf(id(userId))) { GiftBalance(it.getInt(1),it.getInt(2),it.getInt(3)) }.single()
     }
     override fun award(userId: String, campaign: GiftCampaign, now: Long): GiftBalance {
+        val draft = campaign.draft
+        return awardReward(userId, GiftCodeReward(draft.gold, draft.xp, draft.gems, draft.plays), campaign.walletSourceType(), campaign.id, now)
+    }
+
+    private fun awardReward(userId: String, reward: GiftCodeReward, source: String, sourceId: String, now: Long): GiftBalance {
         val before = balance(userId)
-        val after = try { GiftBalance(Math.addExact(before.gold,campaign.draft.gold), Math.addExact(before.xp,campaign.draft.xp), Math.addExact(before.gems,campaign.draft.gems)) } catch (_: ArithmeticException) { conflict() }
-        update("UPDATE player_stats SET gold=?,experience_points=?,gems=?,updated_at=? WHERE user_id=?", after.gold,after.xp,after.gems,Timestamp(now),id(userId))
-        update("INSERT INTO wallet_transactions(id,user_id,source_type,source_id,gold_delta,xp_delta,gems_delta,created_at) VALUES (?,?,?,?,?,?,?,?)", UUID.randomUUID(),id(userId),campaign.walletSourceType(),campaign.id,campaign.draft.gold,campaign.draft.xp,campaign.draft.gems,Timestamp(now))
+        val after = try {
+            GiftBalance(Math.addExact(before.gold, reward.gold), Math.addExact(before.xp, reward.xp), Math.addExact(before.gems, reward.gems))
+        } catch (_: ArithmeticException) { conflict() }
+        update("UPDATE player_stats SET gold=?,experience_points=?,gems=?,play_credits=play_credits+?,updated_at=? WHERE user_id=?",
+            after.gold, after.xp, after.gems, reward.plays, Timestamp(now), id(userId))
+        walletEntry(userId, source, sourceId, reward, now)
         return after
+    }
+
+    private fun walletEntry(userId: String, source: String, sourceId: String, change: GiftCodeReward, now: Long) {
+        update("""INSERT INTO wallet_transactions
+            (id,user_id,source_type,source_id,gold_delta,xp_delta,gems_delta,play_credit_delta,created_at)
+            VALUES (?,?,?,?,?,?,?,?,?)""", UUID.randomUUID(), id(userId), source, sourceId,
+            change.gold, change.xp, change.gems, change.plays, Timestamp(now))
+    }
+
+    override fun exchangePlayCredits(userId: String, offer: PlayCreditOffer, requestId: String, now: Long) {
+        val current = balance(userId)
+        val previous = rows("""SELECT gems_delta,play_credit_delta FROM wallet_transactions
+            WHERE user_id=? AND source_type='PLAY_CREDIT_EXCHANGE' AND source_id=?""", listOf(id(userId), requestId)) {
+            it.getInt(1) to it.getInt(2)
+        }.singleOrNull()
+        if (previous != null) {
+            if (previous != (-offer.gems to offer.plays)) conflict()
+            return
+        }
+        if (current.gems < offer.gems) throw AdminException(409, "INSUFFICIENT_GEMS", "Insufficient gems")
+        update("UPDATE player_stats SET gems=gems-?,play_credits=play_credits+?,updated_at=? WHERE user_id=?",
+            offer.gems, offer.plays, Timestamp(now), id(userId))
+        walletEntry(userId, "PLAY_CREDIT_EXCHANGE", requestId, GiftCodeReward(gems = -offer.gems, plays = offer.plays), now)
+    }
+
+    private fun readCode(row: ResultSet): GiftCode = Json.decodeFromString<GiftCode>(row.getString(1))
+        .copy(claims = row.getInt(2), stopped = row.getBoolean(3))
+
+    override fun listCodes(page: PageRequest): AdminPage<GiftCode> {
+        val results = rows("SELECT payload,claims,stopped FROM gift_codes ORDER BY code LIMIT ? OFFSET ?",
+            listOf(page.pageSize, page.offset), ::readCode)
+        val count = rows("SELECT count(*) FROM gift_codes") { it.getLong(1) }.single()
+        return page.result(results, count)
+    }
+
+    override fun code(code: String) = rows(
+        "SELECT payload,claims,stopped FROM gift_codes WHERE code=? FOR UPDATE", listOf(code), ::readCode
+    ).singleOrNull()
+
+    override fun insertCode(code: GiftCode) {
+        update("INSERT INTO gift_codes(code,payload) VALUES (?,?)", code.code, Json.encodeToString(code))
+    }
+
+    override fun stopCode(code: String) {
+        update("UPDATE gift_codes SET stopped=TRUE WHERE code=?", code)
+    }
+
+    override fun giftCodeMutation(actor: String, requestId: String) = rows(
+        "SELECT fingerprint FROM gift_code_admin_requests WHERE actor_id=? AND request_id=?", listOf(id(actor), requestId)
+    ) { it.getString(1) }.singleOrNull()
+
+    override fun recordGiftCodeMutation(actor: String, requestId: String, fingerprint: String) {
+        update("INSERT INTO gift_code_admin_requests(actor_id,request_id,fingerprint) VALUES (?,?,?)", id(actor), requestId, fingerprint)
+    }
+
+    override fun redeemed(code: String, userId: String) = rows(
+        "SELECT 1 FROM gift_code_redemptions WHERE code=? AND user_id=?", listOf(code, id(userId))
+    ) { true }.isNotEmpty()
+
+    override fun redeem(code: GiftCode, userId: String, now: Long) {
+        awardReward(userId, code.reward, "GIFT_CODE", com.hienthai.fastowin.server.hashToken(code.code), now)
+        update("INSERT INTO gift_code_redemptions(code,user_id,redeemed_at) VALUES (?,?,?)", code.code, id(userId), Timestamp(now))
+        update("UPDATE gift_codes SET claims=claims+1 WHERE code=?", code.code)
     }
 }

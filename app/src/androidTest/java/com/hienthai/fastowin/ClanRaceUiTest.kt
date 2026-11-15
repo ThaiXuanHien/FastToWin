@@ -39,6 +39,8 @@ class ClanRaceUiTest {
         compose.setContent { ProvideLocalization(AppLanguage.ENGLISH) { FastToWinTheme { Surface { ClanRaceScreen(state, {}, {}) } } } }
         compose.onNodeWithTag("clan_race").performScrollToNode(hasTestTag("race_rank_own"))
         compose.onNodeWithTag("race_rank_own").assertTextEquals("Rank 51 · 0.000001 points")
+        compose.onNodeWithText("YOUR CLAN").assertDoesNotExist()
+        compose.onNode(hasText(own.name) and hasAnyAncestor(isSelected()), useUnmergedTree = true).assertExists()
         compose.onNodeWithTag("clan_race").performScrollToNode(hasTestTag("race_eligibility_current"))
         compose.onNodeWithTag("race_eligibility_current").assertTextEquals("Eligible at cutoff if membership continues")
     }

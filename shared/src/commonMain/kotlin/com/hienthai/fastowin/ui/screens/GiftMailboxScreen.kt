@@ -46,6 +46,8 @@ import com.hienthai.fastowin.localization.localized
 import com.hienthai.fastowin.platform.epochMillis
 import com.hienthai.fastowin.protocol.GiftState
 import com.hienthai.fastowin.protocol.MailboxGift
+import com.hienthai.fastowin.ui.components.RewardReceiptAmounts
+import com.hienthai.fastowin.ui.components.RewardReceiptDialog
 import com.hienthai.fastowin.state.GiftMailboxState
 import com.hienthai.fastowin.ui.components.ArcadeActionButton
 import com.hienthai.fastowin.ui.components.ArcadeActionStyle
@@ -67,11 +69,33 @@ fun GiftMailboxScreen(
     onLoadMore: () -> Unit,
     onClaim: (String) -> Unit,
     onClaimAll: () -> Unit,
-    onUpgradeGuest: () -> Unit,
+    onDismissClaimedGift: () -> Unit = {},
+    onUpgradeGuest: () -> Unit = {},
     nowMillis: Long = epochMillis(),
     modifier: Modifier = Modifier
 ) {
     SystemBackHandler(onBack = onBack)
+    val claimedReward = when {
+        state.lastClaimedBatch.isNotEmpty() -> RewardReceiptAmounts(
+            gold = state.lastClaimedBatch.sumOf { it.awardedGold.toLong() },
+            xp = state.lastClaimedBatch.sumOf { it.awardedXp.toLong() },
+            gems = state.lastClaimedBatch.sumOf { it.awardedGems.toLong() },
+            plays = state.lastClaimedBatch.sumOf { it.gift.plays.toLong() }
+        )
+        state.lastClaimedGift != null -> RewardReceiptAmounts(
+            gold = state.lastClaimedGift.awardedGold.toLong(),
+            xp = state.lastClaimedGift.awardedXp.toLong(),
+            gems = state.lastClaimedGift.awardedGems.toLong(),
+            plays = state.lastClaimedGift.gift.plays.toLong()
+        )
+        else -> null
+    }
+    claimedReward?.let { reward ->
+        RewardReceiptDialog(
+            reward,
+            onDismiss = onDismissClaimedGift
+        )
+    }
     Scaffold(
         modifier = modifier.fillMaxSize().testTag("gift_mailbox_screen"),
         containerColor = androidx.compose.ui.graphics.Color.Transparent,
@@ -212,13 +236,14 @@ private fun GiftCard(gift: MailboxGift, errorCode: String?, isPending: Boolean, 
             if (race != null) {
                 RaceReward(race.reward)
                 Text(localized(TextKey.ClanRaceRankPoints, "rank" to race.finalRank, "points" to race.points))
+                race.poolId?.let { Text(racePoolLabel(it), style = MaterialTheme.typography.bodySmall) }
                 Text(localized(TextKey.ClanRaceCutoff, "time" to raceTime(race.cutoffEpochMillis)))
                 Text(localized(TextKey.ClanRaceGiftExpires, "time" to raceTime(race.expiresAtEpochMillis)),
                     modifier = Modifier.testTag("gift_race_deadline_${gift.campaignId}"))
                 Text(localized(TextKey.ClanRaceGiftReason))
                 Text(localized(TextKey.ClanRaceWalletSource), color = MaterialTheme.colorScheme.onSurfaceVariant)
             } else {
-                GiftRewardAmounts(gift.gold, gift.xp, gift.gems)
+                GiftRewardAmounts(gift.gold, gift.xp, gift.gems, gift.plays)
                 Text(if (isVietnamese) gift.bodyVi else gift.bodyEn, color = MaterialTheme.colorScheme.onSurface)
             }
             val status = when (gift.state) {
@@ -248,11 +273,12 @@ private fun GiftCard(gift: MailboxGift, errorCode: String?, isPending: Boolean, 
 
 /** Stored per-gift amounts, including zero; currency names remain in localized semantics. */
 @Composable
-private fun GiftRewardAmounts(gold: Int, xp: Int, gems: Int) {
+private fun GiftRewardAmounts(gold: Int, xp: Int, gems: Int, plays: Int) {
     val description = buildList {
         add(localized(TextKey.GiftGoldReward, "count" to gold))
         add(localized(TextKey.GiftXpReward, "count" to xp))
         if (gems > 0) add(localized(TextKey.RewardGemsDescription, "count" to gems))
+        if (plays > 0) add(localized(TextKey.PlayCreditOffer, "plays" to plays))
     }.joinToString(", ")
     FlowRow(
         modifier = Modifier.fillMaxWidth().clearAndSetSemantics { contentDescription = description },
@@ -277,5 +303,7 @@ private fun GiftRewardAmounts(gold: Int, xp: Int, gems: Int) {
             Text(gems.toString(), style = MaterialTheme.typography.bodyLarge, fontWeight = FontWeight.Bold,
                 color = MaterialTheme.colorScheme.onSurface)
         }
+        if (plays > 0) Text(localized(TextKey.PlayCreditOffer, "plays" to plays),
+            style = MaterialTheme.typography.bodyLarge, fontWeight = FontWeight.Bold)
     }
 }

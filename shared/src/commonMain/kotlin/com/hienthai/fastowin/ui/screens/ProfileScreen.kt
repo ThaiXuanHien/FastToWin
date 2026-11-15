@@ -162,7 +162,8 @@ enum class ProfileSection {
     DAILY_CHECK_IN,
     MISSIONS,
     COLLECTION,
-    RECENT_MATCHES
+    RECENT_MATCHES,
+    GIFT_CODE
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -514,6 +515,13 @@ fun ProfileScreen(
                         onClick = { onOpenSection(ProfileSection.WALLET) },
                         modifier = Modifier.testTag("profile_section_wallet")
                     )
+                        AccountActionRow(
+                            icon = Icons.Default.AccountBalanceWallet,
+                            title = localized(TextKey.GiftCode),
+                            subtitle = localized(TextKey.GiftCodeEntry),
+                            onClick = { onOpenSection(ProfileSection.GIFT_CODE) },
+                            modifier = Modifier.testTag("profile_section_gift_code")
+                        )
                 }
                 if (!isExternalProfile) {
                     AccountActionRow(
@@ -866,7 +874,9 @@ fun ProfileSectionScreen(
     onOpenRewardEvent: ((String) -> Unit)? = null,
     missionState: MissionState = MissionState(),
     onRefreshMissions: () -> Unit = {},
-    onClaimMissionInstance: (String) -> Unit = {}
+    onClaimMissionInstance: (String) -> Unit = {},
+    onDismissMissionReward: () -> Unit = {},
+    onRedeemGiftCode: (suspend (String) -> com.hienthai.fastowin.protocol.GiftCodeRedeemResult)? = null
 ) {
     SystemBackHandler(onBack = onBack)
     val isLoading = when {
@@ -894,6 +904,7 @@ fun ProfileSectionScreen(
                 ProfileSection.MISSIONS -> localized(TextKey.MissionsTitle)
                 ProfileSection.COLLECTION -> localized(TextKey.CollectionTitle)
                 ProfileSection.RECENT_MATCHES -> localized(TextKey.RecentMatches)
+                ProfileSection.GIFT_CODE -> localized(TextKey.GiftCode)
             },
             gold = state.profile?.progression?.gold ?: 0,
             gems = state.profile?.progression?.gems ?: 0,
@@ -955,7 +966,8 @@ fun ProfileSectionScreen(
                         ProfileSection.MISSIONS -> ServerMissionList(
                             state = missionState,
                             onRefresh = onRefreshMissions,
-                            onClaim = onClaimMissionInstance
+                            onClaim = onClaimMissionInstance,
+                            onDismissReward = onDismissMissionReward
                         )
                         ProfileSection.COLLECTION -> CollectionSectionContent(
                             state = state,
@@ -972,6 +984,7 @@ fun ProfileSectionScreen(
                             onFilterChange = { historyFilter = it },
                             onOpenMatchDetail = onOpenMatchDetail
                         )
+                        ProfileSection.GIFT_CODE -> if (canEdit) GiftCodeEntry(onRedeemGiftCode)
                     }
                 }
             }
@@ -1012,6 +1025,11 @@ private fun ProfileSectionHero(section: ProfileSection) {
             localized(TextKey.RecentCompetitionDescription),
             Res.drawable.arcade_room_portal
         )
+        ProfileSection.GIFT_CODE -> Triple(
+            localized(TextKey.GiftCode),
+            localized(TextKey.GiftCodeEntry),
+            Res.drawable.arcade_shop_chest
+        )
     }
     val accent = when (section) {
         ProfileSection.WALLET, ProfileSection.COLLECTION -> ArcadeGold
@@ -1019,6 +1037,7 @@ private fun ProfileSectionHero(section: ProfileSection) {
         ProfileSection.MISSIONS -> ArcadeGem
         ProfileSection.RECENT_MATCHES -> ArcadeOpponent
         ProfileSection.STATISTICS -> MaterialTheme.colorScheme.primary
+        ProfileSection.GIFT_CODE -> ArcadeGem
     }
     ArcadeFeatureHero(
         illustration = illustration,
@@ -1035,7 +1054,8 @@ private fun WalletHistorySectionContent(transactions: List<WalletTransactionSnap
     val filteredTransactions = remember(transactions, selectedFilter) {
         transactions.filter { transaction ->
             when (selectedFilter) {
-                1 -> transaction.goldDelta > 0 || transaction.gemsDelta > 0 || transaction.xpDelta > 0
+                1 -> transaction.goldDelta > 0 || transaction.gemsDelta > 0 ||
+                    transaction.xpDelta > 0 || transaction.playCreditDelta > 0
                 2 -> transaction.goldDelta < 0 || transaction.gemsDelta < 0 || transaction.xpDelta < 0
                 else -> true
             }
@@ -1103,11 +1123,17 @@ private fun WalletHistorySectionContent(transactions: List<WalletTransactionSnap
                                 style = MaterialTheme.typography.bodySmall,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant
                             )
-                            WalletDeltaAmounts(
-                                gold = transaction.goldDelta,
-                                xp = transaction.xpDelta,
-                                gems = transaction.gemsDelta
-                            )
+                            if (transaction.goldDelta != 0 || transaction.xpDelta != 0 || transaction.gemsDelta != 0) {
+                                WalletDeltaAmounts(
+                                    gold = transaction.goldDelta,
+                                    xp = transaction.xpDelta,
+                                    gems = transaction.gemsDelta
+                                )
+                            }
+                            if (transaction.playCreditDelta > 0) {
+                                val plays = localized(TextKey.PlayCreditOffer, "plays" to transaction.playCreditDelta)
+                                Text("+$plays")
+                            }
                         }
                     }
                 }
@@ -1154,6 +1180,8 @@ internal fun walletSourceTextKey(sourceType: String): TextKey = when (sourceType
     "ADMIN_GIFT" -> TextKey.AdminGiftSource
     "COMPENSATION" -> TextKey.CompensationSource
     "GOLD_EXCHANGE" -> TextKey.GoldExchangeSource
+    "PLAY_CREDIT_EXCHANGE" -> TextKey.PlayCredits
+    "GIFT_CODE" -> TextKey.GiftCode
     "ACHIEVEMENT" -> TextKey.AchievementRewardSource
     "TOURNAMENT_ENTRY_REFUND" -> TextKey.TournamentEntryRefundSource
     "TOURNAMENT_ENTRY_REVERSED" -> TextKey.TournamentEntryReversedSource

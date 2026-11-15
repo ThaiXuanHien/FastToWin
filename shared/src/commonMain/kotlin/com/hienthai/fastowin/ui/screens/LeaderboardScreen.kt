@@ -3,11 +3,9 @@ package com.hienthai.fastowin.ui.screens
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
@@ -26,32 +24,34 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.testTag
-import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.role
 import androidx.compose.ui.semantics.selected
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.hienthai.fastowin.protocol.ClanLeaderboardEntrySnapshot
 import com.hienthai.fastowin.protocol.LeaderboardEntrySnapshot
 import com.hienthai.fastowin.protocol.rankedTierFor
-import com.hienthai.fastowin.localization.QuantityKey
 import com.hienthai.fastowin.localization.TextKey
 import com.hienthai.fastowin.localization.localized
-import com.hienthai.fastowin.localization.localizedQuantity
 import com.hienthai.fastowin.localization.localizedRankedTierName
 import com.hienthai.fastowin.resources.Res
 import com.hienthai.fastowin.resources.arcade_leaderboard_trophy
 import com.hienthai.fastowin.state.GameState
 import com.hienthai.fastowin.ui.components.ArcadeEmptyState
+import com.hienthai.fastowin.ui.components.ArcadeActionButton
+import com.hienthai.fastowin.ui.components.ArcadeActionStyle
+import com.hienthai.fastowin.ui.components.ArcadeDialog
 import com.hienthai.fastowin.ui.components.ArcadeFeatureHero
 import com.hienthai.fastowin.ui.components.ArcadeLoadMoreButton
 import com.hienthai.fastowin.ui.components.ArcadePanel
@@ -75,18 +75,23 @@ fun LeaderboardScreen(
     state: GameState,
     onBack: () -> Unit,
     onRefresh: () -> Unit,
-    onOpenFriendProfile: (String) -> Unit,
     onOpenSeasonHistory: () -> Unit = {},
     onOpenNotifications: () -> Unit = {},
     showBackButton: Boolean = true,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    onOpenClan: (String) -> Unit = {},
+    onRefreshSocial: () -> Unit = {},
+    onSendFriendRequest: (String) -> Unit = {},
+    onRespondFriendRequest: (String, Boolean) -> Unit = { _, _ -> },
+    onUpgradeGuest: (() -> Unit)? = null
 ) {
     SystemBackHandler(enabled = showBackButton, onBack = onBack)
     val leaderboard = state.leaderboard
-    var selectedPeriod by remember { mutableStateOf(LeaderboardPeriod.CURRENT_SEASON) }
-    var selectedPlayerMetric by remember { mutableStateOf(PlayerLeaderboardMetric.ELO) }
-    var selectedClanMetric by remember { mutableStateOf(ClanLeaderboardMetric.LEVEL) }
-    var selectedMainTab by remember { mutableIntStateOf(0) }
+    var selectedPeriod by rememberSaveable { mutableStateOf(LeaderboardPeriod.CURRENT_SEASON) }
+    var selectedPlayerMetric by rememberSaveable { mutableStateOf(PlayerLeaderboardMetric.ELO) }
+    var selectedClanMetric by rememberSaveable { mutableStateOf(ClanLeaderboardMetric.LEVEL) }
+    var selectedMainTab by rememberSaveable { mutableIntStateOf(0) }
+    var selectedPlayer by remember { mutableStateOf<LeaderboardEntrySnapshot?>(null) }
 
     ResponsiveScreen(
         modifier = modifier.testTag("leaderboard_screen"),
@@ -134,17 +139,126 @@ fun LeaderboardScreen(
                         onSelectMetric = { selectedPlayerMetric = it },
                         selectedPeriod = selectedPeriod,
                         onSelectPeriod = { selectedPeriod = it },
-                        onOpenFriendProfile = onOpenFriendProfile,
+                        onSelectPlayer = {
+                            selectedPlayer = it
+                            if (onUpgradeGuest == null && it.playerCode != state.profile?.playerCode && !state.isClanSocialReady) {
+                                onRefreshSocial()
+                            }
+                        },
                         onOpenSeasonHistory = onOpenSeasonHistory
                     )
                 } else {
                     ClanLeaderboard(
                         state = state,
                         selectedMetric = selectedClanMetric,
-                        onSelectMetric = { selectedClanMetric = it }
+                        onSelectMetric = { selectedClanMetric = it },
+                        onOpenClan = onOpenClan
                     )
                 }
             }
+        }
+    }
+    selectedPlayer?.let { entry ->
+        LeaderboardPlayerDialog(
+            entry = entry,
+            state = state,
+            onDismiss = { selectedPlayer = null },
+            onRefreshSocial = onRefreshSocial,
+            onSendFriendRequest = onSendFriendRequest,
+            onRespondFriendRequest = onRespondFriendRequest,
+            onUpgradeGuest = onUpgradeGuest
+        )
+    }
+}
+
+@Composable
+fun LeaderboardPlayerDialog(
+    entry: LeaderboardEntrySnapshot,
+    state: GameState,
+    onDismiss: () -> Unit,
+    onRefreshSocial: () -> Unit,
+    onSendFriendRequest: (String) -> Unit,
+    onRespondFriendRequest: (String, Boolean) -> Unit,
+    onUpgradeGuest: (() -> Unit)?
+) {
+    val isSelf = entry.playerCode == state.profile?.playerCode ||
+        entry.userId?.let { it == state.profile?.userId } == true
+    val action = if (isSelf) null else clanMemberFriendAction(
+        userId = entry.userId.orEmpty(),
+        playerCode = entry.playerCode,
+        currentUserId = state.profile?.userId,
+        social = state.social,
+        isLoading = state.isFriendsLoading,
+        isSocialReady = state.isClanSocialReady
+    )
+    val winRate = if (entry.totalMatches == 0) 0 else entry.wins.toLong() * 100 / entry.totalMatches
+    ArcadeDialog(
+        title = entry.displayName,
+        onDismissRequest = onDismiss,
+        modifier = Modifier.testTag("leaderboard_player_profile_dialog"),
+        scrollableContent = true,
+        fixedActions = {
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                if (onUpgradeGuest != null && !isSelf) {
+                    ArcadeActionButton(localized(TextKey.AddFriend), onUpgradeGuest, Modifier.fillMaxWidth())
+                } else if (action != null) {
+                    ArcadeActionButton(
+                        label = localized(if (state.isFriendsLoading) TextKey.Processing else action.textKey),
+                        onClick = {
+                            when (action.type) {
+                                ClanMemberFriendActionType.SEND -> onSendFriendRequest(entry.playerCode)
+                                ClanMemberFriendActionType.ACCEPT -> action.requestId?.let { onRespondFriendRequest(it, true) }
+                                else -> Unit
+                            }
+                        },
+                        enabled = action.enabled,
+                        modifier = Modifier.fillMaxWidth().testTag("leaderboard_player_friend_action")
+                    )
+                    if (!state.isClanSocialReady && !state.isFriendsLoading) {
+                        ArcadeActionButton(
+                            localized(TextKey.Retry), onRefreshSocial, Modifier.fillMaxWidth(),
+                            style = ArcadeActionStyle.OUTLINE
+                        )
+                    }
+                }
+                ArcadeActionButton(
+                    localized(TextKey.Close), onDismiss, Modifier.fillMaxWidth(),
+                    style = ArcadeActionStyle.OUTLINE
+                )
+            }
+        }
+    ) {
+        Column(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            PlayerAvatar(entry.displayName, size = 56.dp, avatarId = entry.avatarId,
+                userId = entry.userId, frameId = entry.frameId)
+            Text(localizedRankedTierName(rankedTierFor(entry.eloRating)), textAlign = TextAlign.Center)
+            if (onUpgradeGuest == null && !isSelf) {
+                (state.error ?: state.socialNotice)?.let { Text(it, textAlign = TextAlign.Center) }
+            }
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                LeaderboardProfileMetric("Elo", formatArcadeNumber(entry.eloRating), Modifier.weight(1f))
+                LeaderboardProfileMetric(localized(TextKey.Wins), formatArcadeNumber(entry.wins), Modifier.weight(1f))
+                LeaderboardProfileMetric(localized(TextKey.WinRate), "$winRate%", Modifier.weight(1f))
+            }
+        }
+    }
+}
+
+@Composable
+private fun LeaderboardProfileMetric(label: String, value: String, modifier: Modifier) {
+    ArcadePanel(modifier = modifier) {
+        Column(
+            modifier = Modifier.fillMaxWidth().padding(6.dp),
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.spacedBy(4.dp)
+        ) {
+            Text(label, style = MaterialTheme.typography.labelSmall, textAlign = TextAlign.Center)
+            Text(value, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Black,
+                color = MaterialTheme.colorScheme.primary, textAlign = TextAlign.Center)
         }
     }
 }
@@ -213,7 +327,7 @@ private fun PlayerLeaderboard(
     onSelectMetric: (PlayerLeaderboardMetric) -> Unit,
     selectedPeriod: LeaderboardPeriod,
     onSelectPeriod: (LeaderboardPeriod) -> Unit,
-    onOpenFriendProfile: (String) -> Unit,
+    onSelectPlayer: (LeaderboardEntrySnapshot) -> Unit,
     onOpenSeasonHistory: () -> Unit
 ) {
     val leaderboard = state.leaderboard
@@ -234,7 +348,7 @@ private fun PlayerLeaderboard(
         }
         PlayerLeaderboardMetric.GOLD -> leaderboard?.topGoldPlayers.orEmpty()
         PlayerLeaderboardMetric.GEMS -> leaderboard?.topGemPlayers.orEmpty()
-    }
+    }.take(LEADERBOARD_LIMIT)
     var visiblePlayerCount by remember(selectedPeriod, selectedMetric) { mutableStateOf(DEFAULT_ARCADE_PAGE_SIZE) }
     val visibleTopPlayers = displayedTop.take(visiblePlayerCount)
 
@@ -289,8 +403,17 @@ private fun PlayerLeaderboard(
             }
         }
         displayedCurrent?.let { current ->
+            item(key = "current_player_title") {
+                LeaderboardSectionTitle(localized(TextKey.YourPosition))
+            }
             item(key = "current_player") {
-                CurrentPlayerPanel(current, selectedMetric)
+                LeaderboardCard(
+                    entry = current,
+                    metric = selectedMetric,
+                    highlighted = true,
+                    onClick = { onSelectPlayer(current) },
+                    testTag = "leaderboard_current_player"
+                )
             }
         }
         if (selectedMetric == PlayerLeaderboardMetric.ELO && selectedPeriod == LeaderboardPeriod.PREVIOUS_SEASON) {
@@ -301,7 +424,7 @@ private fun PlayerLeaderboard(
                 }
         }
         item(key = "top_players_title") {
-            LeaderboardSectionTitle(localized(TextKey.TopPlayers), localizedQuantity(QuantityKey.Warriors, displayedTop.size))
+            LeaderboardSectionTitle(localized(TextKey.TopPlayers))
         }
         if (displayedTop.isEmpty()) {
             item(key = "empty_players") {
@@ -315,12 +438,11 @@ private fun PlayerLeaderboard(
             }
         } else {
             items(visibleTopPlayers, key = { it.playerCode }) { entry ->
-                val friend = state.social.friends.firstOrNull { it.playerCode == entry.playerCode }
                 LeaderboardCard(
                     entry = entry,
                     metric = selectedMetric,
                     highlighted = entry.playerCode == displayedCurrent?.playerCode,
-                    onClick = friend?.let { { onOpenFriendProfile(it.userId) } }
+                    onClick = { onSelectPlayer(entry) }
                 )
             }
             item(key = "leaderboard_players_load_more") {
@@ -386,42 +508,11 @@ private fun LeaderboardPeriodFilters(
 }
 
 @Composable
-private fun CurrentPlayerPanel(
-    entry: LeaderboardEntrySnapshot,
-    metric: PlayerLeaderboardMetric
-) {
-    ArcadePanel(modifier = Modifier.fillMaxWidth(), accent = ArcadePalette.Gold500) {
-        LeaderboardEntryLayout(
-            supporting = { PlayerClanIdentity(entry, "leaderboard_current_player_clan_${entry.playerCode}") },
-            metrics = {
-                Text(playerMetricText(entry, metric), fontWeight = FontWeight.Black, color = ArcadePalette.Gold500)
-            }
-        ) {
-            ArcadeRankBadge(entry.rank)
-            Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(3.dp)) {
-                Text(
-                    localized(TextKey.YourPosition),
-                    style = MaterialTheme.typography.labelSmall,
-                    fontWeight = FontWeight.Black,
-                    color = ArcadePalette.Gold500
-                )
-                Text(
-                    "#${entry.rank} · ${entry.displayName}",
-                    style = MaterialTheme.typography.titleMedium,
-                    fontWeight = FontWeight.Black,
-                    maxLines = 2,
-                    overflow = TextOverflow.Ellipsis
-                )
-            }
-        }
-    }
-}
-
-@Composable
 private fun ClanLeaderboard(
     state: GameState,
     selectedMetric: ClanLeaderboardMetric,
-    onSelectMetric: (ClanLeaderboardMetric) -> Unit
+    onSelectMetric: (ClanLeaderboardMetric) -> Unit,
+    onOpenClan: (String) -> Unit
 ) {
     val leaderboard = state.leaderboard
     val displayedTopClans = when (selectedMetric) {
@@ -430,7 +521,7 @@ private fun ClanLeaderboard(
             ?: leaderboard?.topClans.orEmpty()
         ClanLeaderboardMetric.GOLD -> leaderboard?.topGoldClans.orEmpty()
         ClanLeaderboardMetric.GEMS -> leaderboard?.topGemClans.orEmpty()
-    }
+    }.take(LEADERBOARD_LIMIT)
     val displayedCurrentClan = when (selectedMetric) {
         ClanLeaderboardMetric.LEVEL -> leaderboard?.currentLevelClan ?: leaderboard?.currentClan
         ClanLeaderboardMetric.GOLD -> leaderboard?.currentGoldClan
@@ -460,12 +551,22 @@ private fun ClanLeaderboard(
             }
         }
         displayedCurrentClan?.let { currentClan ->
+            item(key = "current_clan_title") {
+                LeaderboardSectionTitle(localized(TextKey.YourClan))
+            }
             item(key = "current_clan") {
-                CurrentClanPanel(currentClan, selectedMetric)
+                ClanLeaderboardCard(
+                    entry = currentClan,
+                    metric = selectedMetric,
+                    highlighted = true,
+                    onClick = { onOpenClan(currentClan.clanId) },
+                    testTag = "leaderboard_current_clan",
+                    logoTestTag = "leaderboard_current_clan_logo_${currentClan.clanId}"
+                )
             }
         }
         item(key = "top_clans_title") {
-            LeaderboardSectionTitle(localized(TextKey.TopClans), localizedQuantity(QuantityKey.Clans, displayedTopClans.size))
+            LeaderboardSectionTitle(localized(TextKey.TopClans))
         }
         if (displayedTopClans.isEmpty()) {
             item(key = "empty_clans") { LeaderboardEmptyPanel(localized(TextKey.ClanLeaderboardEmpty)) }
@@ -474,7 +575,8 @@ private fun ClanLeaderboard(
                 ClanLeaderboardCard(
                     entry = entry,
                     metric = selectedMetric,
-                    highlighted = entry.clanId == displayedCurrentClan?.clanId
+                    highlighted = entry.clanId == displayedCurrentClan?.clanId,
+                    onClick = { onOpenClan(entry.clanId) }
                 )
             }
             item(key = "leaderboard_clans_load_more") {
@@ -517,50 +619,13 @@ private fun ClanLeaderboardMetricFilters(
 }
 
 @Composable
-private fun CurrentClanPanel(
-    entry: ClanLeaderboardEntrySnapshot,
-    metric: ClanLeaderboardMetric
-) {
-    ArcadePanel(modifier = Modifier.fillMaxWidth(), accent = ArcadePalette.Gold500) {
-        LeaderboardEntryLayout(
-            metrics = {
-                Column(horizontalAlignment = Alignment.End) {
-                    Text(clanMetricPrimaryText(entry, metric), fontWeight = FontWeight.Black, color = ArcadePalette.Gold500)
-                    Text(clanMetricSupportingText(entry, metric), style = MaterialTheme.typography.labelSmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant)
-                }
-            }
-        ) {
-            ArcadeRankBadge(entry.rank)
-            Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(3.dp)) {
-                Text(
-                    localized(TextKey.YourClan),
-                    style = MaterialTheme.typography.labelSmall,
-                    fontWeight = FontWeight.Black,
-                    color = ArcadePalette.Gold500
-                )
-                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    LeaderboardClanEmblem(entry.logoId, entry.clanName,
-                        Modifier.size(36.dp).testTag("leaderboard_current_clan_logo_${entry.clanId}"))
-                    Text(entry.clanName,
-                        modifier = Modifier.weight(1f), style = MaterialTheme.typography.titleMedium,
-                        fontWeight = FontWeight.Black, maxLines = 2, overflow = TextOverflow.Ellipsis)
-                }
-            }
-        }
-    }
-}
-
-@Composable
-private fun LeaderboardSectionTitle(title: String, meta: String) {
-    Row(
+private fun LeaderboardSectionTitle(title: String) {
+    Text(
+        title,
         modifier = Modifier.fillMaxWidth().padding(top = 6.dp),
-        horizontalArrangement = Arrangement.SpaceBetween,
-        verticalAlignment = Alignment.CenterVertically
-    ) {
-        Text(title, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Black)
-        Text(meta, style = MaterialTheme.typography.labelLarge, color = ArcadePalette.Gold500)
-    }
+        style = MaterialTheme.typography.titleLarge,
+        fontWeight = FontWeight.Black
+    )
 }
 
 @Composable
@@ -578,32 +643,36 @@ private fun LeaderboardEmptyPanel(message: String) {
 private fun ClanLeaderboardCard(
     entry: ClanLeaderboardEntrySnapshot,
     metric: ClanLeaderboardMetric,
-    highlighted: Boolean
+    highlighted: Boolean,
+    onClick: () -> Unit,
+    testTag: String = "leaderboard_clan_${entry.clanId}",
+    logoTestTag: String = "leaderboard_clan_logo_${entry.clanId}"
 ) {
-    LeaderboardSurface(highlighted = highlighted) {
-        LeaderboardEntryLayout(
-            metrics = {
-                Column(horizontalAlignment = Alignment.End) {
-                    Text(clanMetricPrimaryText(entry, metric), fontWeight = FontWeight.Black, color = ArcadePalette.Gold500)
-                    Text(clanMetricSupportingText(entry, metric), style = MaterialTheme.typography.labelSmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant)
-                }
-            }
+    LeaderboardSurface(
+        highlighted = highlighted,
+        onClick = onClick,
+        modifier = Modifier.testTag(testTag)
+    ) {
+        Row(
+            modifier = Modifier.fillMaxWidth().padding(14.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(10.dp)
         ) {
             ArcadeRankBadge(entry.rank)
             LeaderboardClanEmblem(entry.logoId, entry.clanName,
-                Modifier.size(40.dp).testTag("leaderboard_clan_logo_${entry.clanId}"))
-            Column(modifier = Modifier.weight(1f)) {
+                Modifier.size(40.dp).testTag(logoTestTag))
+            Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                Text(entry.clanName, modifier = Modifier.testTag("${testTag}_name"),
+                    fontWeight = FontWeight.Black, maxLines = 2, overflow = TextOverflow.Ellipsis)
                 Text(
-                    entry.clanName + if (highlighted) localized(TextKey.YouSuffix) else "",
-                    fontWeight = FontWeight.Black,
-                    maxLines = 2,
-                    overflow = TextOverflow.Ellipsis
-                )
-                Text(
-                    localizedQuantity(QuantityKey.Members, entry.memberCount),
+                    if (metric == ClanLeaderboardMetric.LEVEL) {
+                        "${clanMetricPrimaryText(entry, metric)} - ${clanMetricSupportingText(entry, metric)}"
+                    } else {
+                        "${clanMetricPrimaryText(entry, metric)} ${clanMetricSupportingText(entry, metric)}"
+                    },
+                    modifier = Modifier.testTag("${testTag}_details"),
                     style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                    color = if (highlighted) ArcadePalette.Gold500 else MaterialTheme.colorScheme.onSurfaceVariant
                 )
             }
         }
@@ -615,30 +684,19 @@ private fun LeaderboardCard(
     entry: LeaderboardEntrySnapshot,
     metric: PlayerLeaderboardMetric,
     highlighted: Boolean,
-    onClick: (() -> Unit)? = null
+    onClick: () -> Unit,
+    testTag: String = "leaderboard_player_${entry.playerCode}"
 ) {
-    val winRate = if (entry.totalMatches == 0) 0 else entry.wins * 100 / entry.totalMatches
-    LeaderboardSurface(highlighted = highlighted, onClick = onClick) {
-        LeaderboardEntryLayout(
-            supporting = { PlayerClanIdentity(entry, "leaderboard_player_clan_${entry.playerCode}") },
-            metrics = {
-                if (metric == PlayerLeaderboardMetric.ELO) {
-                    Row(horizontalArrangement = Arrangement.spacedBy(4.dp), modifier = Modifier.testTag("leaderboard_elo_${entry.playerCode}")) {
-                        Text(formatArcadeNumber(playerMetricValue(entry, metric)), fontWeight = FontWeight.Black,
-                            color = if (highlighted) ArcadePalette.Gold500 else MaterialTheme.colorScheme.primary,
-                            modifier = Modifier.alignByBaseline())
-                        Text(playerMetricLabel(metric), style = MaterialTheme.typography.labelSmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.alignByBaseline())
-                    }
-                } else {
-                    Column(horizontalAlignment = Alignment.End) {
-                        Text(formatArcadeNumber(playerMetricValue(entry, metric)), fontWeight = FontWeight.Black,
-                            color = if (highlighted) ArcadePalette.Gold500 else MaterialTheme.colorScheme.primary)
-                        Text(playerMetricLabel(metric), style = MaterialTheme.typography.labelSmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant)
-                    }
-                }
-            }
+    val winRate = if (entry.totalMatches == 0) 0 else entry.wins.toLong() * 100 / entry.totalMatches
+    LeaderboardSurface(
+        highlighted = highlighted,
+        onClick = onClick,
+        modifier = Modifier.testTag(testTag)
+    ) {
+        Row(
+            modifier = Modifier.fillMaxWidth().padding(14.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(10.dp)
         ) {
             ArcadeRankBadge(entry.rank)
             PlayerAvatar(
@@ -650,49 +708,23 @@ private fun LeaderboardCard(
             )
             Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
                 Text(
-                    entry.displayName + if (highlighted) localized(TextKey.YouSuffix) else "",
+                    entry.displayName,
+                    modifier = Modifier.testTag("${testTag}_name"),
                     fontWeight = FontWeight.Black,
                     maxLines = 2,
                     overflow = TextOverflow.Ellipsis
                 )
                 Text(
-                    localized(
+                    playerMetricText(entry, metric) + " · " + localized(
                         TextKey.LeaderboardPlayerSummary,
                         "tier" to localizedRankedTierName(rankedTierFor(entry.eloRating)),
                         "wins" to entry.wins,
                         "rate" to winRate
                     ),
+                    modifier = Modifier.testTag("${testTag}_details"),
                     style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
-            }
-        }
-    }
-}
-
-/** Move metrics below identity when space or text scaling would squeeze names and scores. */
-@Composable
-private fun LeaderboardEntryLayout(
-    supporting: (@Composable () -> Unit)? = null,
-    metrics: @Composable () -> Unit,
-    identity: @Composable RowScope.() -> Unit
-) {
-    BoxWithConstraints(Modifier.fillMaxWidth().padding(14.dp)) {
-        val stacked = maxWidth < 360.dp || LocalDensity.current.fontScale >= 1.3f
-        Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(10.dp)
-            ) {
-                identity()
-                if (!stacked) metrics()
-            }
-            supporting?.invoke()
-            if (stacked) {
-                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) { metrics() }
             }
         }
     }
@@ -705,26 +737,10 @@ private fun LeaderboardClanEmblem(logoId: String?, clanName: String, modifier: M
 }
 
 @Composable
-private fun PlayerClanIdentity(entry: LeaderboardEntrySnapshot, testTag: String) {
-    if (entry.clanId.isNullOrBlank()) return
-    val clanName = entry.clanName?.takeIf { it.isNotBlank() } ?: localized(TextKey.Clan)
-    Row(
-        modifier = Modifier.fillMaxWidth().testTag(testTag),
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(6.dp)
-    ) {
-        // The visible name carries the meaning here; the small emblem is decorative.
-        ClanLogoMark(entry.clanLogoId, Modifier.size(24.dp))
-        Text(clanName,
-            modifier = Modifier.weight(1f), style = MaterialTheme.typography.bodySmall,
-            color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 2, overflow = TextOverflow.Ellipsis)
-    }
-}
-
-@Composable
 private fun LeaderboardSurface(
     highlighted: Boolean,
     onClick: (() -> Unit)? = null,
+    modifier: Modifier = Modifier,
     content: @Composable () -> Unit
 ) {
     val border = BorderStroke(
@@ -733,7 +749,7 @@ private fun LeaderboardSurface(
     )
     if (onClick == null) {
         Surface(
-            modifier = Modifier.fillMaxWidth(),
+            modifier = modifier.fillMaxWidth().semantics { selected = highlighted },
             shape = RoundedCornerShape(18.dp),
             color = MaterialTheme.colorScheme.surface,
             border = border,
@@ -743,7 +759,7 @@ private fun LeaderboardSurface(
     } else {
         Surface(
             onClick = onClick,
-            modifier = Modifier.fillMaxWidth(),
+            modifier = modifier.fillMaxWidth().semantics { selected = highlighted },
             shape = RoundedCornerShape(18.dp),
             color = MaterialTheme.colorScheme.surface,
             border = border,
@@ -754,6 +770,8 @@ private fun LeaderboardSurface(
 }
 
 private enum class LeaderboardPeriod { CURRENT_SEASON, PREVIOUS_SEASON, ALL_TIME }
+
+private const val LEADERBOARD_LIMIT = 30
 
 private enum class PlayerLeaderboardMetric { ELO, GOLD, GEMS }
 

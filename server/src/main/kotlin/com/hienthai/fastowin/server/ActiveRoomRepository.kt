@@ -62,7 +62,8 @@ data class StoredActiveRoom(
     val departedPlayerIds: Set<String> = emptySet(),
     val forcedWinnerId: String? = null,
     val eventRewards: com.hienthai.fastowin.protocol.MatchRewardEventSnapshot = com.hienthai.fastowin.protocol.MatchRewardEventSnapshot(),
-    val intentionalLeavePlayerIds: Set<String> = emptySet()
+    val intentionalLeavePlayerIds: Set<String> = emptySet(),
+    val clanLevels: Map<String, Int> = emptyMap()
 )
 
 interface ActiveRoomRepository {

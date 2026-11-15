@@ -48,7 +48,7 @@ class InMemoryGiftRepository(private val admins: InMemoryAdminRepository) : Gift
                     val claimed = all.count { it.claimedAt != null }.toLong()
                     return GiftCounters(all.size.toLong(), if (cancelled) 0 else all.count { it.delivery == "PENDING" }.toLong(), all.count { it.delivery == "DELIVERED" }.toLong(), claimed,
                         if (!cancelled && now >= campaign.draft.expiresAtEpochMillis!!) all.count { it.delivery == "DELIVERED" && it.claimedAt == null }.toLong() else 0,
-                        if (cancelled) all.count { it.delivery != "SKIPPED" && it.claimedAt == null }.toLong() else 0, all.count { it.delivery == "SKIPPED" }.toLong(), claimed * campaign.draft.gold, claimed * campaign.draft.xp, claimed * campaign.draft.gems)
+                        if (cancelled) all.count { it.delivery != "SKIPPED" && it.claimedAt == null }.toLong() else 0, all.count { it.delivery == "SKIPPED" }.toLong(), claimed * campaign.draft.gold, claimed * campaign.draft.xp, claimed * campaign.draft.gems, claimed * campaign.draft.plays)
                 }
                 override fun mailbox(userId: String, now: Long, page: PageRequest): Pair<List<Pair<GiftCampaign, GiftRecipient>>, Long> {
                     val all = next.recipients.values.filter { it.userId == userId && it.delivery == "DELIVERED" }.map { next.campaigns.getValue(it.campaignId) to it }

@@ -99,7 +99,6 @@ class SeasonHistoryUiTest {
                     state = seasonHistoryState().copy(leaderboard = LeaderboardSnapshot()),
                     onBack = {},
                     onRefresh = {},
-                    onOpenFriendProfile = {},
                     onOpenSeasonHistory = { opened = true },
                     showBackButton = false
                 )

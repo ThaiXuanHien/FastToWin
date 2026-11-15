@@ -123,7 +123,6 @@ class SeasonProgressUiTest {
                         ),
                         onBack = {},
                         onRefresh = {},
-                        onOpenFriendProfile = {},
                         showBackButton = false
                     )
                 }
@@ -161,7 +160,6 @@ class SeasonProgressUiTest {
                         ),
                         onBack = {},
                         onRefresh = {},
-                        onOpenFriendProfile = {},
                         showBackButton = false
                     )
                 }
@@ -191,7 +189,6 @@ class SeasonProgressUiTest {
                         ),
                         onBack = {},
                         onRefresh = {},
-                        onOpenFriendProfile = {},
                         showBackButton = false
                     )
                 }
@@ -238,7 +235,6 @@ class SeasonProgressUiTest {
                         ),
                         onBack = {},
                         onRefresh = {},
-                        onOpenFriendProfile = {},
                         showBackButton = false
                     )
                 }

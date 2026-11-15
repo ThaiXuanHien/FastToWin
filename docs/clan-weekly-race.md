@@ -20,6 +20,16 @@ Bảng hạng gồm mọi bang tồn tại tại thời điểm xem/chốt có �
 
 ## Chốt tuần, restart và hộp thư
 
+### Nhóm đua từ bản phát hành mới
+
+Cấu hình phát hành mới dùng `poolingVersion=1`; cấu hình đã phát hành trước thay đổi này giữ bảng hạng toàn cục và kết quả cũ. Tại đầu tuần, hệ thống đóng băng sức mạnh từ tổng điểm đóng góp của bốn tuần hoàn chỉnh trước, rồi số thành viên còn trong bang ngay trước đầu tuần, cuối cùng UUID để ổn định thứ tự. Bang có điểm lịch sử dương được xếp liên tiếp theo sức mạnh và chia đều thành các nhóm tối đa 20 bang (21 bang thành 11 + 10). Bang chưa có điểm lịch sử vào nhóm tân binh riêng.
+
+V80 lưu snapshot nhóm và chỉ số đầu tuần độc lập với dữ liệu bang hiện tại. Worker chạy muộn dựng lại đúng ranh giới từ lịch sử; restart, đổi thành viên, tăng cấp hoặc giải tán không đổi nhóm đã chốt. Bang thành lập sau đầu tuần được thêm vào chỗ trống của nhóm tân binh, hoặc nhóm tân binh mới nếu đã đủ 20; không chuyển các bang đã được xếp nhóm. Bảng hạng người chơi chỉ hiển thị nhóm của bang hiện tại, kể cả khi bang chưa có điểm.
+
+Mỗi nhóm có hạng 1/2/3 và quyền thưởng độc lập, áp dụng cùng cấu hình thưởng mỗi người. Preview và admin ghi rõ ngân sách tối đa 150 người là **cho một nhóm**; tổng chi phụ thuộc số nhóm thực tế, chưa cố định trước đầu tuần. Lịch sử và thư thưởng lưu mã nhóm để phân biệt các hạng trùng nhau giữa nhóm.
+
+Điều kiện thưởng thắng theo cấp bang được chốt trong bước nhận trận, trước khi đọc danh mục sự kiện; các thay đổi bang/cấp sau mốc này không đổi thưởng của trận. Giá trị được lưu cùng snapshot trận: cấp dưới 5 không thêm, cấp 5–9 thêm 5%, cấp từ 10 thêm 10% Vàng cơ bản. Phần này cộng riêng với thưởng sự kiện, không nhân theo sự kiện; hòa, thua hoặc chủ động rời không có phần thưởng cấp bang. Snapshot active room và completed match giữ cấp đã chốt qua restart/retry; kết quả trực tuyến và lịch sử đọc cùng breakdown của server.
+
 Khi database được cấu hình, production worker chạy settlement rồi delivery ngay khi khởi động và lặp mỗi 5 giây. Settlement xử lý các tuần đã hết hạn, đóng băng bảng hạng, danh tính bang, reward và entitlement trong một transaction. Khóa chung theo thứ tự admin → mission/race → row/wallet. Nguồn điểm và roster lấy thời gian sau khi đợi khóa; không nhận clock/điểm/người hưởng từ client.
 
 Entitlement duy nhất theo week+clan+user, campaign/source ID ổn định. Delivery có outbox/checkpoint; retry, restart và nhiều worker không phát hai lần. Kết quả `SETTLED` không có nghĩa mọi thư đã giao hoặc đã claim. `CLOSED` là tuần hết hạn chưa chốt; checkpoint lỗi hiển thị trì hoãn, giữ quyền retry. Tài khoản đã xóa chuyển `ACCOUNT_UNAVAILABLE`, không tạo lại. Guest giữ pending `REGISTRATION_REQUIRED`; nâng cấp cùng identity mới giao thư và bắt đầu hạn nhận.

@@ -32,7 +32,7 @@ class GiftApiClient(
     client: HttpClient? = null
 ) : GiftGateway {
     // /api is network-only even under a still-active worker from an earlier deployment.
-    private val baseUrl = "${serverUrl.toHttpBaseUrl()}/api/gifts/mailbox"
+    private val baseUrl = "${serverUrl.toHttpBaseUrl()}/api"
     private val client = client ?: HttpClient {
         install(ContentNegotiation) { json(ProtocolJson) }
         install(HttpTimeout) {
@@ -43,15 +43,28 @@ class GiftApiClient(
     }
 
     override suspend fun page(page: Int, pageSize: Int): GiftMailboxPage =
-        send("?page=$page&pageSize=$pageSize", HttpMethod.Get)
+        send("/gifts/mailbox?page=$page&pageSize=$pageSize", HttpMethod.Get)
 
     override suspend fun claim(id: String): GiftClaimResult =
-        send("/$id/claim", HttpMethod.Post)
+        send("/gifts/mailbox/$id/claim", HttpMethod.Post)
 
     override suspend fun claimAll(ids: List<String>): GiftClaimAllResult =
-        send("/claim-all", HttpMethod.Post) {
+        send("/gifts/mailbox/claim-all", HttpMethod.Post) {
             contentType(ContentType.Application.Json)
             setBody(GiftClaimAllRequest(ids))
+        }
+
+    suspend fun exchangePlays(offerId: String, requestId: String) {
+        send<kotlinx.serialization.json.JsonObject>("/play-credits/exchange", HttpMethod.Post) {
+            contentType(ContentType.Application.Json)
+            setBody(PlayCreditExchangeRequest(offerId, requestId))
+        }
+    }
+
+    suspend fun redeemCode(code: String): GiftCodeRedeemResult =
+        send("/gift-codes/redeem", HttpMethod.Post) {
+            contentType(ContentType.Application.Json)
+            setBody(GiftCodeRedeemRequest(code))
         }
 
     override fun close() = client.close()

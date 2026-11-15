@@ -102,6 +102,12 @@ fun ClanRaceScreen(
                     if (current.state != ClanRaceState.INACTIVE) {
                         item("standings_heading") { RaceHeading(localized(TextKey.ClanRaceStandings)) }
                         val standings = state.standings
+                        if (current.config?.poolingVersion == 1) item("pool_rules") {
+                            RacePanel {
+                                standings?.poolId?.let { Text(racePoolLabel(it), fontWeight = FontWeight.Bold) }
+                                Text(localized(TextKey.ClanRacePoolRules), style = MaterialTheme.typography.bodyMedium)
+                            }
+                        }
                         if (standings?.items.isNullOrEmpty()) item("standings_empty") { Text(localized(TextKey.ClanRaceEmpty)) }
                         items(standings?.items.orEmpty(), key = { "standing:${it.clanId}" }) { row ->
                             RaceStanding(row, row.clanId == standings?.ownClan?.clanId)
@@ -143,8 +149,12 @@ fun ClanRaceScreen(
     }
 }
 
-@Composable private fun RacePanel(content: @Composable ColumnScope.() -> Unit) {
-    ArcadePanel(Modifier.fillMaxWidth(), accent = ArcadePalette.Blue300) {
+@Composable private fun RacePanel(
+    highlighted: Boolean = false,
+    content: @Composable ColumnScope.() -> Unit
+) {
+    ArcadePanel(Modifier.fillMaxWidth().then(if (highlighted) Modifier.semantics { selected = true } else Modifier),
+        accent = if (highlighted) ArcadePalette.Gold500 else ArcadePalette.Blue300) {
         Column(Modifier.fillMaxWidth().padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp), content = content)
     }
 }
@@ -155,19 +165,23 @@ fun ClanRaceScreen(
 }
 
 @Composable private fun RaceStanding(row: ClanRaceStanding, own: Boolean = false) {
-    RacePanel {
+    RacePanel(highlighted = own) {
         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
             ClanLogoMark(row.logoId, Modifier.size(48.dp))
             Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                if (own) Text(localized(TextKey.YourClan), color = ArcadePalette.Gold500, fontWeight = FontWeight.Bold)
                 Text(row.name, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
                 Text(localized(TextKey.Level, "level" to row.level))
             }
         }
         Text(localized(TextKey.ClanRaceRankPoints, "rank" to row.rank, "points" to row.points),
             fontWeight = FontWeight.Bold, modifier = Modifier.testTag("race_rank_${row.clanId}"))
+        row.poolId?.let { Text(racePoolLabel(it), style = MaterialTheme.typography.bodySmall) }
     }
 }
+
+@Composable internal fun racePoolLabel(id: String): String = localized(
+    if (id.startsWith("starter-")) TextKey.ClanRacePoolStarter else TextKey.ClanRacePoolStrength,
+    "number" to id.substringAfterLast('-'))
 
 @Composable private fun RaceHistory(week: ClanRaceCurrent) {
     RacePanel {
@@ -184,6 +198,7 @@ fun ClanRaceScreen(
                         Text(row.name, fontWeight = FontWeight.Bold)
                         Text(localized(TextKey.Level, "level" to row.level))
                         Text(localized(TextKey.ClanRaceRankPoints, "rank" to row.rank, "points" to row.points))
+                        row.poolId?.let { Text(racePoolLabel(it), style = MaterialTheme.typography.bodySmall) }
                     }
                 }
                 snapshot.winners.firstOrNull { it.standing.clanId == row.clanId }?.let {

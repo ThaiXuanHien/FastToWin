@@ -148,6 +148,9 @@ import com.hienthai.fastowin.ui.components.ArcadeBackdrop
 import com.hienthai.fastowin.ui.components.SeasonRewardSummaryDialog
 import com.hienthai.fastowin.ui.components.UpdateAvailableDialog
 import com.hienthai.fastowin.ui.components.PlayQuotaExhaustedDialog
+import com.hienthai.fastowin.ui.components.ProgressionUnlockDialog
+import com.hienthai.fastowin.ui.components.RewardReceiptDialog
+import com.hienthai.fastowin.ui.components.RewardReceiptAmounts
 import com.hienthai.fastowin.ui.components.ArcadeActionButton
 import com.hienthai.fastowin.ui.components.ArcadeActionStyle
 import com.hienthai.fastowin.ui.components.ArcadeDialog
@@ -453,12 +456,22 @@ private fun GameContent(
     var showRewardEvents by remember(accountUserId, isGuest) { mutableStateOf(false) }
     var selectedRewardEventId by remember(accountUserId, isGuest) { mutableStateOf<String?>(null) }
     DisposableEffect(rewardEventController) { onDispose { rewardEventController.close() } }
-    val mailboxController = remember(serverUrl, accountUserId, isGuest, authRequestConfigurator, controller) {
+    val currentGiftTokenProvider by rememberUpdatedState(accessTokenProvider)
+    val currentGiftOwner by rememberUpdatedState(accountUserId)
+    val giftClient = remember(serverUrl, accountUserId, isGuest, authRequestConfigurator) {
         if (isGuest || accountUserId == null || accessTokenProvider == null) null else
-            GiftMailboxController(
-                GiftApiClient(serverUrl, accessTokenProvider, authRequestConfigurator),
-                controller::refreshProfileAfterGiftClaim
-            )
+            GiftApiClient(serverUrl, { force ->
+                if (currentGiftOwner != accountUserId) null
+                else currentGiftTokenProvider?.invoke(force)?.takeIf { currentGiftOwner == accountUserId }
+            }, authRequestConfigurator)
+    }
+    val mailboxController = remember(giftClient, controller) {
+        giftClient?.let {
+            GiftMailboxController(it, refreshProfile = {
+                controller.refreshProfileAfterGiftClaim()
+                controller.requestPlayQuota()
+            })
+        }
     }
     val mailboxState by key(mailboxController) {
         mailboxController?.state?.collectAsState() ?: remember { mutableStateOf(GiftMailboxState()) }
@@ -778,6 +791,58 @@ private fun GameContent(
     val pendingSeasonReward = state.profile?.progression?.latestSeasonReward?.takeIf {
         !it.acknowledged && it.seasonNumber > 0
     }
+    val pendingProgressionReward = state.progressionRewardQueue.firstOrNull()
+    val canShowProgressionReward = pendingProgressionReward != null &&
+        state.currentRoomId == null &&
+        !state.isMatchmaking &&
+        !state.isMatchStarted &&
+        !state.isGameOver &&
+        !showTutorial &&
+        !showSettings &&
+        !showSeasonHistory &&
+        !showPracticeLauncher &&
+        !showPracticeModePicker &&
+        practiceMode == null
+    val pendingRewardedAdReward = state.rewardedAdBonusResult?.takeIf {
+        it.status == com.hienthai.fastowin.protocol.RewardedAdBonusStatus.GRANTED && it.grantedMatches > 0
+    }
+    val pendingMissionReward = state.missionRewardResult?.takeIf {
+        it.claimed && (it.rewardGold > 0 || it.rewardXp > 0 || it.rewardGems > 0)
+    }
+    val canShowRewardedAdReward = pendingRewardedAdReward != null &&
+        state.currentRoomId == null &&
+        !state.isMatchmaking &&
+        !state.isMatchStarted &&
+        !state.isGameOver &&
+        !showTutorial &&
+        !showSettings &&
+        !showSeasonHistory &&
+        !showPracticeLauncher &&
+        !showPracticeModePicker &&
+        practiceMode == null
+    val canShowMissionReward = pendingMissionReward != null &&
+        state.currentRoomId == null && !state.isMatchmaking && !state.isMatchStarted && !state.isGameOver &&
+        !showTutorial && !showSettings && !showSeasonHistory && !showPracticeLauncher &&
+        !showPracticeModePicker && practiceMode == null
+    val pendingClanExperienceReward = state.clanDonationResult?.takeIf {
+        it.status == com.hienthai.fastowin.protocol.ClanDonationStatus.APPLIED && it.experienceGranted > 0
+    }
+    val pendingClanQuestReward = state.clanQuestRewardResult?.takeIf {
+        it.claimed && (it.rewardGold > 0 || it.rewardXp > 0 || it.rewardGems > 0)
+    }
+    val pendingTournamentReward = state.tournamentRewardResult?.takeIf { it.goldGranted > 0 }
+    val canShowClanExperienceReward = pendingClanExperienceReward != null &&
+        state.currentRoomId == null && !state.isMatchmaking && !state.isMatchStarted && !state.isGameOver &&
+        !showTutorial && !showSettings && !showSeasonHistory && !showPracticeLauncher &&
+        !showPracticeModePicker && practiceMode == null
+    val canShowClanQuestReward = pendingClanQuestReward != null &&
+        state.currentRoomId == null && !state.isMatchmaking && !state.isMatchStarted && !state.isGameOver &&
+        !showTutorial && !showSettings && !showSeasonHistory && !showPracticeLauncher &&
+        !showPracticeModePicker && practiceMode == null
+    val canShowTournamentReward = pendingTournamentReward != null &&
+        state.currentRoomId == null && !state.isMatchmaking && !state.isMatchStarted && !state.isGameOver &&
+        !showTutorial && !showSettings && !showSeasonHistory && !showPracticeLauncher &&
+        !showPracticeModePicker && practiceMode == null
     val canShowWebUpdate = serviceReachable != false &&
         webUpdateAvailable &&
         state.currentRoomId == null &&
@@ -803,7 +868,13 @@ private fun GameContent(
         hasChallengeError = challengeLinkError != null,
         hasFriendRequest = friendRequestPrompt != null,
         canShowWebUpdate = canShowWebUpdate,
-        canShowSeasonSummary = canShowSeasonSummary
+        canShowSeasonSummary = canShowSeasonSummary,
+        canShowProgressionReward = canShowProgressionReward,
+        canShowRewardedAdReward = canShowRewardedAdReward,
+        canShowMissionReward = canShowMissionReward,
+        canShowClanExperienceReward = canShowClanExperienceReward,
+        canShowClanQuestReward = canShowClanQuestReward,
+        canShowTournamentReward = canShowTournamentReward
     )
 
     GlobalPromptSlot(globalPrompt, GlobalPrompt.PLAY_QUOTA) {
@@ -929,6 +1000,72 @@ private fun GameContent(
                 onAcknowledge = {
                     controller.acknowledgeSeasonReward(receipt.seasonNumber)
                 }
+            )
+        }
+    }
+    GlobalPromptSlot(globalPrompt, GlobalPrompt.PROGRESSION_REWARD) {
+        pendingProgressionReward?.let { notification ->
+            ProgressionUnlockDialog(
+                notification = notification,
+                onDismiss = controller::dismissProgressionReward
+            )
+        }
+    }
+    GlobalPromptSlot(globalPrompt, GlobalPrompt.REWARDED_AD_REWARD) {
+        pendingRewardedAdReward?.let { result ->
+            RewardReceiptDialog(
+                reward = RewardReceiptAmounts(plays = result.grantedMatches.toLong()),
+                onDismiss = { controller.clearRewardedAdBonusResult(result.requestId) }
+            )
+        }
+    }
+    GlobalPromptSlot(globalPrompt, GlobalPrompt.MISSION_REWARD) {
+        pendingMissionReward?.let { result ->
+            RewardReceiptDialog(
+                reward = RewardReceiptAmounts(
+                    gold = result.rewardGold.toLong(),
+                    xp = result.rewardXp.toLong(),
+                    gems = result.rewardGems.toLong()
+                ),
+                onDismiss = { controller.clearMissionRewardResult(result.missionCode) }
+            )
+        }
+    }
+    GlobalPromptSlot(globalPrompt, GlobalPrompt.CLAN_EXPERIENCE_REWARD) {
+        pendingClanExperienceReward?.let { result ->
+            RewardReceiptDialog(
+                reward = RewardReceiptAmounts(xp = result.experienceGranted.toLong()),
+                subtitle = localized(TextKey.DonationApplied, "xp" to result.experienceGranted),
+                xpLabel = "${localized(TextKey.Clan)} XP",
+                onDismiss = { controller.clearClanDonationResult(result.requestId) }
+            )
+        }
+    }
+    GlobalPromptSlot(globalPrompt, GlobalPrompt.CLAN_QUEST_REWARD) {
+        pendingClanQuestReward?.let { result ->
+            RewardReceiptDialog(
+                reward = RewardReceiptAmounts(
+                    gold = result.rewardGold.toLong(),
+                    xp = result.rewardXp.toLong(),
+                    gems = result.rewardGems.toLong()
+                ),
+                onDismiss = { controller.clearClanQuestRewardResult(result.requestId) }
+            )
+        }
+    }
+    GlobalPromptSlot(globalPrompt, GlobalPrompt.TOURNAMENT_REWARD) {
+        pendingTournamentReward?.let { result ->
+            val title = localized(
+                if (result.type == com.hienthai.fastowin.protocol.TournamentRewardType.PRIZE) {
+                    TextKey.TournamentPrizeReceived
+                } else {
+                    TextKey.TournamentEntryRefundReceived
+                }
+            )
+            RewardReceiptDialog(
+                reward = RewardReceiptAmounts(gold = result.goldGranted.toLong()),
+                title = title,
+                onDismiss = { controller.clearTournamentRewardResult(result.requestId) }
             )
         }
     }
@@ -1212,6 +1349,11 @@ private fun GameContent(
                 controller.openClan()
                 showClanRace = true
             }
+            route.startsWith("/clan/") -> {
+                closeLocalScreens()
+                controller.backToModeSelection()
+                controller.openClan(route.substringAfter("/clan/"))
+            }
             route == "/account" -> {
                 closeLocalScreens()
                 openRequestedAccount()
@@ -1249,6 +1391,7 @@ private fun GameContent(
                 val section = friendPath.substringAfter('/', missingDelimiterValue = "")
                     .takeIf(String::isNotBlank)
                     ?.let(::profileSectionFromRoute)
+                    ?.takeUnless { it == ProfileSection.GIFT_CODE }
                 val canonicalRoute = "/friends/$friendId" +
                     (section?.let { "/${profileSectionRoute(it)}" } ?: "")
                 if (route != canonicalRoute) {
@@ -1429,7 +1572,7 @@ private fun GameContent(
         state.isLeaderboardOpen -> "/leaderboard"
         state.isProfileOpen -> "/account"
         state.isShopOpen -> "/shop"
-        state.isClanOpen -> "/clan"
+        state.isClanOpen -> state.viewedLeaderboardClanId?.let { "/clan/$it" } ?: "/clan"
         state.currentRoomId != null -> "/room/${state.currentRoomId}"
         state.pendingRoomLinkId != null -> "/room/${state.pendingRoomLinkId}"
         practiceChallenge != null -> "/challenge/${practiceChallenge.code}"
@@ -1548,6 +1691,7 @@ private fun GameContent(
                     onLoadMore = { mailboxController?.let { mailboxScope.launch { it.loadNextPage() } } },
                     onClaim = { id -> mailboxController?.let { mailboxScope.launch { it.claim(id) } } },
                     onClaimAll = { mailboxController?.let { mailboxScope.launch { it.claimAll() } } },
+                    onDismissClaimedGift = { mailboxController?.dismissLastClaimedGift() },
                     onUpgradeGuest = onUpgradeGuest
                 )
 
@@ -1673,7 +1817,16 @@ private fun GameContent(
                             onOpenNotifications = openNotifications,
                             missionState = if (personalMissionsOpen) personalMissionState else com.hienthai.fastowin.state.MissionState(),
                             onRefreshMissions = { missionScope.launch { personalMissions?.refresh() } },
-                            onClaimMissionInstance = { id -> missionScope.launch { personalMissions?.claim(id) } }
+                            onClaimMissionInstance = { id -> missionScope.launch { personalMissions?.claim(id) } },
+                            onDismissMissionReward = { personalMissions?.clearLastClaimedReward() },
+                            onRedeemGiftCode = giftClient?.let { client ->
+                                { code ->
+                                    client.redeemCode(code).also {
+                                        controller.refreshProfileAfterGiftClaim()
+                                        controller.requestPlayQuota()
+                                    }
+                                }
+                            }
                         )
                     }
                 }
@@ -1745,7 +1898,13 @@ private fun GameContent(
                         navigateBack(if (showTopLevelNavigation) openHome else controller::closeLeaderboard)
                     },
                     onRefresh = controller::openLeaderboard,
-                    onOpenFriendProfile = openFriendProfile,
+                    onOpenClan = { clanId ->
+                        navigateToAppRoute("/clan/$clanId") { controller.openClan(clanId) }
+                    },
+                    onRefreshSocial = controller::refreshClanSocial,
+                    onSendFriendRequest = controller::sendFriendRequest,
+                    onRespondFriendRequest = controller::respondFriendRequest,
+                    onUpgradeGuest = if (isGuest) onUpgradeGuest else null,
                     onOpenSeasonHistory = openSeasonHistory,
                     onOpenNotifications = openNotifications,
                     showBackButton = !showTopLevelNavigation,
@@ -1811,8 +1970,20 @@ private fun GameContent(
                         if (newCheckoutAllowed) storeBillingGateway.purchase(productId, accountUserId)
                     },
                     onExchangeGold = { offerId -> controller.exchangeGemsForGold(offerId) },
+                    quota = state.playQuota,
+                    onExchangePlays = giftClient?.takeIf { newCheckoutAllowed }?.let { client ->
+                        { offerId, requestId ->
+                            client.exchangePlays(offerId, requestId)
+                            controller.refreshProfileAfterGiftClaim()
+                            controller.requestPlayQuota()
+                        }
+                    },
                     isGoldExchangePending = state.exchangingGoldRequestId != null,
                     exchangeNotice = state.profileNotice,
+                    goldExchangeResult = state.goldExchangeResult,
+                    onDismissGoldExchangeResult = controller::clearGoldExchangeResult,
+                    storePurchaseResult = state.storePurchaseResult,
+                    onDismissStorePurchaseResult = { requestId -> controller.clearStorePurchaseResult(requestId) },
                     onClose = { navigateBack(controller::closeShop) },
                     unreadNotifications = state.unreadNotificationCount,
                     onNotifications = openNotifications,
@@ -1820,7 +1991,7 @@ private fun GameContent(
                 )
 
                 state.isClanOpen -> TopLevelTabIfNeeded(
-                    enabled = showTopLevelNavigation,
+                    enabled = showTopLevelNavigation && state.viewedLeaderboardClanId == null,
                     state = state,
                     selected = MainTab.CLAN,
                     friendNotificationCount = state.pendingSocialInvitationCount,
@@ -1838,6 +2009,7 @@ private fun GameContent(
                      clanList = state.clanList,
                      pendingJoinClanIds = state.pendingClanJoinIds,
                      currentClan = state.currentClan,
+                     viewedClanId = state.viewedLeaderboardClanId,
                      notice = state.clanNotice ?: state.error,
                     loadError = state.clanLoadError,
                     social = state.social,
@@ -1860,19 +2032,26 @@ private fun GameContent(
                     isDonationPending = state.donatingClanRequestId != null,
                     onViewClan = controller::viewClan,
                     onBack = {
-                        navigateBack(if (showTopLevelNavigation) openHome else controller::closeClan)
+                        navigateBack(when {
+                            state.viewedLeaderboardClanId != null -> openLeaderboardTab
+                            showTopLevelNavigation -> openHome
+                            else -> controller::closeClan
+                        })
                     },
                     gold = state.profile?.progression?.gold ?: 0,
                     gems = state.profile?.progression?.gems ?: 0,
                     playerLevel = state.profile?.progression?.level ?: 1,
                     unreadNotifications = state.unreadNotificationCount,
                     onOpenNotifications = openNotifications,
-                    showBackButton = !showTopLevelNavigation,
+                    showBackButton = !showTopLevelNavigation || state.viewedLeaderboardClanId != null,
                     modifier = contentModifier,
                     missionState = if (clanMissionsOpen) clanMissionState else null,
                     onRefreshMissions = { missionScope.launch { clanMissions?.refresh() } },
                     onClaimMissionInstance = { id -> missionScope.launch { clanMissions?.claim(id) } },
-                    onOpenRace = { navigateToAppRoute("/clan/race") { showClanRace = true } }
+                    onDismissMissionReward = { clanMissions?.clearLastClaimedReward() },
+                    onOpenRace = if (state.viewedLeaderboardClanId == null && !isGuest) {
+                        { navigateToAppRoute("/clan/race") { showClanRace = true } }
+                    } else null
                 ) }
 
                 state.isGameOver -> ResultScreen(
@@ -1961,6 +2140,7 @@ private fun GameContent(
                     },
                     onResolveRoomLink = controller::resolvePendingRoomLink,
                     onClaimDailyCheckIn = controller::claimDailyCheckIn,
+                    onDismissDailyCheckInReward = controller::clearDailyCheckInResult,
                     onPlayQuotaExhausted = controller::showPlayQuotaDialog
                             )
                         }
@@ -2088,7 +2268,13 @@ internal enum class GlobalPrompt {
     CHALLENGE_ERROR,
     FRIEND_REQUEST,
     WEB_UPDATE,
-    SEASON_SUMMARY
+    SEASON_SUMMARY,
+    PROGRESSION_REWARD,
+    REWARDED_AD_REWARD,
+    MISSION_REWARD,
+    CLAN_EXPERIENCE_REWARD,
+    CLAN_QUEST_REWARD,
+    TOURNAMENT_REWARD
 }
 
 internal fun selectGlobalPrompt(
@@ -2101,7 +2287,13 @@ internal fun selectGlobalPrompt(
     hasChallengeError: Boolean,
     hasFriendRequest: Boolean,
     canShowWebUpdate: Boolean,
-    canShowSeasonSummary: Boolean
+    canShowSeasonSummary: Boolean,
+    canShowProgressionReward: Boolean = false,
+    canShowRewardedAdReward: Boolean = false,
+    canShowMissionReward: Boolean = false,
+    canShowClanExperienceReward: Boolean = false,
+    canShowClanQuestReward: Boolean = false,
+    canShowTournamentReward: Boolean = false
 ): GlobalPrompt? = when {
     hasPlayQuotaDialog -> GlobalPrompt.PLAY_QUOTA
     hasPlayFlowRejection -> GlobalPrompt.PLAY_FLOW_REJECTION
@@ -2113,6 +2305,12 @@ internal fun selectGlobalPrompt(
     hasFriendRequest -> GlobalPrompt.FRIEND_REQUEST
     canShowWebUpdate -> GlobalPrompt.WEB_UPDATE
     canShowSeasonSummary -> GlobalPrompt.SEASON_SUMMARY
+    canShowProgressionReward -> GlobalPrompt.PROGRESSION_REWARD
+    canShowRewardedAdReward -> GlobalPrompt.REWARDED_AD_REWARD
+    canShowMissionReward -> GlobalPrompt.MISSION_REWARD
+    canShowClanExperienceReward -> GlobalPrompt.CLAN_EXPERIENCE_REWARD
+    canShowClanQuestReward -> GlobalPrompt.CLAN_QUEST_REWARD
+    canShowTournamentReward -> GlobalPrompt.TOURNAMENT_REWARD
     else -> null
 }
 
@@ -2142,6 +2340,7 @@ private fun profileSectionRoute(section: ProfileSection): String = when (section
     ProfileSection.MISSIONS -> "missions"
     ProfileSection.COLLECTION -> "collection"
     ProfileSection.RECENT_MATCHES -> "matches"
+    ProfileSection.GIFT_CODE -> "gift-code"
 }
 
 private fun profileSectionFromRoute(route: String): ProfileSection? = when (route.lowercase()) {
@@ -2151,6 +2350,7 @@ private fun profileSectionFromRoute(route: String): ProfileSection? = when (rout
     "missions" -> ProfileSection.MISSIONS
     "collection" -> ProfileSection.COLLECTION
     "matches" -> ProfileSection.RECENT_MATCHES
+    "gift-code" -> ProfileSection.GIFT_CODE
     else -> null
 }
 

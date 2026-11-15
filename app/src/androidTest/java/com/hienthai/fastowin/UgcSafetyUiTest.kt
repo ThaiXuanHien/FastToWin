@@ -60,11 +60,23 @@ class UgcSafetyUiTest {
         }
         composeRule.onNodeWithTag("ugc_report_note").performScrollTo().performTextInput("Samsung QA details")
         closeSoftKeyboard()
+        composeRule.onNodeWithText("Spam / fraud").assertDoesNotExist()
+        composeRule.onNodeWithTag("ugc_report_reason").performScrollTo().performClick()
+        capture("report-reason-dropdown")
+        composeRule.onNodeWithTag("ugc_report_reason:SPAM").performScrollTo().performClick()
+        composeRule.onNodeWithTag("ugc_report_reason").assertTextContains("Spam / fraud")
+        composeRule.onNodeWithTag("ugc_report_reason:HARASSMENT").assertDoesNotExist()
+        composeRule.runOnIdle {
+            assertEquals(0, sent.size)
+            assertEquals("Samsung QA details", controller.state.value.report?.note)
+            assertEquals(UgcReportReason.SPAM, controller.state.value.report?.reason)
+        }
         capture("report-draft")
         // Submit stays in the fixed footer, outside the dialog body's scroll container.
         composeRule.onNodeWithTag("ugc_report_submit").assertIsDisplayed().assertIsEnabled().performClick()
         composeRule.waitUntil(5_000) { sent.size == 1 }
         composeRule.onNodeWithTag("ugc_report_submit").assertIsNotEnabled()
+        composeRule.onNodeWithTag("ugc_report_reason").performScrollTo().assertIsNotEnabled()
         composeRule.onNodeWithText("Receipt:", substring = true).assertDoesNotExist()
         composeRule.runOnIdle { controller.disconnected() }
         composeRule.onNodeWithTag("ugc_report_note").performScrollTo()
@@ -73,6 +85,7 @@ class UgcSafetyUiTest {
         composeRule.waitUntil(5_000) { sent.size == 2 }
         composeRule.runOnIdle {
             assertEquals("Samsung QA details", sent[0].request.note)
+            assertEquals(UgcReportReason.SPAM, sent[0].request.reason)
             assertEquals(playerId, sent[0].request.targetId)
             assertEquals(UgcTargetType.PLAYER_PROFILE, sent[0].request.targetType)
             assertEquals(sent[0].request, sent[1].request)
@@ -82,6 +95,22 @@ class UgcSafetyUiTest {
         composeRule.onNodeWithText("Receipt: qa-receipt").performScrollTo().assertIsDisplayed()
         composeRule.onNodeWithTag("ugc_report_submit").assertDoesNotExist()
         capture("report-receipt")
+    }
+
+    @Test fun pendingReportClosesAnOpenReasonMenuAndKeepsItsSelection() {
+        var draft by mutableStateOf(UgcReportDraft(UgcTargetType.PLAYER_PROFILE, playerId, "QA player",
+            reason = UgcReportReason.HARASSMENT))
+        var edits = 0
+        render {
+            UgcReportDialog(draft, { _, _, _ -> edits++ }, {}, {})
+        }
+        composeRule.onNodeWithTag("ugc_report_reason").performScrollTo().performClick()
+        composeRule.onNodeWithTag("ugc_report_reason:SPAM").performScrollTo().assertIsDisplayed()
+        composeRule.runOnIdle { draft = draft.copy(pending = true) }
+        composeRule.onNodeWithTag("ugc_report_reason:SPAM").assertDoesNotExist()
+        composeRule.onNodeWithTag("ugc_report_reason").assertIsNotEnabled()
+            .assertTextContains("Harassment / bullying")
+        composeRule.runOnIdle { assertEquals(0, edits) }
     }
 
     @Test fun vietnameseBlockConfirmationKeepsPlayerMarkupAsTextAndRequiresAction() {

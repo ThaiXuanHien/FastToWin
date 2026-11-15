@@ -21,12 +21,13 @@ import com.hienthai.fastowin.ui.theme.FastToWinTheme
         }
     }
 }
-@Composable private fun UgcReport(error: Boolean = false, receipt: Boolean = false) {
+@Composable private fun UgcReport(error: Boolean = false, receipt: Boolean = false,
+    reason: UgcReportReason = UgcReportReason.HARASSMENT) {
     UgcReportDialog(UgcReportDraft(UgcTargetType.PLAYER_PROFILE,
         "12345678-1234-1234-1234-123456789abc", "<b>Player nickname</b>",
-        reason = UgcReportReason.HARASSMENT, note = "Additional details for the review team.",
+        reason = reason, note = "Additional details for the review team.",
         request = if (error) ContentReportRequest(UgcTargetType.PLAYER_PROFILE,
-            "12345678-1234-1234-1234-123456789abc", UgcReportReason.HARASSMENT, requestId = "stable-retry") else null,
+            "12345678-1234-1234-1234-123456789abc", reason, requestId = "stable-retry") else null,
         error = if (error) "REPORT_RATE_LIMITED" else null,
         receipt = if (receipt) ContentReportReceipt("12345678-1234-1234-1234-123456789abc") else null),
         { _, _, _ -> }, {}, {}, {})
@@ -39,6 +40,10 @@ import com.hienthai.fastowin.ui.theme.FastToWinTheme
 fun ugcReportPhone() = UgcFrame { UgcReport() }
 @PreviewTest @Preview(name = "report_desktop_en", widthDp = 1024, heightDp = 768) @Composable
 fun ugcReportDesktop() = UgcFrame(true) { UgcReport() }
+@PreviewTest @Preview(name = "report_reason_small_large_text", widthDp = 320, heightDp = 812, fontScale = 1.6f) @Composable
+fun ugcReportReasonSmallLargeText() = UgcFrame { UgcReport(reason = UgcReportReason.PERSONAL_INFORMATION) }
+@PreviewTest @Preview(name = "report_reason_landscape_large_text", widthDp = 844, heightDp = 390, fontScale = 1.6f) @Composable
+fun ugcReportReasonLandscapeLargeText() = UgcFrame(true) { UgcReport(reason = UgcReportReason.PERSONAL_INFORMATION) }
 @PreviewTest @Preview(name = "report_retry_small_large_text", widthDp = 320, heightDp = 932, fontScale = 1.6f) @Composable
 fun ugcReportRetry() = UgcFrame { UgcReport(error = true) }
 @PreviewTest @Preview(name = "report_receipt_en", widthDp = 375, heightDp = 812) @Composable

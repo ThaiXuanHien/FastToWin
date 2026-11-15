@@ -39,6 +39,10 @@ data class AppNotification(
     val messageKey: String? = null,
     val messageArgs: Map<String, String> = emptyMap(),
     val localizationData: Map<String, String> = emptyMap(),
+    val rewardGold: Long = 0,
+    val rewardXp: Long = 0,
+    val rewardGems: Long = 0,
+    val rewardPlays: Long = 0,
     val announcement: AdminAnnouncementContext? = null
 )
 
@@ -235,6 +239,9 @@ internal fun progressionNotifications(
                 achievement.titleKey?.takeIf(String::isNotBlank)?.let { put("titleKey", it) }
                 achievement.descriptionKey?.takeIf(String::isNotBlank)?.let { put("descriptionKey", it) }
             },
+            rewardGold = achievement.rewardGold.toLong(),
+            rewardXp = achievement.rewardXp.toLong(),
+            rewardGems = achievement.rewardGems.toLong(),
             localizationData = buildMap {
                 put("type", "achievement")
                 put("code", achievement.code)

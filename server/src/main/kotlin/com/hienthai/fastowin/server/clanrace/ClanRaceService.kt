@@ -35,7 +35,7 @@ class ClanRaceService(private val repository:PostgresClanRaceRepository?,private
     }
     suspend fun publish(ctx:ClanRaceAdminContext,week:String,req:ClanRaceMutationRequest):ClanRaceAdminView=mutate(ctx,"PUBLISH",week,req.expectedVersion,req.reason,req.requestId,Json.encodeToString(req),true) { old,_ ->
         val before=old?:missing();if(before.state!=ClanRaceConfigState.DRAFT) conflict();future(week);validate(before.config)
-        before.copy(version=Math.addExact(before.version,1),state=ClanRaceConfigState.PUBLISHED,publishedRevision=Math.addExact(before.version,1)).also(::publish)
+        before.copy(version=Math.addExact(before.version,1),state=ClanRaceConfigState.PUBLISHED,publishedRevision=Math.addExact(before.version,1),config=before.config.copy(poolingVersion=1)).also(::publish)
     }
     suspend fun archive(ctx:ClanRaceAdminContext,week:String,req:ClanRaceMutationRequest):ClanRaceAdminView=mutate(ctx,"ARCHIVE",week,req.expectedVersion,req.reason,req.requestId,Json.encodeToString(req),true) { old,_ ->
         val before=old?:missing();future(week);if(before.state==ClanRaceConfigState.INACTIVE) conflict();before.copy(version=Math.addExact(before.version,1),state=ClanRaceConfigState.INACTIVE).also(::put)
@@ -44,7 +44,7 @@ class ClanRaceService(private val repository:PostgresClanRaceRepository?,private
         val actor=authorize(ctx,true);date(week);val value=find(week);val config=validate(value.config)
         val totals=(0..2).map { index -> config.rewards.fold(BigInteger.ZERO) { sum,r -> sum+BigInteger.valueOf(listOf(r.xp,r.gold,r.gems)[index].toLong())*BigInteger.valueOf(50) }.toString() }
         audit(actor.id,"PREVIEW",value,value,null,null)
-        ClanRacePreview(value,raceWeekMillis(date(week)),raceWeekMillis(date(week).plusWeeks(1)),racePoints(raceDonationUnits(100,parseRaceRateUnits(config.goldRate))),config.gemRate,maximumBudget=ClanRaceBudget(totals[0],totals[1],totals[2]),serverNowEpochMillis=nowMillis())
+        ClanRacePreview(value,raceWeekMillis(date(week)),raceWeekMillis(date(week).plusWeeks(1)),racePoints(raceDonationUnits(100,parseRaceRateUnits(config.goldRate))),config.gemRate,maximumBudget=ClanRaceBudget(totals[0],totals[1],totals[2]),serverNowEpochMillis=nowMillis(),budgetPerPool=value.state==ClanRaceConfigState.DRAFT || config.poolingVersion==1)
     }
     private suspend fun mutate(ctx:ClanRaceAdminContext,action:String,week:String,version:Long,reason:String,request:String,payload:String,owner:Boolean=false,existing:Boolean=true,change:JdbcClanRaceStore.(ClanRaceAdminView?,AdminIdentity)->ClanRaceAdminView):ClanRaceAdminView=storage(true) {
         val actor=authorize(ctx,true,owner);date(week)
@@ -71,8 +71,9 @@ class ClanRaceService(private val repository:PostgresClanRaceRepository?,private
     } catch(_:IllegalArgumentException) { invalid() }
     suspend fun current(player:String):ClanRaceCurrent=storage { val now=nowMillis();current(raceWeekStart(now),now) }
     suspend fun standings(player:String,page:PageRequest=PageRequest()):ClanRaceStandings=storage {
-        val now=nowMillis();val week=raceWeekStart(now);val all=standingsAt(week,Math.addExact(now,1));val own=ownClan(player)
-        ClanRaceStandings(week.toString(),all.drop(page.offset).take(page.pageSize),page.page,page.pageSize,all.size,all.firstOrNull { it.clanId==own },now)
+        val now=nowMillis();val week=raceWeekStart(now);val every=standingsAt(week,Math.addExact(now,1));val own=ownClan(player)
+        val pool=racePool(week,own);val all=if(published(week)?.poolingVersion==1) every.filter { it.poolId==pool } else every
+        ClanRaceStandings(week.toString(),all.drop(page.offset).take(page.pageSize),page.page,page.pageSize,all.size,all.firstOrNull { it.clanId==own },now,pool)
     }
     suspend fun contributions(player:String):ClanRaceContributions=storage {
         val now=nowMillis();val week=raceWeekStart(now);val clan=ownClan(player)

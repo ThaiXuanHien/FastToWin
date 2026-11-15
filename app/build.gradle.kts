@@ -18,6 +18,15 @@ val adMobUnitId = if (adMobMode == "demo") "ca-app-pub-3940256099942544/52243549
 val adMobTestDeviceIds = providers.gradleProperty("FASTTOWIN_ADMOB_TEST_DEVICE_IDS").orElse("").get()
     .split(',').map { it.trim().uppercase() }.filter(String::isNotEmpty)
 require(adMobTestDeviceIds.all { Regex("[A-F0-9]{32}").matches(it) }) { "Test-device hashes must contain 32 hex characters" }
+
+val uploadKeystorePath = providers.environmentVariable("FASTTOWIN_UPLOAD_KEYSTORE").orNull
+val uploadStorePassword = providers.environmentVariable("FASTTOWIN_UPLOAD_STORE_PASSWORD").orNull
+val uploadKeyAlias = providers.environmentVariable("FASTTOWIN_UPLOAD_KEY_ALIAS").orNull
+val uploadKeyPassword = providers.environmentVariable("FASTTOWIN_UPLOAD_KEY_PASSWORD").orNull
+val hasProductionSigning = listOf(uploadKeystorePath, uploadStorePassword, uploadKeyAlias, uploadKeyPassword).all { !it.isNullOrBlank() }
+require(listOf(uploadKeystorePath, uploadStorePassword, uploadKeyAlias, uploadKeyPassword).count { !it.isNullOrBlank() } !in 1..3) {
+    "Production signing requires FASTTOWIN_UPLOAD_KEYSTORE, FASTTOWIN_UPLOAD_STORE_PASSWORD, FASTTOWIN_UPLOAD_KEY_ALIAS and FASTTOWIN_UPLOAD_KEY_PASSWORD together"
+}
 require(adMobAppId.isEmpty() || Regex("ca-app-pub-[0-9]{16}~[0-9]{10}").matches(adMobAppId)) { "Invalid AdMob App ID" }
 require(adMobUnitId.isEmpty() || Regex("ca-app-pub-[0-9]{16}/[0-9]{10}").matches(adMobUnitId)) { "Invalid AdMob ad unit ID" }
 if (adMobMode in setOf("test", "live")) {
@@ -35,8 +44,8 @@ android {
         applicationId = "com.hienthai.fastowin"
         minSdk = 29
         targetSdk = 37
-        versionCode = 12
-        versionName = "1.0.11"
+        versionCode = 13
+        versionName = "1.0.12"
         buildConfigField("boolean", "AUTH_DIAGNOSTICS_ENABLED", (authDiagnosticsMode == "qa").toString())
         buildConfigField("String", "ADMOB_MODE", "\"$adMobMode\"")
         buildConfigField("String", "ADMOB_APP_ID", "\"$adMobAppId\"")
@@ -83,6 +92,22 @@ android {
         }
     }
 
+    buildTypes {
+        release {
+            isMinifyEnabled = true
+            isShrinkResources = true
+            proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
+            if (hasProductionSigning) {
+                signingConfig = signingConfigs.create("productionUpload") {
+                    storeFile = file(requireNotNull(uploadKeystorePath))
+                    storePassword = requireNotNull(uploadStorePassword)
+                    keyAlias = requireNotNull(uploadKeyAlias)
+                    keyPassword = requireNotNull(uploadKeyPassword)
+                }
+            }
+        }
+    }
+
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_11
         targetCompatibility = JavaVersion.VERSION_11
@@ -104,6 +129,12 @@ screenshotTests {
 
 dependencies {
     constraints {
+        screenshotTestImplementation("androidx.transition:transition:1.6.0") {
+            because("Use the same generated Transition R classes as the app's Fragment dependency")
+        }
+        screenshotTestImplementation("androidx.appcompat:appcompat-resources:1.4.1") {
+            because("Render previews with the same AppCompat resource classes as the app")
+        }
         implementation(libs.androidx.fragment) {
             because("Replace the obsolete Fragment version requested by transitive Android SDKs (Play Console warning)")
         }

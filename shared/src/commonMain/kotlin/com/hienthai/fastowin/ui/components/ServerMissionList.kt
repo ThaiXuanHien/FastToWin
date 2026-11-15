@@ -12,10 +12,32 @@ import com.hienthai.fastowin.localization.*
 import com.hienthai.fastowin.protocol.*
 import com.hienthai.fastowin.state.MissionState
 import com.hienthai.fastowin.ui.theme.ArcadePalette
+import com.hienthai.fastowin.ui.components.RewardReceiptAmounts
+import com.hienthai.fastowin.ui.components.RewardReceiptDialog
 
 /** Embedded in the existing screen's scrolling content; every returned period remains accessible. */
 @Composable
-fun ServerMissionList(state: MissionState, onRefresh: () -> Unit, onClaim: (String) -> Unit, modifier: Modifier = Modifier) {
+fun ServerMissionList(
+    state: MissionState,
+    onRefresh: () -> Unit,
+    onClaim: (String) -> Unit,
+    onDismissReward: () -> Unit = {},
+    modifier: Modifier = Modifier
+) {
+    var dismissedRewardId by remember { mutableStateOf<String?>(null) }
+    state.lastClaimedReward?.takeIf { it.instanceId != dismissedRewardId }?.let { receipt ->
+        RewardReceiptDialog(
+            RewardReceiptAmounts(
+                gold = receipt.reward.gold.toLong(),
+                xp = receipt.reward.xp.toLong(),
+                gems = receipt.reward.gems.toLong()
+            ),
+            onDismiss = {
+                dismissedRewardId = receipt.instanceId
+                onDismissReward()
+            }
+        )
+    }
     Column(modifier.fillMaxWidth().testTag("server_missions"), verticalArrangement = Arrangement.spacedBy(12.dp)) {
         if (state.isLoading) Text(localized(TextKey.Loading), Modifier.semantics { liveRegion = LiveRegionMode.Polite })
         if (state.loadError != null) MissionError()

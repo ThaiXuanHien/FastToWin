@@ -14,17 +14,25 @@ internal data class RewardGrant(
 
 internal object RewardEconomy {
     fun matchRewardBreakdown(matchType: MatchType, outcome: MatchOutcome, intentionalLeave: Boolean,
-        eventRewards: MatchRewardEventSnapshot): MatchRewardBreakdown {
+        eventRewards: MatchRewardEventSnapshot, clanLevel: Int = 0): MatchRewardBreakdown {
         val base = matchReward(matchType, outcome, intentionalLeave)
         require(eventRewards.goldMultiplier in 1..2 && eventRewards.xpMultiplier in 1..2)
+        val clanBonus = if (outcome == MatchOutcome.WIN) {
+            val percent = when {
+                clanLevel >= 10 -> 10
+                clanLevel >= 5 -> 5
+                else -> 0
+            }
+            base.gold * percent / 100
+        } else 0
         return MatchRewardBreakdown(base.gold, base.gold * (eventRewards.goldMultiplier - 1),
-            base.gold * eventRewards.goldMultiplier, base.xp, base.xp * (eventRewards.xpMultiplier - 1),
-            base.xp * eventRewards.xpMultiplier, if (intentionalLeave) emptyList() else eventRewards.sources)
+            base.gold * eventRewards.goldMultiplier + clanBonus, base.xp, base.xp * (eventRewards.xpMultiplier - 1),
+            base.xp * eventRewards.xpMultiplier, if (intentionalLeave) emptyList() else eventRewards.sources, clanBonus)
     }
 
     fun matchReward(matchType: MatchType, outcome: MatchOutcome, intentionalLeave: Boolean,
-        eventRewards: MatchRewardEventSnapshot): RewardGrant =
-        matchRewardBreakdown(matchType, outcome, intentionalLeave, eventRewards).let { RewardGrant(gold = it.totalGold, xp = it.totalXp) }
+        eventRewards: MatchRewardEventSnapshot, clanLevel: Int = 0): RewardGrant =
+        matchRewardBreakdown(matchType, outcome, intentionalLeave, eventRewards, clanLevel).let { RewardGrant(gold = it.totalGold, xp = it.totalXp) }
 
     fun matchReward(
         matchType: MatchType,

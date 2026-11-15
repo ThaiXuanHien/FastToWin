@@ -143,6 +143,7 @@ fun ClanScreen(
     missionState: MissionState? = null,
     onRefreshMissions: () -> Unit = {},
     onClaimMissionInstance: (String) -> Unit = {},
+    onDismissMissionReward: () -> Unit = {},
     onOpenRace: (() -> Unit)? = null,
     playerLevel: Int = 1,
     social: FriendsSnapshot = FriendsSnapshot(),
@@ -153,7 +154,8 @@ fun ClanScreen(
     onRespondFriendRequest: (String, Boolean) -> Unit = { _, _ -> },
     isSocialReady: Boolean = true,
     onRefreshSocial: () -> Unit = {},
-    loadError: String? = null
+    loadError: String? = null,
+    viewedClanId: String? = null
 ) {
     SystemBackHandler(enabled = showBackButton, onBack = onBack)
 
@@ -187,8 +189,9 @@ fun ClanScreen(
                     }
                 }
                 Box(Modifier.weight(1f)) {
+                    val targetClanId = viewedClanId ?: myClanId
                     when {
-                        myClanId == null -> ClanDiscoveryView(
+                        targetClanId == null -> ClanDiscoveryView(
                             clanList = clanList,
                             pendingJoinClanIds = pendingJoinClanIds,
                             notice = notice,
@@ -201,13 +204,13 @@ fun ClanScreen(
                             modifier = Modifier.fillMaxSize()
                         )
 
-                        currentClan != null -> ClanDetailView(
+                        currentClan?.id == targetClanId -> ClanDetailView(
                             serverUrl = serverUrl,
                             currentUserId = currentUserId,
                             clan = currentClan,
                             notice = notice,
                             loadError = loadError,
-                            onRetryLoad = { onViewClan(myClanId) },
+                            onRetryLoad = { onViewClan(targetClanId) },
                             onLeave = onLeaveClan,
                             onKickMember = onKickMember,
                             onRespondJoinRequest = onRespondJoinRequest,
@@ -216,6 +219,7 @@ fun ClanScreen(
                             missionState = missionState,
                             onRefreshMissions = onRefreshMissions,
                             onClaimMissionInstance = onClaimMissionInstance,
+                            onDismissMissionReward = onDismissMissionReward,
                             gold = gold,
                             gems = gems,
                             isDonationPending = isDonationPending,
@@ -236,10 +240,10 @@ fun ClanScreen(
                                 if (loadError == null) {
                                     CircularProgressIndicator(color = ArcadePalette.Gold500)
                                 } else {
-                                    ClanLoadError(loadError, onRetry = { onViewClan(myClanId) })
+                                    ClanLoadError(loadError, onRetry = { onViewClan(targetClanId) })
                                 }
                             }
-                            LaunchedEffect(myClanId) { onViewClan(myClanId) }
+                            LaunchedEffect(targetClanId) { if (viewedClanId == null) onViewClan(targetClanId) }
                         }
                     }
                 }
@@ -553,6 +557,7 @@ fun ClanDetailView(
     missionState: MissionState? = null,
     onRefreshMissions: () -> Unit = {},
     onClaimMissionInstance: (String) -> Unit = {},
+    onDismissMissionReward: () -> Unit = {},
     social: FriendsSnapshot = FriendsSnapshot(),
     isSocialLoading: Boolean = false,
     socialNotice: String? = null,
@@ -576,7 +581,10 @@ fun ClanDetailView(
     var visibleMemberCount by remember(clan.id) { mutableStateOf(DEFAULT_ARCADE_PAGE_SIZE) }
     val isOwner = clan.ownerId == currentUserId
     val currentMember = clan.members.firstOrNull { it.userId == currentUserId }
-    val visibleMembers = clan.members.take(visibleMemberCount)
+    val membersByElo = remember(clan.members) {
+        clan.members.sortedWith(compareByDescending<ClanMemberSnapshot> { it.trophies }.thenBy { it.userId })
+    }
+    val visibleMembers = membersByElo.take(visibleMemberCount)
     val canReportClan = canReportUgcTarget(UgcTargetType.CLAN, clan.id)
 
     LazyColumn(
@@ -617,7 +625,7 @@ fun ClanDetailView(
 
         if (currentMember != null && missionState != null) {
             item(key = "clan_missions") {
-                ServerMissionList(missionState, onRefreshMissions, onClaimMissionInstance)
+                ServerMissionList(missionState, onRefreshMissions, onClaimMissionInstance, onDismissMissionReward)
             }
         }
 
@@ -665,7 +673,7 @@ fun ClanDetailView(
             )
         }
 
-        item(key = "leave_clan") {
+        if (currentMember != null) item(key = "leave_clan") {
             ArcadeActionButton(
                 label = localized(TextKey.LeaveClan),
                 onClick = { showLeaveConfirmation = true },

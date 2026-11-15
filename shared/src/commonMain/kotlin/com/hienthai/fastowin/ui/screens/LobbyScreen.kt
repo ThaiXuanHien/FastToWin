@@ -126,6 +126,7 @@ fun LobbyScreen(
     onShareRoom: (String, String) -> Result<Unit>,
     onResolveRoomLink: (String?) -> Unit,
     onClaimDailyCheckIn: () -> Unit,
+    onDismissDailyCheckInReward: () -> Unit = {},
     onPlayQuotaExhausted: () -> Unit = {},
     serverUrl: String = "",
     modifier: Modifier = Modifier
@@ -239,6 +240,7 @@ fun LobbyScreen(
                     onOpenTournament = onOpenTournament,
                     onOpenShop = onOpenShop,
                     onClaimDailyCheckIn = onClaimDailyCheckIn,
+                    onDismissDailyCheckInReward = onDismissDailyCheckInReward,
                     onUpgradeGuest = onUpgradeGuest,
                     onLogout = onLogout,
                     onPlayQuotaExhausted = onPlayQuotaExhausted

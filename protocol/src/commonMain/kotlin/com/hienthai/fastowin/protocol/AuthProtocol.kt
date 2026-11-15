@@ -134,7 +134,8 @@ data class AuthSessionResponse(
     val refreshToken: String,
     val accessExpiresAtEpochMillis: Long,
     val refreshExpiresAtEpochMillis: Long,
-    val emailVerified: Boolean = true
+    val emailVerified: Boolean = true,
+    val supportEmailVerificationExempt: Boolean = false
 )
 
 @Serializable

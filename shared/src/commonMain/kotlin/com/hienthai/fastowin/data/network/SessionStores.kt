@@ -12,7 +12,8 @@ data class StoredAuthSession(
     val accessExpiresAtEpochMillis: Long,
     val refreshExpiresAtEpochMillis: Long,
     val emailVerified: Boolean = true,
-    val refreshAttemptSecret: String? = null
+    val refreshAttemptSecret: String? = null,
+    val supportEmailVerificationExempt: Boolean = false
 )
 
 interface AuthSessionStore {

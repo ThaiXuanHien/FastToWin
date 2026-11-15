@@ -129,9 +129,8 @@ class InMemoryAuthRepository : AuthRepository {
             ?.takeIf { !it.revoked && it.accessExpiresAtMillis > nowMillis }
             ?: return@withLock null
         val displayName = displayNamesByUserId[session.userId] ?: return@withLock null
-        val emailVerified = accounts.values.firstOrNull { it.userId == session.userId }?.emailVerified
-            ?: return@withLock null
-        AuthenticatedAccount(session.userId, displayName, session.sessionId, emailVerified)
+        val account = accounts.values.firstOrNull { it.userId == session.userId } ?: return@withLock null
+        AuthenticatedAccount(session.userId, displayName, session.sessionId, account.emailVerified, account.supportEmailVerificationExempt)
     }
 
     override suspend fun listActiveSessions(

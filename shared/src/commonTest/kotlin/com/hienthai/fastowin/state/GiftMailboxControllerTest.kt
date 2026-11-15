@@ -11,6 +11,7 @@ import kotlinx.coroutines.withContext
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
+import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
 class GiftMailboxControllerTest {
@@ -91,6 +92,9 @@ class GiftMailboxControllerTest {
         assertEquals(receipt, controller.state.value.items.first())
         assertEquals(1, refreshes)
         assertEquals(gift("ordinary"), controller.state.value.items.last())
+        assertEquals(receipt, controller.state.value.lastClaimedGift?.gift)
+        controller.dismissLastClaimedGift()
+        assertNull(controller.state.value.lastClaimedGift)
     }
 
     private fun gift(id: String, state: GiftState = GiftState.AVAILABLE) = MailboxGift(
@@ -122,6 +126,9 @@ class GiftMailboxControllerTest {
         assertEquals(listOf(GiftState.CLAIMED, GiftState.AVAILABLE, GiftState.CLAIMED), controller.state.value.items.map { it.state })
         assertEquals("CONFLICT", controller.state.value.itemErrors["b"])
         assertEquals(1, refreshes)
+        assertEquals(listOf("a", "c"), controller.state.value.lastClaimedBatch.map { it.gift.campaignId })
+        assertEquals(50, controller.state.value.lastClaimedBatch.sumOf { it.awardedGold })
+        controller.dismissLastClaimedGift()
         controller.claim("b")
         assertEquals(GiftState.CLAIMED, controller.state.value.items[1].state)
         assertFalse(controller.state.value.itemErrors.containsKey("b"))

@@ -72,7 +72,7 @@ class PostgresMatchResultRepository(
                 statement.setInt(4, player.score)
                 statement.setString(5, player.outcome.name)
                 statement.setString(6, ProtocolJson.encodeToString(RewardEconomy.matchRewardBreakdown(
-                    match.matchType, player.outcome, player.intentionalLeave, match.eventRewards)))
+                    match.matchType, player.outcome, player.intentionalLeave, match.eventRewards, match.clanLevels[player.playerId] ?: 0)))
                 statement.addBatch()
             }
             statement.executeBatch()
@@ -110,7 +110,8 @@ class PostgresMatchResultRepository(
                 matchType = match.matchType,
                 outcome = player.outcome,
                 intentionalLeave = player.intentionalLeave,
-                eventRewards = match.eventRewards
+                eventRewards = match.eventRewards,
+                clanLevel = match.clanLevels[player.playerId] ?: 0
             )
         }
         connection.prepareStatement(

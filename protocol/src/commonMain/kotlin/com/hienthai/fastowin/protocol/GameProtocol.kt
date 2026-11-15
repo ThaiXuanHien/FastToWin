@@ -133,6 +133,9 @@ enum class RoomPhase {
 enum class TournamentPhase { LOBBY, RUNNING, FINISHED, CANCELLED }
 
 @Serializable
+enum class TournamentRewardType { PRIZE, ENTRY_REFUND }
+
+@Serializable
 enum class TournamentMatchPhase { PENDING, PLAYING, FINISHED }
 
 @Serializable
@@ -484,7 +487,8 @@ data class WalletTransactionSnapshot(
     val goldDelta: Int = 0,
     val gemsDelta: Int = 0,
     val xpDelta: Int = 0,
-    val createdAtEpochMillis: Long
+    val createdAtEpochMillis: Long,
+    val playCreditDelta: Int = 0
 )
 
 @Serializable
@@ -534,8 +538,12 @@ data class PlayQuotaSnapshot(
     val bonusMatchesGranted: Int = 0,
     val remainingMatches: Int = 10,
     val nextResetAtEpochMillis: Long,
-    val rewardedAdAvailability: RewardedAdAvailability = RewardedAdAvailability.UNAVAILABLE
-)
+    val rewardedAdAvailability: RewardedAdAvailability = RewardedAdAvailability.UNAVAILABLE,
+    val bankedMatches: Long = 0
+) {
+    val dailyMatchesRemaining: Int
+        get() = (baseMatches.toLong() + bonusMatchesGranted - matchesConsumed).coerceIn(0, Int.MAX_VALUE.toLong()).toInt()
+}
 
 @Serializable
 data class AchievementSnapshot(
@@ -1037,7 +1045,7 @@ sealed class ClientMessage {
 
     @Serializable
     @SerialName("claim_clan_quest_reward")
-    data class ClaimClanQuestReward(val clanId: String) : ClientMessage()
+    data class ClaimClanQuestReward(val clanId: String, val requestId: String = "") : ClientMessage()
 
     @Serializable
     @SerialName("donate_to_clan")
@@ -1190,7 +1198,8 @@ sealed class ServerMessage {
     data class RewardedAdBonusResult(
         val requestId: String,
         val status: RewardedAdBonusStatus,
-        val quota: PlayQuotaSnapshot
+        val quota: PlayQuotaSnapshot,
+        val grantedMatches: Int = 0
     ) : ServerMessage()
 
     @Serializable
@@ -1279,6 +1288,15 @@ sealed class ServerMessage {
     @Serializable
     @SerialName("tournament_updated")
     data class TournamentUpdated(val tournament: TournamentSnapshot) : ServerMessage()
+
+    @Serializable
+    @SerialName("tournament_reward_result")
+    data class TournamentRewardResult(
+        val requestId: String,
+        val tournamentId: String,
+        val type: TournamentRewardType,
+        val goldGranted: Int
+    ) : ServerMessage()
 
     @Serializable
     @SerialName("tournament_invitation")
@@ -1394,6 +1412,18 @@ sealed class ServerMessage {
         val currency: ClanDonationCurrency,
         val experienceGranted: Int = 0,
         val clanLevel: Int = 0
+    ) : ServerMessage()
+
+    @Serializable
+    @SerialName("clan_quest_reward_result")
+    data class ClanQuestRewardResult(
+        val requestId: String,
+        val clanId: String,
+        val claimed: Boolean,
+        val rewardGold: Int = 0,
+        val rewardXp: Int = 0,
+        val rewardGems: Int = 0,
+        val contributionPoints: Int = 0
     ) : ServerMessage()
 
     @Serializable

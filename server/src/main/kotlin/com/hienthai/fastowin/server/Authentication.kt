@@ -39,13 +39,15 @@ data class AccountCredentials(
     val userId: UUID,
     val passwordHash: String,
     val displayName: String,
-    val emailVerified: Boolean = true
+    val emailVerified: Boolean = true,
+    val supportEmailVerificationExempt: Boolean = false
 )
 data class AuthenticatedAccount(
     val userId: UUID,
     val displayName: String,
     val sessionId: UUID? = null,
-    val emailVerified: Boolean = true
+    val emailVerified: Boolean = true,
+    val supportEmailVerificationExempt: Boolean = false
 )
 data class StoredAccountSession(
     val sessionId: UUID,
@@ -215,7 +217,8 @@ class AuthenticationService(
             account.userId,
             account.displayName,
             nowMillis(),
-            emailVerified = account.emailVerified
+            emailVerified = account.emailVerified,
+            supportEmailVerificationExempt = account.supportEmailVerificationExempt
         )
         try { repository.replaceSessions(account.userId, normalizeDevicePlatform(devicePlatform), issued.record) }
         catch (_: InactiveAccountException) { return AuthResult.Failure("ACCOUNT_BLOCKED", publicModerationMessage("ACCOUNT_BLOCKED")) }
@@ -289,11 +292,13 @@ class AuthenticationService(
             }) ?: return invalidRefreshToken()
         }
         val userId = UUID.fromString(response.userId)
+        val account = repository.findActiveAccountById(userId) ?: return invalidRefreshToken()
         if (moderationService?.isBlocked(userId.toString()) == true) {
             repository.revokeAllSessions(userId, now)
             return AuthResult.Failure("ACCOUNT_BLOCKED", "ACCOUNT_BLOCKED")
         }
-        return AuthResult.Success(response)
+        return AuthResult.Success(response.copy(emailVerified = account.emailVerified,
+            supportEmailVerificationExempt = account.supportEmailVerificationExempt))
     }
 
     suspend fun logout(refreshToken: String, refreshAttemptSecret: String? = null) {
@@ -499,7 +504,8 @@ class AuthenticationService(
         userId: UUID,
         displayName: String,
         now: Long,
-        emailVerified: Boolean = true
+        emailVerified: Boolean = true,
+        supportEmailVerificationExempt: Boolean = false
     ): IssuedTokens {
         val accessToken = newToken()
         val refreshToken = newToken()
@@ -521,7 +527,8 @@ class AuthenticationService(
                 refreshToken = refreshToken,
                 accessExpiresAtEpochMillis = accessExpiry,
                 refreshExpiresAtEpochMillis = refreshExpiry,
-                emailVerified = emailVerified
+                emailVerified = emailVerified,
+                supportEmailVerificationExempt = supportEmailVerificationExempt
             )
         )
     }

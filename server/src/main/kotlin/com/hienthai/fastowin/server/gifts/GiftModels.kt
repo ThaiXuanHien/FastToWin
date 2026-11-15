@@ -13,7 +13,7 @@ import kotlinx.serialization.Serializable
     val userIds: List<String> = emptyList(),
     val registeredFromEpochMillis: Long? = null, val registeredUntilEpochMillis: Long? = null,
     val availableAtEpochMillis: Long, val expiresAtEpochMillis: Long? = null,
-    val requestId: String, val expectedVersion: Int? = null, val gems: Int = 0
+    val requestId: String, val expectedVersion: Int? = null, val gems: Int = 0, val plays: Int = 0
 )
 @Serializable data class GiftPreviewRequest(val expectedVersion: Int)
 @Serializable data class GiftPublishRequest(val expectedVersion: Int, val previewToken: String, val requestId: String, val reason: String)
@@ -28,12 +28,13 @@ import kotlinx.serialization.Serializable
 @Serializable data class GiftCounters(
     val eligible: Long = 0, val pending: Long = 0, val delivered: Long = 0, val claimed: Long = 0,
     val expired: Long = 0, val cancelled: Long = 0, val skipped: Long = 0,
-    val claimedGold: Long = 0, val claimedXp: Long = 0, val claimedGems: Long = 0
+    val claimedGold: Long = 0, val claimedXp: Long = 0, val claimedGems: Long = 0, val claimedPlays: Long = 0
 )
 @Serializable data class GiftCampaignDetail(val campaign: GiftCampaign, val counters: GiftCounters)
 @Serializable data class GiftPreview(
     val campaignId: String, val version: Int, val recipientCount: Long, val duplicateCount: Int,
-    val invalidUserIds: List<String>, val totalGold: Long, val totalXp: Long, val previewToken: String, val totalGems: Long = 0
+    val invalidUserIds: List<String>, val totalGold: Long, val totalXp: Long, val previewToken: String,
+    val totalGems: Long = 0, val totalPlays: Long = 0
 )
 data class GiftAdminContext(val token: String?, val csrfToken: String? = null, val origin: String? = null)
 data class GiftRecipient(val campaignId: String, val userId: String, val delivery: String = "PENDING", val claimedAt: Long? = null)
@@ -56,6 +57,7 @@ interface GiftTransaction {
         throw AdminException(400, "ACTIVITY_SOURCE_UNAVAILABLE", "Connected account activity is unavailable for this interval.")
     fun registeredPlayers(): List<GiftPlayer>
     fun activePlayer(id: String): Boolean
+    fun rewardActionPlayer(id: String): Boolean = activePlayer(id)
     fun request(actor: String, requestId: String): GiftRequestRecord?
     fun putRequest(actor: String, requestId: String, record: GiftRequestRecord)
     fun freeze(campaignId: String, users: List<String>)
@@ -68,5 +70,14 @@ interface GiftTransaction {
     fun mailboxAvailableCount(userId: String, now: Long): Long
     fun balance(userId: String): GiftBalance
     fun award(userId: String, campaign: GiftCampaign, now: Long): GiftBalance
+    fun exchangePlayCredits(userId: String, offer: PlayCreditOffer, requestId: String, now: Long): Unit = unavailable()
+    fun listCodes(page: PageRequest): AdminPage<GiftCode> = unavailable()
+    fun code(code: String): GiftCode? = unavailable()
+    fun insertCode(code: GiftCode): Unit = unavailable()
+    fun stopCode(code: String): Unit = unavailable()
+    fun giftCodeMutation(actor: String, requestId: String): String? = unavailable()
+    fun recordGiftCodeMutation(actor: String, requestId: String, fingerprint: String): Unit = unavailable()
+    fun redeemed(code: String, userId: String): Boolean = unavailable()
+    fun redeem(code: GiftCode, userId: String, now: Long): Unit = unavailable()
 }
 internal fun GiftCampaign.walletSourceType() = when { clanRace != null -> "CLAN_WEEKLY_RACE"; compensation != null -> "COMPENSATION"; else -> "ADMIN_GIFT" }

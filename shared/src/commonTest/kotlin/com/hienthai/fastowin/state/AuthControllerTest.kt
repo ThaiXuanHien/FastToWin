@@ -3,12 +3,24 @@ package com.hienthai.fastowin.state
 import com.hienthai.fastowin.data.network.InMemoryAuthSessionStore
 import com.hienthai.fastowin.data.network.InMemoryResumeTokenStore
 import com.hienthai.fastowin.data.network.StoredAuthSession
+import com.hienthai.fastowin.data.network.AuthApiClient
 import com.hienthai.fastowin.localization.AppLanguage
+import com.hienthai.fastowin.protocol.AuthSessionResponse
+import com.hienthai.fastowin.protocol.ProtocolJson
+import io.ktor.client.HttpClient
+import io.ktor.client.engine.mock.MockEngine
+import io.ktor.client.engine.mock.respond
+import io.ktor.client.plugins.contentnegotiation.ContentNegotiation
+import io.ktor.http.HttpHeaders
+import io.ktor.http.headersOf
+import io.ktor.serialization.kotlinx.json.json
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.test.StandardTestDispatcher
 import kotlinx.coroutines.test.resetMain
+import kotlinx.coroutines.test.runTest
 import kotlinx.coroutines.test.setMain
+import kotlinx.serialization.encodeToString
 import kotlin.test.AfterTest
 import kotlin.test.BeforeTest
 import kotlin.test.Test
@@ -18,6 +30,16 @@ import kotlin.test.assertTrue
 
 @OptIn(ExperimentalCoroutinesApi::class)
 class AuthControllerTest {
+    @Test fun supportExemptionPermitsPlayingWhileEmailRemainsUnverified() {
+        val account = StoredAuthSession("supported", "supported@example.test", "Supported", "access", "refresh", Long.MAX_VALUE, Long.MAX_VALUE,
+            emailVerified = false, supportEmailVerificationExempt = true)
+        val store = InMemoryAuthSessionStore().apply { save(SERVER_URL, account) }
+        val controller = AuthController(SERVER_URL, store, InMemoryResumeTokenStore(), "test")
+        try {
+            assertEquals(AuthStage.PLAYING, controller.state.value.stage)
+            assertFalse(controller.state.value.session!!.emailVerified)
+        } finally { controller.close() }
+    }
     private val mainDispatcher = StandardTestDispatcher()
 
     @BeforeTest
@@ -94,6 +116,59 @@ class AuthControllerTest {
         } finally {
             controller.close()
         }
+    }
+
+    @Test
+    fun refreshPersistsCurrentVerificationAndExemptionAndUpdatesTheAccountStage() = runTest(mainDispatcher) {
+        data class Flags(val verified: Boolean, val exempt: Boolean)
+        for ((initial, refreshed) in listOf(
+            Flags(false, false) to Flags(false, true),
+            Flags(false, true) to Flags(false, false),
+            Flags(false, false) to Flags(true, false),
+            Flags(true, false) to Flags(false, false),
+            Flags(false, true) to Flags(true, false)
+        )) {
+            val account = storedSession("metadata-refresh").copy(
+                emailVerified = initial.verified, supportEmailVerificationExempt = initial.exempt
+            )
+            val store = InMemoryAuthSessionStore().apply { save(SERVER_URL, account) }
+            val response = AuthSessionResponse(account.userId, accessToken = "fresh-access", refreshToken = "fresh-refresh",
+                accessExpiresAtEpochMillis = Long.MAX_VALUE, refreshExpiresAtEpochMillis = Long.MAX_VALUE,
+                emailVerified = refreshed.verified, supportEmailVerificationExempt = refreshed.exempt)
+            val client = HttpClient(MockEngine {
+                respond(ProtocolJson.encodeToString(response), headers = headersOf(HttpHeaders.ContentType, "application/json"))
+            }) { install(ContentNegotiation) { json(ProtocolJson) } }
+            val controller = AuthController(SERVER_URL, store, InMemoryResumeTokenStore(), "test",
+                api = AuthApiClient(SERVER_URL, client = client))
+            try {
+                assertEquals("fresh-access", controller.validAccessToken(true))
+                assertEquals(refreshed.verified, store.load(SERVER_URL)?.emailVerified)
+                assertEquals(refreshed.exempt, store.load(SERVER_URL)?.supportEmailVerificationExempt)
+                assertEquals(store.load(SERVER_URL), controller.state.value.session)
+                assertEquals(if (refreshed.verified || refreshed.exempt) AuthStage.PLAYING else AuthStage.VERIFY_EMAIL,
+                    controller.state.value.stage)
+            } finally { controller.close() }
+        }
+    }
+
+    @Test
+    fun refreshDoesNotNavigateAwayFromAnUnrelatedPasswordResetStage() = runTest(mainDispatcher) {
+        val account = storedSession("reset-metadata").copy(emailVerified = false)
+        val store = InMemoryAuthSessionStore().apply { save(SERVER_URL, account) }
+        val response = AuthSessionResponse(account.userId, accessToken = "fresh-access", refreshToken = "fresh-refresh",
+            accessExpiresAtEpochMillis = Long.MAX_VALUE, refreshExpiresAtEpochMillis = Long.MAX_VALUE,
+            emailVerified = false, supportEmailVerificationExempt = true)
+        val client = HttpClient(MockEngine {
+            respond(ProtocolJson.encodeToString(response), headers = headersOf(HttpHeaders.ContentType, "application/json"))
+        }) { install(ContentNegotiation) { json(ProtocolJson) } }
+        val controller = AuthController(SERVER_URL, store, InMemoryResumeTokenStore(), "test",
+            api = AuthApiClient(SERVER_URL, client = client))
+        try {
+            controller.openPasswordReset()
+            assertEquals("fresh-access", controller.validAccessToken(true))
+            assertTrue(controller.state.value.session!!.supportEmailVerificationExempt)
+            assertEquals(AuthStage.RESET_PASSWORD, controller.state.value.stage)
+        } finally { controller.close() }
     }
 
     @Test

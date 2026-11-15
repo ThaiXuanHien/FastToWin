@@ -86,7 +86,7 @@ class AuthController(
                 stage = AuthStage.LOGIN, error = errorMessage(initialSessionRead.exceptionOrNull()!!)
             )
             initialSession != null -> AuthState(
-                stage = if (initialSession.emailVerified) AuthStage.PLAYING else AuthStage.VERIFY_EMAIL,
+                stage = if (initialSession.emailVerified || initialSession.supportEmailVerificationExempt) AuthStage.PLAYING else AuthStage.VERIFY_EMAIL,
                 session = initialSession
             )
             initialGuestSession -> AuthState(stage = AuthStage.PLAYING, isGuest = true)
@@ -218,7 +218,12 @@ class AuthController(
                     return@mapCatching null
                 }
                 val current = store.load(serverUrl) ?: return@mapCatching null
-                val refreshed = current.withTokens(response).copy(refreshAttemptSecret = null)
+                val refreshed = current.withTokens(response).copy(
+                    // A successful verification may have completed locally after this
+                    // refresh began. A delayed response must not undo that newer proof.
+                    emailVerified = if (current.emailVerified != expected.emailVerified) current.emailVerified else response.emailVerified,
+                    refreshAttemptSecret = null
+                )
                 if (store is RecoverableAuthSessionStore) {
                     if (!store.completeRefresh(serverUrl, expected, refreshed)) {
                         diagnostics.emit(AuthDiagnosticPhase.STALE_RESPONSE, attempt)
@@ -230,7 +235,18 @@ class AuthController(
                 val saved = if (store is RecoverableAuthSessionStore) {
                     store.load(serverUrl)?.takeIf { refreshed.sameGeneration(it) } ?: return@mapCatching null
                 } else refreshed
-                _state.update { it.copy(session = saved, isLoading = false, error = null) }
+                _state.update {
+                    it.copy(
+                        session = saved,
+                        stage = when (it.stage) {
+                            AuthStage.PLAYING, AuthStage.VERIFY_EMAIL ->
+                                if (saved.emailVerified || saved.supportEmailVerificationExempt) AuthStage.PLAYING else AuthStage.VERIFY_EMAIL
+                            else -> it.stage
+                        },
+                        isLoading = false,
+                        error = null
+                    )
+                }
                 diagnostics.credentialsStored(AuthDiagnosticPhase.REFRESH_STORED, attempt)
                 saved.accessToken
             }
@@ -525,12 +541,13 @@ class AuthController(
             refreshToken = response.refreshToken,
             accessExpiresAtEpochMillis = response.accessExpiresAtEpochMillis,
             refreshExpiresAtEpochMillis = response.refreshExpiresAtEpochMillis,
-            emailVerified = response.emailVerified
+            emailVerified = response.emailVerified,
+            supportEmailVerificationExempt = response.supportEmailVerificationExempt
         )
         store.save(serverUrl, stored)
         loginEpoch++
         _state.value = AuthState(
-            stage = if (stored.emailVerified) AuthStage.PLAYING else AuthStage.VERIFY_EMAIL,
+            stage = if (stored.emailVerified || stored.supportEmailVerificationExempt) AuthStage.PLAYING else AuthStage.VERIFY_EMAIL,
             session = stored
         )
         diagnostics.credentialsStored(AuthDiagnosticPhase.SIGNED_IN)
@@ -634,7 +651,9 @@ class AuthController(
         accessToken = response.accessToken,
         refreshToken = response.refreshToken,
         accessExpiresAtEpochMillis = response.accessExpiresAtEpochMillis,
-        refreshExpiresAtEpochMillis = response.refreshExpiresAtEpochMillis
+        refreshExpiresAtEpochMillis = response.refreshExpiresAtEpochMillis,
+        emailVerified = response.emailVerified,
+        supportEmailVerificationExempt = response.supportEmailVerificationExempt
     )
 
     private companion object {

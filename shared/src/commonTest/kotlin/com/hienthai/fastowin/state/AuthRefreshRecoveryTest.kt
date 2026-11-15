@@ -117,7 +117,7 @@ class AuthRefreshRecoveryTest {
                     verificationEntered.complete(Unit); verify.await()
                     respond("""{"code":"EMAIL_VERIFIED","message":"Verified","emailVerified":true}""", headers = JSON)
                 }
-                else -> { refreshEntered.complete(Unit); refreshResponse.await(); success() }
+                else -> { refreshEntered.complete(Unit); refreshResponse.await(); success(emailVerified = false) }
             }
         })
         try {
@@ -569,7 +569,7 @@ class AuthRefreshRecoveryTest {
             })) { install(ContentNegotiation) { json(ProtocolJson) } })
         private inline fun <reified T> io.ktor.client.request.HttpRequestData.decode(): T =
             ProtocolJson.decodeFromString((body as OutgoingContent.ByteArrayContent).bytes().decodeToString())
-        private fun MockRequestHandleScope.success(accessToken: String = "fresh-access", refreshToken: String = "fresh-refresh") = respond(
-            """{"userId":"fixture","displayName":"Fixture","accessToken":"$accessToken","refreshToken":"$refreshToken","accessExpiresAtEpochMillis":9223372036854775807,"refreshExpiresAtEpochMillis":9223372036854775807}""", headers = JSON)
+        private fun MockRequestHandleScope.success(accessToken: String = "fresh-access", refreshToken: String = "fresh-refresh", emailVerified: Boolean = true) = respond(
+            """{"userId":"fixture","displayName":"Fixture","accessToken":"$accessToken","refreshToken":"$refreshToken","accessExpiresAtEpochMillis":9223372036854775807,"refreshExpiresAtEpochMillis":9223372036854775807,"emailVerified":$emailVerified}""", headers = JSON)
     }
 }

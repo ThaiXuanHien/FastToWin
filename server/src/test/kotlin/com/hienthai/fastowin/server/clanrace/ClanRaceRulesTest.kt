@@ -4,6 +4,10 @@ import java.math.BigInteger
 import java.time.Instant
 import java.time.LocalDate
 import kotlin.test.*
+import com.hienthai.fastowin.protocol.MatchRewardEventSnapshot
+import com.hienthai.fastowin.protocol.MatchType
+import com.hienthai.fastowin.server.MatchOutcome
+import com.hienthai.fastowin.server.RewardEconomy
 
 class ClanRaceRulesTest {
     @Test fun exactRatesAndSplitDonations() {
@@ -21,5 +25,23 @@ class ClanRaceRulesTest {
     @Test fun mondayBoundaryUsesBangkok() {
         assertEquals(LocalDate.parse("2026-10-19"),raceWeekStart(Instant.parse("2026-10-25T16:59:59.999Z").toEpochMilli()))
         assertEquals(LocalDate.parse("2026-10-26"),raceWeekStart(Instant.parse("2026-10-25T17:00:00Z").toEpochMilli()))
+    }
+
+    @Test fun clanWinBonusUsesBaseGoldAndLeavesOtherOutcomesAlone() {
+        val event = MatchRewardEventSnapshot(goldMultiplier = 2)
+        fun ranked(level:Int, outcome:MatchOutcome = MatchOutcome.WIN, left:Boolean = false) =
+            RewardEconomy.matchRewardBreakdown(MatchType.RANKED, outcome, left, event, level)
+
+        assertEquals(200, ranked(4).totalGold)
+        assertEquals(5, ranked(5).clanBonusGold)
+        assertEquals(205, ranked(9).totalGold)
+        assertEquals(210, ranked(10).totalGold)
+        assertEquals(210, ranked(100).totalGold)
+        assertEquals(100, ranked(10, MatchOutcome.DRAW).totalGold)
+        assertEquals(50, ranked(10, MatchOutcome.LOSS).totalGold)
+        assertEquals(0, ranked(10, left = true).totalGold)
+        assertEquals(84, RewardEconomy.matchRewardBreakdown(
+            MatchType.CASUAL, MatchOutcome.WIN, false, MatchRewardEventSnapshot(), 5
+        ).totalGold)
     }
 }

@@ -206,10 +206,6 @@ fun GameScreen(
                     })
                 )
 
-                if (preferences.visualEffectsEnabled && !compactLandscape) {
-                    CloseScoreWarning(state)
-                }
-
                 TargetPanel(
                     currentTarget = state.currentTarget,
                     completedCount = state.player.selectedNumbers.size,
@@ -280,35 +276,6 @@ private fun GameConnectionNotice(state: GameState) {
                 fontWeight = FontWeight.SemiBold
             )
         }
-    }
-}
-
-@Composable
-private fun CloseScoreWarning(state: GameState) {
-    val is2v2 = state.gameMode == com.hienthai.fastowin.navigation.GameMode.TEAM_2V2
-    val myScore = if (is2v2) state.player.score + state.teammates.sumOf { it.score } else state.player.score
-    val opponentScore = if (is2v2) state.opponents.sumOf { it.score } else state.opponent.score
-    val myCorrect = if (is2v2) state.player.correctSelections + state.teammates.sumOf { it.correctSelections } else state.player.correctSelections
-    val oppCorrect = if (is2v2) state.opponents.sumOf { it.correctSelections } else state.opponent.correctSelections
-
-    val difference = abs(myScore - opponentScore)
-    val enoughProgress = myCorrect + oppCorrect >= 6
-    if (!enoughProgress || difference > 30 || state.player.isFinished || state.opponent.isFinished) return
-    Surface(
-        modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 2.dp),
-        shape = RoundedCornerShape(12.dp),
-        color = ArcadePalette.Gold800.copy(alpha = 0.9f),
-        border = BorderStroke(1.dp, ArcadePalette.Gold400.copy(alpha = 0.72f))
-    ) {
-        Text(
-            text = if (difference == 0) localized(TextKey.TieScoreWarning)
-            else localized(TextKey.CloseScoreWarning, "difference" to difference),
-            modifier = Modifier.padding(horizontal = 12.dp, vertical = 7.dp),
-            textAlign = TextAlign.Center,
-            style = MaterialTheme.typography.labelMedium,
-            fontWeight = FontWeight.Bold,
-            color = ArcadePalette.Gold100
-        )
     }
 }
 

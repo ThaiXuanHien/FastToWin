@@ -9,7 +9,8 @@ const labels = {
   CASUAL: 'Đấu thường', RANKED: 'Đấu hạng', WIN: 'Thắng', LOSS: 'Thua', DRAW: 'Hòa',
   MATCH: 'Thưởng trận đấu', MATCH_REWARD: 'Thưởng trận đấu', DAILY_CHECK_IN: 'Điểm danh', MISSION: 'Nhiệm vụ',
   SEASON_REWARD: 'Thưởng mùa giải', CLAN_QUEST: 'Nhiệm vụ bang', CLAN_DONATION: 'Đóng góp bang',
-  GOLD_EXCHANGE: 'Đổi Vàng', COSMETIC_PURCHASE: 'Mua vật phẩm', STORE_PURCHASE: 'Mua trong cửa hàng',
+  GOLD_EXCHANGE: 'Đổi Vàng', PLAY_CREDIT_EXCHANGE: 'Đổi lượt chơi', GIFT_CODE: 'Mã quà tặng',
+  COSMETIC_PURCHASE: 'Mua vật phẩm', STORE_PURCHASE: 'Mua trong cửa hàng',
   TOURNAMENT_ENTRY: 'Phí tham gia giải', TOURNAMENT_ENTRY_REFUND: 'Hoàn phí giải', TOURNAMENT_ENTRY_REVERSED: 'Phí giải đã đảo',
   ADMIN_GIFT: 'Quà quản trị', COMPENSATION: 'Bồi hoàn',
   GIFT_LIST: 'Xem chiến dịch quà', GIFT_DETAIL: 'Xem báo cáo quà', GIFT_CREATE: 'Tạo bản nháp quà', GIFT_UPDATE: 'Sửa bản nháp quà',
@@ -23,6 +24,7 @@ const labels = {
   ADMIN_BOOTSTRAP: 'Cấp Owner ban đầu', ADMIN_CREATE: 'Cấp tài khoản quản trị', ADMIN_ACCESS: 'Thay đổi quyền truy cập',
   ADMIN_LIST: 'Xem tài khoản quản trị', AUDIT_READ: 'Xem nhật ký kiểm toán', USER_SEARCH: 'Tra cứu người chơi',
   PLAYER_OVERVIEW: 'Xem tổng quan người chơi', USER_DETAIL: 'Xem hồ sơ người chơi', USER_MATCHES: 'Xem lịch sử trận', USER_WALLET: 'Xem lịch sử ví', USER_GIFTS: 'Xem nguồn quà',
+  PLAYER_SUPPORT_CREATE: 'Tạo tài khoản người chơi để hỗ trợ',
 };
 const label = value => Object.hasOwn(labels, value) ? labels[value] : value;
 let session = null;
@@ -346,6 +348,7 @@ function shell(title, section) {
   if (session.admin.role !== 'SUPPORT') links.push(['analytics', 'Thống kê', analytics]);
   links.push(['maintenance', 'Bảo trì', maintenance]);
   if (session.admin.role !== 'SUPPORT') links.push(['gifts', 'Quà admin', giftCampaigns]);
+  if (session.admin.role === 'OWNER') links.push(['giftCodes', 'Mã quà tặng', giftCodes]);
   if (session.admin.role !== 'SUPPORT') links.push(['events', 'Sự kiện thưởng', rewardEvents]);
   if (session.admin.role !== 'SUPPORT') links.push(['missions', 'Nhiệm vụ', missions]);
   if (session.admin.role !== 'SUPPORT') links.push(['clanRace', 'Đua top bang', clanRace]);
@@ -398,6 +401,19 @@ async function giftCampaigns() {
     });
   } catch (error) { if (task.current() && error.name !== 'AbortError') notices.fail(new Error('Không thể tải chiến dịch quà. Vui lòng thử lại.')); }
   finally { pending.delete(task.controller); }
+}
+async function giftCodes() {
+  if (session?.admin.role !== 'OWNER') return;
+  const { task, notices } = beginNavigation('Mã quà tặng', 'giftCodes');
+  try {
+    const { openGiftCodes } = await import('./admin-gift-codes.js');
+    if (!task.current()) return;
+    openGiftCodes({ node, append, button, field, modal, feedback, shell, channel, pagination,
+      api: (path, request, payload, method) => api(path, request, payload, session?.csrfToken, method),
+    });
+  } catch (error) {
+    if (task.current() && error.name !== 'AbortError') notices.fail(error);
+  } finally { pending.delete(task.controller); }
 }
 async function rewardEvents() {
   if (!session || session.admin.role === 'SUPPORT') return;
@@ -593,19 +609,42 @@ function createBarChart(points = []) {
   return svg;
 }
 
-function directory() {
+function directory(creationNotice = '') {
   if (!session) return;
   const main = shell('Người chơi', 'users');
   main.classList.add('page-directory');
   const support = session.admin.role === 'SUPPORT';
+  if (typeof creationNotice === 'string' && creationNotice) main.append(node('p', creationNotice, { role: 'status', 'aria-live': 'polite' }));
+  if (session.admin.role === 'OWNER') {
+    const toolbar = node('div', null, { class: 'toolbar' });
+    toolbar.append(button('Tạo tài khoản', createPlayer, { class: 'primary' })); main.append(toolbar);
+  }
+  function createPlayer() {
+    const surface = modal('Tạo tài khoản người chơi');
+    const form = node('form', null, { class: 'stack modal-form' }); surface.dialog.append(form);
+    form.append(node('p', 'Tài khoản hỗ trợ có thể đăng nhập và chơi ngay. Email vẫn chưa được xác minh; việc đặt lại mật khẩu và chứng minh email tiếp tục dùng quy trình hiện có.', { class: 'muted' }));
+    const email = field(form, 'Email', 'support-player-email', 'email', { required: '', maxlength: '254', autocomplete: 'off' });
+    const displayName = field(form, 'Tên hiển thị', 'support-player-name', 'text', { required: '', maxlength: '32', autocomplete: 'off' });
+    const password = field(form, 'Mật khẩu ban đầu', 'support-player-password', 'password', { required: '', minlength: '12', maxlength: '128', autocomplete: 'new-password', 'aria-describedby': 'support-player-password-help' });
+    form.append(node('p', '12–128 ký tự, gồm chữ hoa, chữ thường, chữ số và ký tự đặc biệt.', { class: 'muted field-help', id: 'support-player-password-help' }));
+    const reason = field(form, 'Lý do hỗ trợ', 'support-player-reason', 'textarea', { required: '', maxlength: '500' });
+    const notices = feedback(form), submit = node('button', 'Tạo tài khoản', { type: 'submit', class: 'primary' });
+    form.append(append(node('div', null, { class: 'modal-actions' }), surface.cancel, submit));
+    mutationForm(form, submit, notices, '/users', () => ({ email: email.value.trim(), displayName: displayName.value.trim(), password: password.value, reason: reason.value.trim() }), () => {
+      surface.finish(); directory('Đã tạo tài khoản hỗ trợ. Chưa xác minh email; người chơi có thể đăng nhập và chơi.');
+    }, value => surface.pending(value));
+    surface.show(email);
+  }
 
   const metricsGrid = node('div', null, { class: 'dashboard-metrics-grid' });
   const metricValues = new Map(), insightValues = new Map();
   const kpiData = [
     { key: 'totalPlayers', val: '—', lbl: 'Tổng người chơi', icon: 'users' },
     { key: 'matchesToday', val: '—', lbl: 'Trận đấu hôm nay', icon: 'trending' },
-    { key: 'connectedToday', val: '—', lbl: 'Kết nối game hôm nay', icon: 'sliders' },
+    { key: 'iapPurchases', val: '—', lbl: 'Lượt mua IAP · 7 ngày', icon: 'sliders' },
     { key: 'registeredPlayers', val: '—', lbl: 'Tài khoản đã đăng ký', icon: 'barchart' },
+    { key: 'iapBuyers', val: '—', lbl: 'Người mua IAP · 7 ngày', icon: 'users' },
+    { key: 'rewardedAdViews', val: '—', lbl: 'Lượt xem quảng cáo thưởng · 7 ngày', icon: 'star' },
   ];
   for (const kpi of kpiData) {
     const card = node('div', null, { class: 'metric-card' });
@@ -623,9 +662,6 @@ function directory() {
   const miniStack = node('div', null, { class: 'mini-cards-stack' });
   const miniData = [
     { key: 'registeredToday', val: '—', lbl: 'Đăng ký mới hôm nay', extraText: '', icon: 'speedometer' },
-    { key: 'connectedWeek', val: '—', lbl: 'Kết nối game 7 ngày', extraText: '', icon: 'star' },
-    { key: 'averageElo', val: '—', lbl: 'Điểm Elo trung bình', extraText: '', icon: 'trending' },
-    { key: 'guestPlayers', val: '—', lbl: 'Tài khoản khách', extraText: '', icon: 'users' },
   ];
   for (const mini of miniData) {
     const card = node('div', null, { class: 'metric-card mini-card' });
@@ -644,7 +680,7 @@ function directory() {
   const chartHeader = node('div', null, { class: 'chart-header-row' });
   const chartTitleWrap = node('div', null, { class: 'chart-title-wrap' });
   append(chartTitleWrap,
-    node('h2', 'Tài khoản kết nối game theo ngày', { class: 'chart-title' }),
+    node('h2', 'Hoạt động tài khoản theo ngày', { class: 'chart-title' }),
     node('span', '7 ngày gần nhất · Mỗi tài khoản được tính một lần mỗi ngày · UTC+7', { class: 'chart-subtitle muted' })
   );
   const chartBadge = node('div', null, { class: 'chart-meta-badge' });
@@ -657,6 +693,8 @@ function directory() {
   const chartContent = node('div', null, { class: 'player-chart-content' }); chartContent.append(createBarChart());
   const sourceNote = node('p', support ? 'Support không có quyền xem số liệu tổng hợp.' : 'Đang tải số liệu từ hệ thống…', { class: 'muted text-xs', 'aria-live': 'polite' });
   chartCard.append(chartContent, sourceNote);
+  const commerceNote = node('p', support ? 'Support không có quyền xem giao dịch tổng hợp.' : 'Đang tải nguồn IAP và quảng cáo thưởng…', { class: 'muted text-xs', 'aria-live': 'polite' });
+  chartCard.append(commerceNote);
   middleGrid.append(chartCard);
   main.append(middleGrid);
 
@@ -702,15 +740,19 @@ function directory() {
       const data = await api('/player-overview', task);
       if (!task.current()) return;
       overviewAvailable = true; snapshotAt = data.snapshotAt;
-      for (const key of ['totalPlayers', 'matchesToday', 'registeredPlayers', 'guestPlayers']) setCount(key, data[key]);
-      metricValues.get('averageElo').textContent = typeof data.averageElo === 'string' && /^-?\d+(\.\d+)?$/.test(data.averageElo)
-        ? data.averageElo.replace('.', ',') : '—';
+      for (const key of ['totalPlayers', 'matchesToday', 'registeredPlayers']) setCount(key, data[key]);
+      for (const key of ['iapPurchases', 'iapBuyers', 'rewardedAdViews']) setCount(key, data.commerce?.[key]);
+      const commerce = data.commerce;
+      commerceNote.textContent = commerce && commerce.coverage !== 'UNAVAILABLE'
+        ? `IAP và quảng cáo thưởng: ${bangkokTime(commerce.from)} → ${bangkokTime(commerce.until)} (không gồm mốc đến), UTC+7. Chỉ tính biên nhận mua hàng và lượt cấp thưởng đã xác minh còn lưu trong hệ thống; mỗi người mua IAP được tính một lần. Không phải doanh thu hoặc lượt hiển thị quảng cáo. Lần ghi nhận gần nhất: ${commerce.freshness == null ? 'chưa có dữ liệu' : bangkokTime(commerce.freshness)}.`
+        : 'Nguồn IAP và quảng cáo thưởng chưa có dữ liệu; không thay bằng số 0.';
       insight('wins', data.recordedWins, data.recordedParticipations, `Thắng: ${countLabel(data.recordedWins)}`, `Thua: ${countLabel(data.recordedLosses)}`);
       insight('played', data.playedProfiles, data.totalPlayers, `Đã thi đấu: ${countLabel(data.playedProfiles)}`, `Tổng: ${countLabel(data.totalPlayers)}`);
       insight('clans', data.clanMembers, data.totalPlayers, `Thành viên: ${countLabel(data.clanMembers)}`, `Số bang: ${countLabel(data.clanCount)}`);
-      insight('registered', data.registeredPlayers, data.totalPlayers, `Đăng ký: ${countLabel(data.registeredPlayers)}`, `Khách: ${countLabel(data.guestPlayers)}`);
+      insight('registered', data.registeredPlayers, data.totalPlayers, `Đăng ký: ${countLabel(data.registeredPlayers)}`, `Tổng: ${countLabel(data.totalPlayers)}`);
     } catch (error) {
       if (!task.current() || error.name === 'AbortError') return;
+      commerceNote.textContent = 'Chưa tải được nguồn IAP và quảng cáo thưởng; vui lòng tải lại trang.';
     }
     try {
       const todayFrom = Math.floor((snapshotAt + bangkokOffset) / bangkokDay) * bangkokDay - bangkokOffset;
@@ -722,8 +764,6 @@ function directory() {
       const activeGroup = active?.groups.find(g => g.source === 'SERVER' && g.unit === 'PLAYERS');
       const registrationsGroup = registrations?.groups.find(g => g.source === 'SERVER' && g.unit === 'REGISTRATIONS');
       const points = activeGroup?.series || [];
-      setCount('connectedWeek', activeGroup?.summary);
-      setCount('connectedToday', points.find(p => p.from === todayFrom)?.value);
       setCount('registeredToday', registrationsGroup?.series.find(p => p.from === todayFrom)?.value);
       const comparison = activeGroup?.comparison;
       const growth = comparison?.coverage?.status === 'COMPLETE' && active?.coverage?.every(c => c.status === 'COMPLETE') ? comparison.percentageChange : null;
@@ -745,7 +785,7 @@ function directory() {
       const registrationFreshness = registrationCoverage?.freshness == null ? 'chưa có dữ liệu' : bangkokTime(registrationCoverage.freshness);
       metricValues.get('registeredToday').title = `Nguồn đăng ký: ${registrationStatus}. Cập nhật: ${registrationFreshness}.`;
 
-      sourceNote.textContent = `${overviewAvailable ? 'Hồ sơ: ' + bangkokTime(snapshotAt) + '. ' : 'Chưa tải được tổng quan hồ sơ. '}Nguồn kết nối game: ${status}. ${bangkokTime(data.range.from)} → ${bangkokTime(data.range.until)} (không gồm mốc đến), UTC+7. Cập nhật nguồn: ${coverage?.freshness == null ? 'chưa có dữ liệu' : bangkokTime(coverage.freshness)}. Nguồn đăng ký: ${registrationStatus}, cập nhật: ${registrationFreshness}; số của nguồn một phần chỉ là số đã ghi nhận. Lịch sử kết nối lưu 90 ngày; không đồng nghĩa đang trực tuyến hoặc đang thi đấu.`;
+      sourceNote.textContent = `${overviewAvailable ? 'Hồ sơ: ' + bangkokTime(snapshotAt) + '. ' : 'Chưa tải được tổng quan hồ sơ. '}Nguồn hoạt động: ${status}. ${bangkokTime(data.range.from)} → ${bangkokTime(data.range.until)} (không gồm mốc đến), UTC+7. Cập nhật nguồn: ${coverage?.freshness == null ? 'chưa có dữ liệu' : bangkokTime(coverage.freshness)}. Nguồn đăng ký: ${registrationStatus}, cập nhật: ${registrationFreshness}; số của nguồn một phần chỉ là số đã ghi nhận. Lịch sử hoạt động lưu 90 ngày; không đồng nghĩa đang trực tuyến hoặc đang thi đấu.`;
     } catch (error) {
       if (task.current() && error.name !== 'AbortError') sourceNote.textContent = `${overviewAvailable ? 'Đã tải tổng quan hồ sơ. ' : 'Chưa tải được tổng quan hồ sơ. '}Không thể tải thống kê kết nối game. Vui lòng tải lại trang.`;
     } finally { pending.delete(task.controller); }
@@ -753,7 +793,7 @@ function directory() {
   loadDashboard();
 
   const dirCard = node('div', null, { class: 'directory-card' });
-  const help = node('p', support ? 'Support chỉ tìm bằng mã người chơi hoặc tên. Email được che bởi máy chủ.' : 'Tra cứu mã người chơi, tên hoặc email. Dữ liệu người chơi chỉ để đọc.', { class: 'muted', id: 'search-help' });
+  const help = node('p', support ? 'Support chỉ tìm bằng mã người chơi hoặc tên. Email được che bởi máy chủ.' : 'Tra cứu mã người chơi, tên hoặc email.', { class: 'muted', id: 'search-help' });
   dirCard.append(help);
 
   const form = node('form', null, { class: 'search' });
@@ -850,6 +890,7 @@ function detail(id) {
       const user = await api('/users/' + encodeURIComponent(id), task);
       notices.status.textContent = ''; main.querySelector('h1').textContent = user.displayName;
       append(content, node('p', user.email ?? 'Không có email'), node('p', `Mã người chơi: ${user.playerCode || '—'}`, { class: 'mono' }), node('p', `UUID: ${user.id}`, { class: 'mono muted' }));
+      if (user.accountType === 'REGISTERED' && typeof user.emailVerified === 'boolean') content.append(node('p', user.emailVerified ? 'Email đã xác minh' : `Chưa xác minh email${user.supportEmailVerificationExempt ? ' · Được hỗ trợ đăng nhập và chơi' : ''}`, { class: 'muted' }));
       const metrics = node('dl', null, { class: 'metrics' });
       const formatMetric = v => v == null ? '—' : typeof v === 'number' ? amount(v) : String(v);
       for (const [label, value] of [
@@ -884,7 +925,13 @@ function histories(parent, id) {
       for (const entry of data.items) {
         const row = node('article', null, { class: 'history-row' });
         if (type === 'matches') append(row, node('strong', label(entry.matchType)), node('p', `${label(entry.outcome)} · Điểm: ${amount(entry.score)}`), node('p', date(entry.finishedAtEpochMillis), { class: 'muted' }));
-        else append(row, node('strong', label(entry.sourceType)), node('p', 'Nguồn: ' + entry.sourceId, { class: 'mono' }), node('p', `Vàng: ${amount(entry.goldDelta)} · Gem: ${amount(entry.gemsDelta)} · XP: ${amount(entry.xpDelta)}`), node('p', date(entry.createdAtEpochMillis), { class: 'muted' }));
+        else {
+          const deltas = [`Vàng: ${amount(entry.goldDelta)}`, `Gem: ${amount(entry.gemsDelta)}`, `XP: ${amount(entry.xpDelta)}`];
+          if (entry.playCreditDelta) deltas.push(`Lượt tích lũy: ${amount(entry.playCreditDelta)}`);
+          append(row, node('strong', label(entry.sourceType)),
+            node('p', 'Nguồn: ' + entry.sourceId, { class: 'mono' }), node('p', deltas.join(' · ')),
+            node('p', date(entry.createdAtEpochMillis), { class: 'muted' }));
+        }
         row.append(node('p', entry.id, { class: 'mono muted' })); results.append(row);
       }
       pagination(results, data, load);

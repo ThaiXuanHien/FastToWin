@@ -92,6 +92,24 @@ class ClanMemberControllerTest {
         } finally { f.controller.close() }
     }
 
+    @Test fun `leaderboard opens the selected clan and ignores the own clan response`() = runTest {
+        val f = Fixture(this)
+        try {
+            f.server(ServerMessage.ProfileData(PlayerProfileSnapshot("owner", "Owner", "OWNER", clanId = "own")))
+            f.server(ServerMessage.ClanInfoData(clan("own")))
+            f.controller.openClan("ranked")
+            runCurrent()
+            assertTrue(ClientMessage.GetClanInfo("ranked") in f.transport.sent)
+            f.server(ServerMessage.ClanInfoData(clan("own")))
+            assertNull(f.controller.uiState.value.currentClan)
+            f.server(ServerMessage.ClanInfoData(clan("ranked")))
+            assertEquals("ranked", f.controller.uiState.value.currentClan?.id)
+            f.controller.openClan()
+            assertNull(f.controller.uiState.value.viewedLeaderboardClanId)
+            assertNull(f.controller.uiState.value.currentClan)
+        } finally { f.controller.close() }
+    }
+
     @Test fun `presence refresh cannot replace a different viewed clan or change its roster`() = runTest {
         val f = Fixture(this)
         try {
