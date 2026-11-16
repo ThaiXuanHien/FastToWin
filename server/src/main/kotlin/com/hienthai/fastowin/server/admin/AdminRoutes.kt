@@ -2,6 +2,7 @@ package com.hienthai.fastowin.server.admin
 
 import io.ktor.http.*
 import io.ktor.server.application.*
+import io.ktor.server.plugins.origin
 import io.ktor.server.request.*
 import io.ktor.server.response.*
 import io.ktor.server.routing.*
@@ -18,7 +19,7 @@ fun Route.adminRoutes(service: AdminService) {
         post("/login") { call.adminResponse(service) {
             service.requireOrigin(call.request.header(HttpHeaders.Origin))
             val request = call.adminBody<AdminLoginRequest>()
-            val login = service.login(request.email, request.password, call.request.header(HttpHeaders.Origin), call.request.local.remoteHost)
+            val login = service.login(request.email, request.password, call.request.header(HttpHeaders.Origin), call.request.origin.remoteHost)
             call.adminCookie(login.token, service.configuration.secureCookie)
             call.respond(login.response)
         } }
