@@ -15,6 +15,17 @@
 :{$PORT:8080} {
 	encode zstd gzip
 
+	# SEC-08: with FASTTOWIN_EDGE_SECRET set, only requests carrying the secret header that a
+	# Cloudflare Transform Rule adds are served, so nobody can bypass Cloudflare through the
+	# Railway domain. Unset (default) disables the check. The platform health check is exempt.
+	@bypassedEdge {
+		expression `"{$FASTTOWIN_EDGE_SECRET:}" != "" && {http.request.header.X-FTW-Edge} != "{$FASTTOWIN_EDGE_SECRET:}"`
+		not path /health
+	}
+	handle @bypassedEdge {
+		respond 403
+	}
+
 	@internal path /internal /internal/*
 	handle @internal {
 		respond 404
@@ -30,6 +41,7 @@
 			header_up X-Forwarded-For {client_ip}
 			header_up -X-Real-IP
 			header_up -CF-Connecting-IP
+			header_up -X-FTW-Edge
 		}
 	}
 
