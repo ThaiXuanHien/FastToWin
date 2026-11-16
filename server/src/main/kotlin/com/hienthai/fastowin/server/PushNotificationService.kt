@@ -18,6 +18,7 @@ import com.hienthai.fastowin.localization.LocalizationService
 import com.hienthai.fastowin.localization.TextKey
 import com.hienthai.fastowin.localization.resolveAppLanguage
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.withContext
 import java.io.ByteArrayInputStream
 import java.io.File
@@ -35,6 +36,14 @@ interface PushNotificationService {
         content: LocalizedPushContent,
         destinationPath: String = "/notifications"
     ): PushDeliveryStatus
+
+    /**
+     * SCL-02: sends up to [MAX_PUSH_BATCH] notifications and returns one status per request,
+     * in order. The default sends one by one; Firebase sends a whole batch in one call.
+     */
+    suspend fun sendNotifications(requests: List<PushRequest>): List<PushDeliveryStatus> =
+        requests.map { sendNotification(it.fcmToken, it.language, it.content, it.destinationPath) }
+
     val announcementConfigured: Boolean get() = false
     suspend fun sendAnnouncement(
         fcmToken: String, languageTag: String, titleVi: String, titleEn: String,
@@ -43,6 +52,16 @@ interface PushNotificationService {
 }
 
 enum class AnnouncementPushStatus { ACCEPTED, FAILED, UNKNOWN }
+
+data class PushRequest(
+    val fcmToken: String,
+    val language: AppLanguage,
+    val content: LocalizedPushContent,
+    val destinationPath: String = "/notifications"
+)
+
+/** Firebase accepts at most 500 messages per sendEach call. */
+const val MAX_PUSH_BATCH = 500
 
 data class LocalizedPushContent(
     val titleKey: TextKey,
@@ -156,33 +175,9 @@ class FirebasePushNotificationService internal constructor(
         if (FirebaseApp.getApps().isEmpty() || fcmToken.isBlank()) {
             return PushDeliveryStatus.FAILED
         }
-        val renderedContent = renderPushNotification(
-            language = language,
-            content = content
-        )
         return withContext(Dispatchers.IO) {
             try {
-                val destination = normalizePushDestination(destinationPath)
-                val message = Message.builder()
-                    .setToken(fcmToken)
-                    .setNotification(
-                        Notification.builder()
-                            .setTitle(renderedContent.title)
-                            .setBody(renderedContent.body)
-                            .build()
-                    )
-                    .putData("destination", destination)
-                    .setApnsConfig(
-                        ApnsConfig.builder()
-                            .putHeader("apns-priority", "10")
-                            .setAps(Aps.builder().setSound("default").build())
-                            .build()
-                    )
-                    .apply {
-                        webPushConfig(renderedContent, destination)?.let { setWebpushConfig(it) }
-                    }
-                    .build()
-                FirebaseMessaging.getInstance().send(message)
+                FirebaseMessaging.getInstance().send(message(PushRequest(fcmToken, language, content, destinationPath)))
                 PushDeliveryStatus.SENT
             } catch (error: FirebaseMessagingException) {
                 System.err.println("Could not send push notification: ${error.message}")
@@ -196,6 +191,51 @@ class FirebasePushNotificationService internal constructor(
                 PushDeliveryStatus.FAILED
             }
         }
+    }
+
+    override suspend fun sendNotifications(requests: List<PushRequest>): List<PushDeliveryStatus> {
+        require(requests.size <= MAX_PUSH_BATCH) { "At most $MAX_PUSH_BATCH push messages per batch." }
+        if (requests.isEmpty()) return emptyList()
+        if (FirebaseApp.getApps().isEmpty()) return requests.map { PushDeliveryStatus.FAILED }
+        val sendable = requests.withIndex().filter { it.value.fcmToken.isNotBlank() }
+        val statuses = MutableList(requests.size) { PushDeliveryStatus.FAILED }
+        if (sendable.isEmpty()) return statuses
+        return withContext(Dispatchers.IO) {
+            try {
+                val responses = FirebaseMessaging.getInstance().sendEach(sendable.map { message(it.value) }).responses
+                responses.forEachIndexed { position, response ->
+                    statuses[sendable[position].index] = when {
+                        response.isSuccessful -> PushDeliveryStatus.SENT
+                        response.exception?.messagingErrorCode == MessagingErrorCode.UNREGISTERED -> PushDeliveryStatus.INVALID_TOKEN
+                        else -> PushDeliveryStatus.FAILED
+                    }
+                }
+                statuses
+            } catch (error: FirebaseMessagingException) {
+                System.err.println("Could not send push batch: ${error.message}")
+                statuses
+            } catch (error: Exception) {
+                System.err.println("Could not send push batch: ${error.message}")
+                statuses
+            }
+        }
+    }
+
+    private fun message(request: PushRequest): Message {
+        val rendered = renderPushNotification(language = request.language, content = request.content)
+        val destination = normalizePushDestination(request.destinationPath)
+        return Message.builder()
+            .setToken(request.fcmToken)
+            .setNotification(Notification.builder().setTitle(rendered.title).setBody(rendered.body).build())
+            .putData("destination", destination)
+            .setApnsConfig(
+                ApnsConfig.builder()
+                    .putHeader("apns-priority", "10")
+                    .setAps(Aps.builder().setSound("default").build())
+                    .build()
+            )
+            .apply { webPushConfig(rendered, destination)?.let { setWebpushConfig(it) } }
+            .build()
     }
 
     private fun webPushConfig(
@@ -309,32 +349,51 @@ class DailyPushReminderService(
         val reminderDate = localNow.toLocalDate()
         val reminderKey = "daily-check-in:$reminderDate"
         var delivered = 0
-        playerProfileRepository.loadDailyPushReminderTargets(reminderDate.toString()).forEach { target ->
-            val deliveryStatus = pushNotificationService.sendNotification(
-                fcmToken = target.fcmToken,
-                language = target.language,
-                content = LocalizedPushContent(
-                    titleKey = TextKey.PushDailyCheckInTitle,
-                    bodyKey = TextKey.PushDailyCheckInMessage
-                ),
-                destinationPath = "/account/check-in"
-            )
-            when (deliveryStatus) {
-                PushDeliveryStatus.SENT -> {
-                    if (playerProfileRepository.markPushReminderDelivered(target.playerId, reminderKey)) {
-                        delivered++
-                    }
-                }
-                PushDeliveryStatus.INVALID_TOKEN -> {
-                    playerProfileRepository.clearFcmToken(target.playerId, target.fcmToken)
-                }
-                PushDeliveryStatus.FAILED -> Unit
-            }
+        val content = LocalizedPushContent(titleKey = TextKey.PushDailyCheckInTitle, bodyKey = TextKey.PushDailyCheckInMessage)
+        // SCL-02: one Firebase call per 500 targets instead of one per player, and several pages per
+        // run so 100k players finish in minutes rather than one page every 15 minutes. A page with no
+        // progress (only failing tokens left) ends the run so failures cannot loop.
+        repeat(MAX_PAGES_PER_RUN) {
+            val page = playerProfileRepository.loadDailyPushReminderTargets(reminderDate.toString(), MAX_PUSH_BATCH)
+            if (page.isEmpty()) return delivered
+            val progress = sendPage(page, content, reminderKey)
+            delivered += progress.delivered
+            if (page.size < MAX_PUSH_BATCH || progress.delivered + progress.cleared == 0) return delivered
+            delay(PAGE_PAUSE_MILLIS)
         }
         return delivered
     }
 
+    private data class PageProgress(val delivered: Int, val cleared: Int)
+
+    private suspend fun sendPage(page: List<PushReminderTarget>, content: LocalizedPushContent, reminderKey: String): PageProgress {
+        var delivered = 0
+        var cleared = 0
+        page.chunked(MAX_PUSH_BATCH).forEach { batch ->
+            val statuses = pushNotificationService.sendNotifications(
+                batch.map { PushRequest(it.fcmToken, it.language, content, "/account/check-in") }
+            )
+            batch.zip(statuses).forEach { (target, deliveryStatus) ->
+                when (deliveryStatus) {
+                    PushDeliveryStatus.SENT -> {
+                        if (playerProfileRepository.markPushReminderDelivered(target.playerId, reminderKey)) {
+                            delivered++
+                        }
+                    }
+                    PushDeliveryStatus.INVALID_TOKEN -> {
+                        if (playerProfileRepository.clearFcmToken(target.playerId, target.fcmToken)) cleared++
+                    }
+                    PushDeliveryStatus.FAILED -> Unit
+                }
+            }
+        }
+        return PageProgress(delivered, cleared)
+    }
+
     private companion object {
+        /** Up to 20,000 reminders per run; the loop runs again 15 minutes later. */
+        const val MAX_PAGES_PER_RUN = 40
+        const val PAGE_PAUSE_MILLIS = 200L
         fun configuredPushZone(): ZoneId = runCatching {
             ZoneId.of(System.getenv("FASTTOWIN_PUSH_ZONE")?.trim().orEmpty())
         }.getOrDefault(ZoneId.of("Asia/Ho_Chi_Minh"))

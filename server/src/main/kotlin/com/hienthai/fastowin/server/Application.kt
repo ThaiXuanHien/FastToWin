@@ -103,6 +103,8 @@ fun Application.gameModule(
     authEmailSender: AuthEmailSender = DisabledAuthEmailSender,
     trustProxyHeaders: Boolean = false,
     connectionLimiter: WebSocketConnectionLimiter = WebSocketConnectionLimiter(),
+    serverDrain: ServerDrain = ServerDrain(),
+    extraMetrics: () -> String = { "" },
     seasonLifecycleRepository: SeasonLifecycleRepository = NoOpSeasonLifecycleRepository,
     pushReminderService: PushReminderService = NoOpPushReminderService,
     serviceStatusProvider: () -> ServiceStatusResponse = ::serviceStatusFromEnvironment,
@@ -233,6 +235,16 @@ fun Application.gameModule(
 
     val connections = ConcurrentHashMap<String, SocketConnection>()
     val presenceStore = engine.presenceStore
+    // SCL-05: runs inside Ktor's stop sequence, before the engine closes sockets abruptly.
+    monitor.subscribe(io.ktor.server.application.ApplicationStopPreparing) {
+        runBlocking {
+            withTimeoutOrNull(serverDrain.windowMillis + 2_000) {
+                serverDrain.drain(connections.values.toList().map { connection ->
+                    suspend { connection.session.close(CloseReason(CloseReason.Codes.GOING_AWAY, SERVER_RESTARTING_CLOSE_REASON)) }
+                })
+            }
+        }
+    }
 
     suspend fun publishPresence(playerId: String, connection: SocketConnection, heartbeat: Boolean = false) {
         val store = presenceStore ?: return
@@ -391,6 +403,12 @@ fun Application.gameModule(
         publicMaintenanceStatus(maintenanceRuntime::publicStatus)
 
         get("/health") { call.respondText("OK") }
+        // SCL-05: readiness, unlike liveness, turns 503 while the instance drains before shutdown.
+        get("/ready") {
+            call.response.header(HttpHeaders.CacheControl, "no-store")
+            if (serverDrain.draining) call.respondText("DRAINING", status = HttpStatusCode.ServiceUnavailable)
+            else call.respondText("OK")
+        }
 
         get("/internal/metrics") {
             call.response.header(HttpHeaders.CacheControl, "no-store")
@@ -398,7 +416,7 @@ fun Application.gameModule(
                 metrics.render() + ((rateLimiter as? com.hienthai.fastowin.server.ratelimit.RateLimitRuntime)?.renderMetrics() ?: "") +
                     presenceStore?.renderMetrics().orEmpty() +
                     (authEmailSender as? MeteredAuthEmailSender)?.renderMetrics().orEmpty() +
-                    connectionLimiter.renderMetrics(),
+                    connectionLimiter.renderMetrics() + extraMetrics(),
                 ContentType.parse("text/plain; version=0.0.4; charset=utf-8")
             )
         }
@@ -704,6 +722,11 @@ fun Application.gameModule(
             metrics.webSocketOpened()
             if (engine.gameConnectionsClosed()) {
                 close(CloseReason(CloseReason.Codes.GOING_AWAY, "Server maintenance"))
+                metrics.webSocketClosed()
+                return@webSocket
+            }
+            if (serverDrain.draining) {
+                close(CloseReason(CloseReason.Codes.GOING_AWAY, SERVER_RESTARTING_CLOSE_REASON))
                 metrics.webSocketClosed()
                 return@webSocket
             }
@@ -1297,6 +1320,7 @@ private class SocketConnection(
     }
 }
 
+internal const val SERVER_RESTARTING_CLOSE_REASON = "Server restarting"
 private const val SESSION_CLEANUP_INTERVAL_MILLIS = 5_000L
 private val PRESENCE_REQUEST_ID = Regex("[A-Za-z0-9_-]{1,64}")
 private const val GAME_TIMER_INTERVAL_MILLIS = 250L

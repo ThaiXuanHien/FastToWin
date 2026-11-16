@@ -128,6 +128,8 @@ fun main() {
                 environment = environment,
                 trustProxyHeaders = trustProxyHeaders,
                 connectionLimiter = WebSocketConnectionLimiter.fromEnvironment(),
+                serverDrain = ServerDrain.fromEnvironment(),
+                extraMetrics = { database?.renderPoolMetrics().orEmpty() },
                 seasonLifecycleRepository = seasonLifecycleRepository,
                 pushReminderService = pushReminderService,
                 adminService = adminService,
