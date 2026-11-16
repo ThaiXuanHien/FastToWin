@@ -72,6 +72,7 @@ Biến backend cần đặt bằng secret store, không commit giá trị bí m�
 | `FASTTOWIN_ENV` | `prod` |
 | `FASTTOWIN_PUBLIC_URL`, `FASTTOWIN_WEB_ORIGINS`, `FASTTOWIN_ADMIN_ORIGIN` | Đúng origin staging, không thêm production origin |
 | `FASTTOWIN_ADMIN_ENABLED` | `true` |
+| `FASTTOWIN_ADMIN_MFA_KEY` | Khóa riêng của staging, tạo bằng `openssl rand -base64 32`; bắt buộc khi bật admin |
 | `DATABASE_URL` | JDBC tới private hostname `staging-postgres.railway.internal`, DB `staging_only` hoặc DB restore được ghi trong đợt thử |
 | `DATABASE_USER`, `DATABASE_PASSWORD` | Role và mật khẩu riêng staging |
 | `DATABASE_POOL_SIZE` | `3` |

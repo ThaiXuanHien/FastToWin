@@ -22,10 +22,15 @@ class InMemoryAdminRepository : AdminRepository {
         val matches: MutableMap<String, List<MatchEntry>> = linkedMapOf(),
         val wallet: MutableMap<String, List<WalletEntry>> = linkedMapOf(),
         val announcementPush: MutableMap<String, Pair<String, String>> = linkedMapOf(),
-        var playerStorageAvailable: Boolean = false
+        var playerStorageAvailable: Boolean = false,
+        val mfa: MutableMap<String, AdminMfaRecord> = linkedMapOf(),
+        /** adminId to (code hash to used). */
+        val recoveryCodes: MutableMap<String, Map<String, Boolean>> = linkedMapOf(),
+        val mfaChallenges: MutableMap<String, AdminMfaChallenge> = linkedMapOf()
     ) {
         fun snapshot() = State(accounts.toMutableMap(), sessions.toMutableMap(), requests.toMutableMap(), audits.toMutableList(),
-            users.toMutableMap(), matches.toMutableMap(), wallet.toMutableMap(), announcementPush.toMutableMap(), playerStorageAvailable)
+            users.toMutableMap(), matches.toMutableMap(), wallet.toMutableMap(), announcementPush.toMutableMap(), playerStorageAvailable,
+            mfa.toMutableMap(), recoveryCodes.toMutableMap(), mfaChallenges.toMutableMap())
     }
     suspend fun seedUser(user: UserDetail, matches: List<MatchEntry> = emptyList(), wallet: List<WalletEntry> = emptyList()) = mutex.withLock {
         state.playerStorageAvailable = true; state.users[user.id] = user; state.matches[user.id] = matches; state.wallet[user.id] = wallet
@@ -58,6 +63,8 @@ class InMemoryAdminRepository : AdminRepository {
                 next.wallet[id] = history + WalletEntry(UUID.randomUUID().toString(),campaign.walletSourceType(),campaign.id,campaign.draft.gold,campaign.draft.gems,campaign.draft.xp,now,campaign.draft.plays)
                 return balance
             }
+            private fun withMfa(account: AdminAccount) =
+                account.copy(identity = account.identity.copy(mfaEnabled = next.mfa[account.identity.id]?.enabled == true))
             override fun accountByEmail(email: String) = next.accounts.values.firstOrNull { it.identity.email == email }
             override fun account(id: String) = next.accounts[id]
             override fun putAccount(account: AdminAccount) {
@@ -68,10 +75,29 @@ class InMemoryAdminRepository : AdminRepository {
             override fun session(tokenHash: String) = next.sessions[tokenHash]
             override fun putSession(session: AdminSession) { next.sessions[session.tokenHash] = session }
             override fun revokeSessions(adminId: String) { next.sessions.replaceAll { _, session -> if (session.adminId == adminId) session.copy(revoked = true) else session } }
+            override fun putPassword(adminId: String, passwordHash: String) {
+                next.accounts[adminId]?.let { next.accounts[adminId] = it.copy(passwordHash = passwordHash) }
+            }
+            override fun mfa(adminId: String) = next.mfa[adminId]
+            override fun putMfa(record: AdminMfaRecord) { next.mfa[record.adminId] = record }
+            override fun deleteMfa(adminId: String) {
+                next.mfa.remove(adminId); next.recoveryCodes.remove(adminId)
+                next.mfaChallenges.values.removeAll { it.adminId == adminId }
+            }
+            override fun replaceRecoveryCodes(adminId: String, hashes: List<String>) { next.recoveryCodes[adminId] = hashes.associateWith { false } }
+            override fun useRecoveryCode(adminId: String, hash: String, now: Long): Boolean {
+                val codes = next.recoveryCodes[adminId] ?: return false
+                if (codes[hash] != false) return false
+                next.recoveryCodes[adminId] = codes + (hash to true); return true
+            }
+            override fun remainingRecoveryCodes(adminId: String) = next.recoveryCodes[adminId].orEmpty().count { !it.value }
+            override fun mfaChallenge(tokenHash: String) = next.mfaChallenges[tokenHash]
+            override fun putMfaChallenge(challenge: AdminMfaChallenge) { next.mfaChallenges[challenge.tokenHash] = challenge }
+            override fun deleteMfaChallenge(tokenHash: String) { next.mfaChallenges.remove(tokenHash) }
             override fun deduplication(actorId: String, requestId: String) = next.requests[actorId to requestId]
             override fun putDeduplication(actorId: String, requestId: String, value: AdminDeduplication) { next.requests[actorId to requestId] = value }
             override fun appendAudit(entry: AuditEntry) { next.audits.add(entry) }
-            override fun accounts(page: PageRequest) = paginate(next.accounts.values.map { it.identity }.sortedBy { it.id }, page)
+            override fun accounts(page: PageRequest) = paginate(next.accounts.values.map { withMfa(it).identity }.sortedBy { it.id }, page)
             override fun audit(page: PageRequest) = paginate(next.audits.sortedWith(compareByDescending<AuditEntry> { it.createdAtEpochMillis }.thenByDescending { it.id }), page)
             fun available() { if (!next.playerStorageAvailable) unavailable() }
             // This dev repository has no shared authentication store or receipt ledger.

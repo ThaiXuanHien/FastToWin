@@ -4,7 +4,7 @@ import kotlinx.serialization.Serializable
 import com.hienthai.fastowin.server.legacyFallback
 
 @Serializable enum class AdminRole { OWNER, OPERATOR, SUPPORT }
-@Serializable data class AdminIdentity(val id: String, val email: String, val role: AdminRole, val active: Boolean = true)
+@Serializable data class AdminIdentity(val id: String, val email: String, val role: AdminRole, val active: Boolean = true, val mfaEnabled: Boolean = false)
 @Serializable data class AdminSessionResponse(val admin: AdminIdentity, val csrfToken: String)
 @Serializable data class AdminLoginRequest(val email: String, val password: String)
 @Serializable data class CreateAdminRequest(val email: String, val password: String, val role: AdminRole, val reason: String, val requestId: String)
@@ -68,4 +68,17 @@ data class PageRequest(val page: Int = 0, val pageSize: Int = 25) {
 data class AdminAccount(val identity: AdminIdentity, val passwordHash: String)
 data class AdminSession(val tokenHash: String, val adminId: String, val csrfHash: String, val expiresAtEpochMillis: Long, val revoked: Boolean = false)
 data class AdminLogin(val token: String, val response: AdminSessionResponse)
+/** ADM-04: second login step. [mode] is VERIFY for enrolled accounts and ENROLL for first setup. */
+@Serializable data class AdminMfaChallengeResponse(val mfa: String, val challengeToken: String, val secret: String? = null, val otpauthUri: String? = null)
+@Serializable data class AdminMfaVerifyRequest(val challengeToken: String, val code: String? = null, val recoveryCode: String? = null)
+/** Recovery codes are returned once, right after enrollment, and never again. */
+@Serializable data class AdminMfaSessionResponse(val admin: AdminIdentity, val csrfToken: String, val recoveryCodes: List<String> = emptyList())
+@Serializable data class AdminMfaResetRequest(val reason: String, val requestId: String)
+sealed interface AdminLoginOutcome {
+    data class Session(val login: AdminLogin) : AdminLoginOutcome
+    data class Challenge(val response: AdminMfaChallengeResponse) : AdminLoginOutcome
+}
+data class AdminMfaLogin(val token: String, val response: AdminMfaSessionResponse)
+data class AdminMfaRecord(val adminId: String, val secretCiphertext: String, val enabled: Boolean, val lastUsedStep: Long)
+data class AdminMfaChallenge(val tokenHash: String, val adminId: String, val enrollment: Boolean, val attempts: Int, val expiresAtEpochMillis: Long)
 data class AdminDeduplication(val fingerprint: String, val identity: AdminIdentity)

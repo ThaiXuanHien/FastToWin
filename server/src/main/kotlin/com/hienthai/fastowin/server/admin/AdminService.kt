@@ -27,7 +27,18 @@ class AdminService(
     private fun csrf(token: String) = hashToken("admin-csrf:$token")
     fun requireOrigin(origin: String?) { if (origin != configuration.origin) forbidden() }
 
-    suspend fun login(email: String, password: String, origin: String?, address: String): AdminLogin {
+    /** Password-only login for accounts without a second factor; enrolled accounts must use [beginLogin]. */
+    suspend fun login(email: String, password: String, origin: String?, address: String): AdminLogin =
+        when (val outcome = beginLogin(email, password, origin, address)) {
+            is AdminLoginOutcome.Session -> outcome.login
+            is AdminLoginOutcome.Challenge -> throw AdminException(401, "MFA_REQUIRED", legacyFallback("Cần mã xác thực hai lớp."))
+        }
+
+    /**
+     * Verifies the password. Accounts with TOTP (or every account while MFA is required)
+     * receive a short-lived challenge instead of a session (ADM-04).
+     */
+    suspend fun beginLogin(email: String, password: String, origin: String?, address: String): AdminLoginOutcome {
         requireOrigin(origin)
         val normalized = normalizeEmail(email)
         validatePassword(password, provision = false)
@@ -44,14 +55,119 @@ class AdminService(
         val valid = withContext(Dispatchers.Default) { passwordHasher.verify(password, candidate?.passwordHash ?: dummyHash) }
         if (!valid || candidate == null) unauthorized()
         val token = randomToken()
-        return repository.transaction {
+        return repository.transaction<AdminLoginOutcome> {
             val current = account(candidate.identity.id)
             if (current == null || !current.identity.active || current.passwordHash != candidate.passwordHash) unauthorized()
-            putSession(AdminSession(hashToken(token), current.identity.id, hashToken(csrf(token)), nowMillis() + SESSION_MILLIS))
-            auditEntry(current.identity.id, "ADMIN_LOGIN")
-            AdminLogin(token, AdminSessionResponse(current.identity, csrf(token)))
+            val mfa = mfa(current.identity.id)
+            if (mfa?.enabled != true && !configuration.mfa.required) {
+                return@transaction AdminLoginOutcome.Session(openSession(current, token))
+            }
+            val challenge = AdminMfaChallenge(hashToken(token), current.identity.id, enrollment = mfa?.enabled != true, attempts = 0,
+                expiresAtEpochMillis = nowMillis() + MFA_CHALLENGE_MILLIS)
+            putMfaChallenge(challenge)
+            if (!challenge.enrollment) return@transaction AdminLoginOutcome.Challenge(AdminMfaChallengeResponse("VERIFY", token))
+            // Enrollment keeps a pending secret until the first valid code proves the authenticator has it.
+            val cipher = configuration.mfa.cipher
+            val secret = mfa?.let { cipher.decrypt(it.secretCiphertext, it.adminId) } ?: Totp.newSecret().also {
+                putMfa(AdminMfaRecord(current.identity.id, cipher.encrypt(it, current.identity.id), enabled = false, lastUsedStep = 0))
+            }
+            AdminLoginOutcome.Challenge(AdminMfaChallengeResponse("ENROLL", token, Base32.encode(secret),
+                Totp.otpauthUri(current.identity.email, secret)))
         }
     }
+
+    /** Completes a challenge with a TOTP code or, for enrolled accounts, a single-use recovery code. */
+    suspend fun completeMfa(request: AdminMfaVerifyRequest, origin: String?): AdminMfaLogin {
+        requireOrigin(origin)
+        if (!request.challengeToken.matches(Regex("[A-Za-z0-9_-]{43}"))) unauthorized()
+        if ((request.code == null) == (request.recoveryCode == null)) invalid()
+        if ((request.code?.length ?: 0) > 16 || (request.recoveryCode?.length ?: 0) > 32) invalid()
+        val token = randomToken()
+        // Failed attempts must persist, so failures are returned from the transaction and thrown after commit.
+        val result = repository.transaction<Result<AdminMfaLogin>> {
+            val tokenHash = hashToken(request.challengeToken)
+            val challenge = mfaChallenge(tokenHash) ?: return@transaction Result.failure(mfaFailure("MFA_CHALLENGE_EXPIRED"))
+            val now = nowMillis()
+            if (challenge.expiresAtEpochMillis <= now) {
+                deleteMfaChallenge(tokenHash); return@transaction Result.failure(mfaFailure("MFA_CHALLENGE_EXPIRED"))
+            }
+            val account = account(challenge.adminId)?.takeIf { it.identity.active }
+            val record = mfa(challenge.adminId)
+            if (account == null || record == null || record.enabled == challenge.enrollment) {
+                deleteMfaChallenge(tokenHash); return@transaction Result.failure(mfaFailure("MFA_CHALLENGE_EXPIRED"))
+            }
+            val recovery = request.recoveryCode
+            val verified = if (recovery != null) {
+                !challenge.enrollment && useRecoveryCode(account.identity.id, RecoveryCodes.hash(recovery), now)
+            } else {
+                val secret = configuration.mfa.cipher.decrypt(record.secretCiphertext, record.adminId)
+                Totp.verify(secret, request.code.orEmpty(), now, record.lastUsedStep)?.also { step ->
+                    putMfa(record.copy(enabled = true, lastUsedStep = step))
+                } != null
+            }
+            if (!verified) {
+                val attempts = challenge.attempts + 1
+                if (attempts >= MFA_MAX_ATTEMPTS) deleteMfaChallenge(tokenHash) else putMfaChallenge(challenge.copy(attempts = attempts))
+                auditEntry(account.identity.id, "ADMIN_MFA_FAILED")
+                return@transaction Result.failure(mfaFailure(if (attempts >= MFA_MAX_ATTEMPTS) "MFA_CHALLENGE_EXPIRED" else "MFA_INVALID_CODE"))
+            }
+            deleteMfaChallenge(tokenHash)
+            val recoveryCodes = if (challenge.enrollment) RecoveryCodes.generate().also { codes ->
+                replaceRecoveryCodes(account.identity.id, codes.map(RecoveryCodes::hash))
+                auditEntry(account.identity.id, "ADMIN_MFA_ENROLL")
+            } else emptyList()
+            if (recovery != null) auditEntry(account.identity.id, "ADMIN_MFA_RECOVERY_CODE_USED",
+                after = "remaining=${remainingRecoveryCodes(account.identity.id)}")
+            // A verified code means the factor is enabled now (enrollment just completed or already on).
+            val opened = openSession(account.copy(identity = account.identity.copy(mfaEnabled = true)), token)
+            Result.success(AdminMfaLogin(opened.token, AdminMfaSessionResponse(opened.response.admin, opened.response.csrfToken, recoveryCodes)))
+        }
+        return result.getOrThrow()
+    }
+
+    /** Owner-only: removes another admin's second factor (lost device) and ends their sessions. */
+    suspend fun resetMfa(token: String?, csrfToken: String?, origin: String?, id: String, request: AdminMfaResetRequest): AdminIdentity {
+        requireOrigin(origin); uuid(id); validateMutation(request.reason, request.requestId)
+        val fingerprint = fingerprint("mfa-reset", id, request.reason)
+        return repository.transaction {
+            val actor = principal(token, csrfToken, true, true).second.identity
+            replay(actor.id, request.requestId, fingerprint)?.let { return@transaction it }
+            // Owners recover their own factor with recovery codes or the offline tool, never with their session.
+            if (actor.id == id) forbidden()
+            val existing = account(id) ?: missing()
+            deleteMfa(id); revokeSessions(id)
+            val identity = existing.identity.copy(mfaEnabled = false)
+            auditEntry(actor.id, "ADMIN_MFA_RESET", id, request.requestId, request.reason)
+            putDeduplication(actor.id, request.requestId, AdminDeduplication(fingerprint, identity))
+            identity
+        }
+    }
+
+    /**
+     * Offline tool only (ADM-10): replaces the password, removes the second factor and ends
+     * every session of an existing, active admin. The account must enroll again at next sign-in.
+     */
+    suspend fun recoverOffline(email: String, newPassword: String, reason: String): AdminIdentity {
+        val normalized = normalizeEmail(email); validatePassword(newPassword, provision = true)
+        if (reason.isBlank() || reason.length > 500) invalid()
+        val hash = withContext(Dispatchers.Default) { passwordHasher.hash(newPassword) }
+        return repository.transaction {
+            val existing = accountByEmail(normalized)?.takeIf { it.identity.active } ?: missing()
+            putPassword(existing.identity.id, hash)
+            deleteMfa(existing.identity.id); revokeSessions(existing.identity.id)
+            auditEntry(null, "ADMIN_OFFLINE_RECOVERY", existing.identity.id, reason = reason.trim())
+            existing.identity.copy(mfaEnabled = false)
+        }
+    }
+
+    private fun AdminTransaction.openSession(account: AdminAccount, token: String): AdminLogin {
+        putSession(AdminSession(hashToken(token), account.identity.id, hashToken(csrf(token)), nowMillis() + SESSION_MILLIS))
+        auditEntry(account.identity.id, "ADMIN_LOGIN")
+        return AdminLogin(token, AdminSessionResponse(account.identity, csrf(token)))
+    }
+
+    private fun mfaFailure(code: String) = AdminException(401, code, legacyFallback(
+        if (code == "MFA_INVALID_CODE") "Mã xác thực không đúng." else "Phiên xác thực đã hết hạn. Vui lòng đăng nhập lại."))
 
     suspend fun authenticate(token: String?): AdminIdentity? = try {
         repository.readTransaction { principal(token).second.identity }
@@ -240,7 +356,11 @@ class AdminService(
         if (password.length !in (if (provision) 12 else 1)..128) invalid()
     }
     private fun uuid(id: String) { if (runCatching { UUID.fromString(id).toString() == id.lowercase() }.getOrDefault(false).not()) invalid() }
-    companion object { const val SESSION_MILLIS = 8 * 60 * 60 * 1000L }
+    companion object {
+        const val SESSION_MILLIS = 8 * 60 * 60 * 1000L
+        const val MFA_CHALLENGE_MILLIS = 5 * 60 * 1000L
+        const val MFA_MAX_ATTEMPTS = 5
+    }
 }
 internal fun maskEmail(email: String?): String? {
     if (email == null) return null

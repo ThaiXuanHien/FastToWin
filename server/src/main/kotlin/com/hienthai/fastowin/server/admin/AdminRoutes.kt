@@ -19,7 +19,18 @@ fun Route.adminRoutes(service: AdminService) {
         post("/login") { call.adminResponse(service) {
             service.requireOrigin(call.request.header(HttpHeaders.Origin))
             val request = call.adminBody<AdminLoginRequest>()
-            val login = service.login(request.email, request.password, call.request.header(HttpHeaders.Origin), call.request.origin.remoteHost)
+            when (val outcome = service.beginLogin(request.email, request.password, call.request.header(HttpHeaders.Origin), call.request.origin.remoteHost)) {
+                is AdminLoginOutcome.Session -> {
+                    call.adminCookie(outcome.login.token, service.configuration.secureCookie)
+                    call.respond(outcome.login.response)
+                }
+                // No cookie yet: the session exists only after the second factor verifies.
+                is AdminLoginOutcome.Challenge -> call.respond(outcome.response)
+            }
+        } }
+        post("/login/mfa") { call.adminResponse(service) {
+            service.requireOrigin(call.request.header(HttpHeaders.Origin))
+            val login = service.completeMfa(call.adminBody<AdminMfaVerifyRequest>(), call.request.header(HttpHeaders.Origin))
             call.adminCookie(login.token, service.configuration.secureCookie)
             call.respond(login.response)
         } }
@@ -47,6 +58,10 @@ fun Route.adminRoutes(service: AdminService) {
         post("/accounts/{id}/access") { call.adminResponse(service) {
             service.requireOrigin(call.request.header(HttpHeaders.Origin))
             call.respond(service.changeAccess(call.adminToken(), call.request.header(ADMIN_CSRF_HEADER), call.request.header(HttpHeaders.Origin), call.adminId(), call.adminBody<ChangeAdminAccessRequest>()))
+        } }
+        post("/accounts/{id}/mfa/reset") { call.adminResponse(service) {
+            service.requireOrigin(call.request.header(HttpHeaders.Origin))
+            call.respond(service.resetMfa(call.adminToken(), call.request.header(ADMIN_CSRF_HEADER), call.request.header(HttpHeaders.Origin), call.adminId(), call.adminBody<AdminMfaResetRequest>()))
         } }
         get("/audit") { call.adminResponse(service) { call.respond(service.audit(call.adminToken(), call.adminPage())) } }
     }

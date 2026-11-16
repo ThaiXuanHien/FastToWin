@@ -19,6 +19,18 @@ interface AdminTransaction {
     fun session(tokenHash: String): AdminSession?
     fun putSession(session: AdminSession)
     fun revokeSessions(adminId: String)
+    fun putPassword(adminId: String, passwordHash: String)
+    fun mfa(adminId: String): AdminMfaRecord?
+    fun putMfa(record: AdminMfaRecord)
+    /** Removes the second factor, its recovery codes and pending challenges. */
+    fun deleteMfa(adminId: String)
+    fun replaceRecoveryCodes(adminId: String, hashes: List<String>)
+    /** Marks an unused code as used; false when it is unknown or already used. */
+    fun useRecoveryCode(adminId: String, hash: String, now: Long): Boolean
+    fun remainingRecoveryCodes(adminId: String): Int
+    fun mfaChallenge(tokenHash: String): AdminMfaChallenge?
+    fun putMfaChallenge(challenge: AdminMfaChallenge)
+    fun deleteMfaChallenge(tokenHash: String)
     fun deduplication(actorId: String, requestId: String): AdminDeduplication?
     fun putDeduplication(actorId: String, requestId: String, value: AdminDeduplication)
     fun appendAudit(entry: AuditEntry)
