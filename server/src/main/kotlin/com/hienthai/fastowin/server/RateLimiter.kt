@@ -53,6 +53,22 @@ data class ServerRateLimitPolicies(
     val reportPerIp: RateLimitPolicy = RateLimitPolicy(30, 10 * 60_000L)
 )
 
+/**
+ * Production keeps the strict registration allowance. Development servers (local runs and the
+ * Web E2E suites, which register many accounts from one loopback address) get a large one.
+ * FASTTOWIN_REGISTER_LIMIT_PER_IP (registrations per IP per 15 minutes) overrides either.
+ */
+fun serverRateLimitPolicies(environment: String, values: Map<String, String> = System.getenv()): ServerRateLimitPolicies {
+    val defaults = ServerRateLimitPolicies()
+    val override = values["FASTTOWIN_REGISTER_LIMIT_PER_IP"]?.trim()?.takeIf(String::isNotEmpty)?.let {
+        requireNotNull(it.toIntOrNull()?.takeIf { value -> value > 0 }) { "FASTTOWIN_REGISTER_LIMIT_PER_IP must be a positive whole number." }
+    }
+    val perIp = override ?: if (environment == "dev") DEV_REGISTER_LIMIT_PER_IP else defaults.registerPerIp.capacity
+    return defaults.copy(registerPerIp = RateLimitPolicy(perIp, defaults.registerPerIp.refillWindowMillis))
+}
+
+private const val DEV_REGISTER_LIMIT_PER_IP = 10_000
+
 data class RateLimitResult(
     val allowed: Boolean,
     val retryAfterMillis: Long = 0L
