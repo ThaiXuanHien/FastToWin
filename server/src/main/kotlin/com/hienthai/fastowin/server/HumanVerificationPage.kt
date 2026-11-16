@@ -62,8 +62,10 @@ private fun challengeHtml(siteKey: String, action: String, theme: String, langua
 <meta name="color-scheme" content="light dark">
 <title>Fast To Win</title>
 <style>
-  html, body { margin: 0; height: 100%; background: transparent; }
-  body { display: flex; align-items: center; justify-content: center; }
+  /* Top-aligned on purpose: Android WebView can report a 0px body height inside the
+     300x72 slot, and vertical centring then pushed the widget's top half out of view. */
+  html, body { margin: 0; background: transparent; }
+  body { display: flex; align-items: flex-start; justify-content: center; }
 </style>
 </head>
 <body>
