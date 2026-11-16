@@ -28,7 +28,8 @@ data class RegisterRequest(
     val displayName: String,
     val devicePlatform: String? = null,
     val gender: PlayerGender = PlayerGender.MALE,
-    val acceptedContentTermsVersion: String? = null
+    val acceptedContentTermsVersion: String? = null,
+    val humanVerificationToken: String? = null
 )
 
 @Serializable
@@ -44,7 +45,8 @@ data class UpgradeGuestRequest(
     val email: String,
     val password: String,
     val devicePlatform: String? = null,
-    val acceptedContentTermsVersion: String? = null
+    val acceptedContentTermsVersion: String? = null,
+    val humanVerificationToken: String? = null
 )
 
 @Serializable
@@ -63,7 +65,8 @@ data class ChangePasswordRequest(
 @Serializable
 data class PasswordResetRequest(
     val email: String,
-    val languageTag: String? = null
+    val languageTag: String? = null,
+    val humanVerificationToken: String? = null
 )
 
 @Serializable
@@ -76,8 +79,38 @@ data class PasswordResetConfirmRequest(
 @Serializable
 data class EmailVerificationRequest(
     val accessToken: String,
-    val languageTag: String? = null
+    val languageTag: String? = null,
+    val humanVerificationToken: String? = null
 )
+
+/**
+ * SEC-07: forms protected by a Cloudflare Turnstile challenge. The wire name is the Turnstile
+ * `action`, which the server checks so a token solved for one form cannot unlock another.
+ */
+@Serializable
+enum class HumanVerificationAction(val wireName: String) {
+    REGISTER("register"),
+    UPGRADE_GUEST("upgrade_guest"),
+    PASSWORD_RESET("password_reset"),
+    EMAIL_VERIFICATION("email_verification");
+
+    companion object {
+        fun fromWireName(value: String?): HumanVerificationAction? = entries.firstOrNull { it.wireName == value }
+    }
+}
+
+/** Public, unauthenticated: tells clients whether to show the challenge and with which site key. */
+@Serializable
+data class HumanVerificationConfigResponse(
+    val enabled: Boolean = false,
+    val siteKey: String? = null
+)
+
+const val HUMAN_VERIFICATION_CONFIG_PATH = "/auth/human-verification"
+const val HUMAN_VERIFICATION_PAGE_PATH = "/auth/human-verification/challenge"
+const val HUMAN_VERIFICATION_REQUIRED_CODE = "HUMAN_VERIFICATION_REQUIRED"
+const val HUMAN_VERIFICATION_FAILED_CODE = "HUMAN_VERIFICATION_FAILED"
+const val HUMAN_VERIFICATION_UNAVAILABLE_CODE = "HUMAN_VERIFICATION_UNAVAILABLE"
 
 @Serializable
 data class EmailVerificationConfirmRequest(

@@ -117,6 +117,8 @@ class AuthRefreshRecoveryTest {
                     verificationEntered.complete(Unit); verify.await()
                     respond("""{"code":"EMAIL_VERIFIED","message":"Verified","emailVerified":true}""", headers = JSON)
                 }
+                // Turnstile configuration (SEC-07): an older server without the endpoint.
+                "/auth/human-verification" -> respond("", HttpStatusCode.NotFound)
                 else -> { refreshEntered.complete(Unit); refreshResponse.await(); success(emailVerified = false) }
             }
         })
