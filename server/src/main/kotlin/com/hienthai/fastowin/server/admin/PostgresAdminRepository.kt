@@ -14,14 +14,19 @@ import java.util.UUID
 import javax.sql.DataSource
 
 class PostgresAdminRepository(private val dataSource: DataSource) : AdminRepository {
-    override suspend fun <T> transaction(block: AdminTransaction.() -> T): T = withContext(Dispatchers.IO) {
+    override suspend fun <T> transaction(block: AdminTransaction.() -> T): T = locked(exclusive = true, block)
+
+    override suspend fun <T> readTransaction(block: AdminTransaction.() -> T): T = locked(exclusive = false, block)
+
+    private suspend fun <T> locked(exclusive: Boolean, block: AdminTransaction.() -> T): T = withContext(Dispatchers.IO) {
         try {
             dataSource.connection.use { connection ->
                 connection.autoCommit = false
                 try {
-                    // A single lock order serializes owner changes and authorization with revocation.
-                    // This includes sensitive reads so their privilege check and audit form one snapshot.
-                    connection.prepareStatement("SELECT pg_advisory_xact_lock(7421092187349)").use { it.execute() }
+                    // A single lock serializes owner changes and authorization with revocation.
+                    // Sensitive reads take it shared so their privilege check and audit still form
+                    // one snapshot relative to revocation, without queueing behind each other.
+                    if (exclusive) AdminAuthorizationLock.exclusive(connection) else AdminAuthorizationLock.shared(connection)
                     val result = JdbcAdminTransaction(connection).block()
                     connection.commit()
                     result

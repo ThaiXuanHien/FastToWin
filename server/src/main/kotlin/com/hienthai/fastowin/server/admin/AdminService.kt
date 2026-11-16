@@ -40,7 +40,7 @@ class AdminService(
         if (!allowed) {
             throw AdminException(429, "RATE_LIMITED", legacyFallback("Vui lòng thử lại sau."))
         }
-        val candidate = repository.transaction { accountByEmail(normalized) }
+        val candidate = repository.readTransaction { accountByEmail(normalized) }
         val valid = withContext(Dispatchers.Default) { passwordHasher.verify(password, candidate?.passwordHash ?: dummyHash) }
         if (!valid || candidate == null) unauthorized()
         val token = randomToken()
@@ -54,10 +54,10 @@ class AdminService(
     }
 
     suspend fun authenticate(token: String?): AdminIdentity? = try {
-        repository.transaction { principal(token).second.identity }
+        repository.readTransaction { principal(token).second.identity }
     } catch (error: AdminException) { if (error.status == 401) null else throw error }
 
-    suspend fun session(token: String?): AdminSessionResponse = repository.transaction {
+    suspend fun session(token: String?): AdminSessionResponse = repository.readTransaction {
         val (_, account) = principal(token)
         auditEntry(account.identity.id, "ADMIN_SESSION")
         AdminSessionResponse(account.identity, csrf(token!!))
@@ -153,7 +153,7 @@ class AdminService(
         } }
     }
 
-    suspend fun users(token: String?, query: String, page: PageRequest): AdminPage<UserSummary> = repository.transaction {
+    suspend fun users(token: String?, query: String, page: PageRequest): AdminPage<UserSummary> = repository.readTransaction {
         val actor = principal(token).second.identity
         val q = query.trim(); if (q.length > 128 || q.any(Char::isISOControl)) invalid()
         if (actor.role == AdminRole.SUPPORT && '@' in q) forbidden()
@@ -161,7 +161,7 @@ class AdminService(
         auditEntry(actor.id, "USER_SEARCH") // Never persist the query or player email.
         result.copy(items = result.items.map { if (actor.role == AdminRole.SUPPORT) it.copy(email = maskEmail(it.email)) else it })
     }
-    suspend fun playerOverview(token: String?): PlayerOverviewResponse = repository.transaction {
+    suspend fun playerOverview(token: String?): PlayerOverviewResponse = repository.readTransaction {
         val actor = principal(token).second.identity
         if (actor.role == AdminRole.SUPPORT) forbidden()
         val snapshotAt = nowMillis()
@@ -174,12 +174,12 @@ class AdminService(
             stats.recordedWins, stats.recordedLosses, stats.recordedDraws, stats.playedProfiles, stats.clanCount,
             stats.clanMembers, stats.averageElo, stats.maxElo, playerCommerce(todayFrom - 6 * 86_400_000L, snapshotAt))
     }
-    suspend fun user(token: String?, id: String): UserDetail = repository.transaction {
+    suspend fun user(token: String?, id: String): UserDetail = repository.readTransaction {
         val actor = principal(token).second.identity; uuid(id)
         val result = user(id) ?: missing(); auditEntry(actor.id, "USER_DETAIL", id)
         if (actor.role == AdminRole.SUPPORT) result.copy(email = maskEmail(result.email)) else result
     }
-    suspend fun giftRecipient(token: String?, reference: String): UserSummary = repository.transaction {
+    suspend fun giftRecipient(token: String?, reference: String): UserSummary = repository.readTransaction {
         val actor = principal(token).second.identity
         if (actor.role == AdminRole.SUPPORT) forbidden()
         val value = reference.trim()
@@ -188,19 +188,19 @@ class AdminService(
         auditEntry(actor.id, "GIFT_RECIPIENT_LOOKUP", result.id)
         result
     }
-    suspend fun matches(token: String?, id: String, page: PageRequest): AdminPage<MatchEntry> = repository.transaction {
+    suspend fun matches(token: String?, id: String, page: PageRequest): AdminPage<MatchEntry> = repository.readTransaction {
         val actor = principal(token).second.identity; uuid(id); user(id) ?: missing()
         val result = matches(id, page); auditEntry(actor.id, "USER_MATCHES", id); result
     }
-    suspend fun wallet(token: String?, id: String, giftsOnly: Boolean, page: PageRequest): AdminPage<WalletEntry> = repository.transaction {
+    suspend fun wallet(token: String?, id: String, giftsOnly: Boolean, page: PageRequest): AdminPage<WalletEntry> = repository.readTransaction {
         val actor = principal(token).second.identity; uuid(id); user(id) ?: missing()
         val result = wallet(id, giftsOnly, page); auditEntry(actor.id, if (giftsOnly) "USER_GIFTS" else "USER_WALLET", id); result
     }
-    suspend fun accounts(token: String?, page: PageRequest): AdminPage<AdminIdentity> = repository.transaction {
+    suspend fun accounts(token: String?, page: PageRequest): AdminPage<AdminIdentity> = repository.readTransaction {
         val actor = principal(token, ownerOnly = true).second.identity
         val result = accounts(page); auditEntry(actor.id, "ADMIN_LIST"); result
     }
-    suspend fun audit(token: String?, page: PageRequest): AdminPage<AuditEntry> = repository.transaction {
+    suspend fun audit(token: String?, page: PageRequest): AdminPage<AuditEntry> = repository.readTransaction {
         val actor = principal(token, ownerOnly = true).second.identity
         val result = audit(page); auditEntry(actor.id, "AUDIT_READ"); result
     }

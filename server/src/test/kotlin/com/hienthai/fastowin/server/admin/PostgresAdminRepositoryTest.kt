@@ -3,7 +3,10 @@ package com.hienthai.fastowin.server.admin
 import com.hienthai.fastowin.server.*
 import com.zaxxer.hikari.HikariConfig
 import com.zaxxer.hikari.HikariDataSource
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
+import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.withTimeout
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.test.runTest
 import org.flywaydb.core.Flyway
@@ -320,6 +323,32 @@ class PostgresAdminRepositoryTest {
             }
             assertEquals(1,outcomes.count { it.isSuccess }); assertEquals(409, assertIs<AdminException>(outcomes.single { it.isFailure }.exceptionOrNull()).status)
             assertEquals(1, PostgresAdminRepository(source).transaction { activeOwners() })
+        }
+    }
+
+    @Test fun `admin reads share the authorization lock with registration while access changes still exclude it`() = runBlocking {
+        database { source ->
+            val auth = AuthenticationService(PostgresAuthRepository(source), passwordHasher = PasswordHasher(1_000))
+            source.connection.use { reader ->
+                // A long admin read or analytics query holds the lock shared (ADM-01).
+                reader.autoCommit = false
+                AdminAuthorizationLock.shared(reader)
+                val registered = withTimeout(10_000) { auth.register("shared-lock@example.com", "GoodPassword123!", "Shared", "test") }
+                assertIs<AuthResult.Success>(registered)
+                val guest = withTimeout(10_000) { PostgresGuestIdentityRepository(source).resolveGuest("Guest", null, System.currentTimeMillis()) }
+                assertTrue(guest.playerId.isNotBlank())
+                reader.rollback()
+            }
+            source.connection.use { writer ->
+                // An access change still excludes registration until it commits.
+                writer.autoCommit = false
+                AdminAuthorizationLock.exclusive(writer)
+                val pending = async(Dispatchers.IO) { auth.register("exclusive-lock@example.com", "GoodPassword123!", "Exclusive", "test") }
+                Thread.sleep(500)
+                assertFalse(pending.isCompleted)
+                writer.rollback()
+                assertIs<AuthResult.Success>(withTimeout(10_000) { pending.await() })
+            }
         }
     }
 }

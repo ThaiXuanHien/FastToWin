@@ -191,7 +191,8 @@ class PostgresAnalyticsRepositoryTest {
             blocker.createStatement().use { it.execute("SELECT pg_advisory_xact_lock(7421092187349)") }
             coroutineScope {
                 val pending = async(Dispatchers.IO) { runCatching { read("REGISTRATIONS") } }
-                awaitWait("SELECT pg_advisory_lock(7421092187349)")
+                // ADM-01: analytics waits on the shared form of the authorization lock.
+                awaitWait("SELECT pg_advisory_lock_shared(7421092187349)")
                 blocker.createStatement().use { it.execute("UPDATE admin_accounts SET active=FALSE WHERE id='$ownerId'") }
                 blocker.commit()
                 val result = pending.await()
@@ -207,7 +208,7 @@ class PostgresAnalyticsRepositoryTest {
             blocker.createStatement().use { it.execute("SELECT pg_advisory_xact_lock(7421092187349)") }
             coroutineScope {
                 val pending = async(Dispatchers.IO) { runCatching { read("REGISTRATIONS") } }
-                awaitWait("SELECT pg_advisory_lock(7421092187349)")
+                awaitWait("SELECT pg_advisory_lock_shared(7421092187349)")
                 blocker.createStatement().use { it.execute("UPDATE admin_accounts SET role='SUPPORT' WHERE id='$ownerId'") }
                 blocker.commit()
                 val result = pending.await()

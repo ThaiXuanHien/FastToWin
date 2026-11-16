@@ -23,7 +23,8 @@ class PostgresAnalyticsRepository(private val source: DataSource) : AnalyticsRep
                 val previousIsolation = connection.transactionIsolation
                 var locked = false
                 try {
-                    connection.createStatement().use { it.execute("SELECT pg_advisory_lock(7421092187349)") }
+                    // Shared (ADM-01): analytics never changes access state, so it must not block registration.
+                    com.hienthai.fastowin.server.admin.AdminAuthorizationLock.sessionShared(connection)
                     locked = true
                     connection.transactionIsolation = Connection.TRANSACTION_REPEATABLE_READ
                     connection.autoCommit = false
@@ -45,7 +46,7 @@ class PostgresAnalyticsRepository(private val source: DataSource) : AnalyticsRep
                     if (locked) {
                         try {
                             connection.autoCommit = true
-                            if (!rows(connection, "SELECT pg_advisory_unlock(7421092187349)") { it.getBoolean(1) }.single()) throw SQLException("Authorization lock was not held")
+                            if (!com.hienthai.fastowin.server.admin.AdminAuthorizationLock.unlockSessionShared(connection)) throw SQLException("Authorization lock was not held")
                             connection.transactionIsolation = previousIsolation
                         } catch (error: Throwable) {
                             // A pooled connection with a session lock must never be recycled.

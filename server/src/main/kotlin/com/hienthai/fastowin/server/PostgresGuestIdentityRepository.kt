@@ -28,7 +28,8 @@ class PostgresGuestIdentityRepository(
         dataSource.connection.use { connection ->
             connection.autoCommit = false
             try {
-                connection.prepareStatement("SELECT pg_advisory_xact_lock(7421092187349)").use { it.execute() }
+                // Shared (ADM-01): guests are ordered by the FOR UPDATE row lock, not by this lock.
+                com.hienthai.fastowin.server.admin.AdminAuthorizationLock.shared(connection)
                 val moderation = com.hienthai.fastowin.server.moderation.JdbcModerationTransaction(connection)
                 val identity = if (resumeToken != null) findAndRefresh(connection, displayName, resumeToken, nowMillis,
                     acceptedContentTermsVersion, requiredContentTermsVersion)
