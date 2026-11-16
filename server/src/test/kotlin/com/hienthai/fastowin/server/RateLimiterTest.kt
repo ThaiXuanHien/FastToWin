@@ -3,6 +3,7 @@ package com.hienthai.fastowin.server
 import kotlinx.coroutines.test.runTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFailsWith
 import kotlin.test.assertFalse
 import kotlin.test.assertNotEquals
 import kotlin.test.assertTrue
@@ -38,6 +39,15 @@ class RateLimiterTest {
 
         now += 15 * 60_000L
         assertTrue(limiter.consume("login", "second", policy).allowed)
+    }
+
+    @Test
+    fun `registration allowance is strict in production and relaxed for development servers`() {
+        assertEquals(10, serverRateLimitPolicies("prod", emptyMap()).registerPerIp.capacity)
+        assertEquals(10_000, serverRateLimitPolicies("dev", emptyMap()).registerPerIp.capacity)
+        assertEquals(25, serverRateLimitPolicies("prod", mapOf("FASTTOWIN_REGISTER_LIMIT_PER_IP" to "25")).registerPerIp.capacity)
+        assertEquals(3, serverRateLimitPolicies("dev", emptyMap()).registerPerAccount.capacity)
+        assertFailsWith<IllegalArgumentException> { serverRateLimitPolicies("prod", mapOf("FASTTOWIN_REGISTER_LIMIT_PER_IP" to "0")) }
     }
 
     @Test

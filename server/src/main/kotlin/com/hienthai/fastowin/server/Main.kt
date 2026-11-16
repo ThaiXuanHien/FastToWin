@@ -125,6 +125,7 @@ fun main() {
             gameModule(
                 engine = engine,
                 rateLimiter = rateLimitRuntime,
+                rateLimitPolicies = serverRateLimitPolicies(environment),
                 authService = authService,
                 authEmailSender = authEmailSender,
                 environment = environment,
