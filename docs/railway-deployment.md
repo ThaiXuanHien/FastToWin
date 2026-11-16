@@ -121,6 +121,7 @@ Các tên dịch vụ trong reference phải đúng tên đã tạo trên Dashbo
 | `FASTTOWIN_EMAIL_FROM_EMAIL` | Địa chỉ người gửi đã xác minh trong Brevo |
 | `FASTTOWIN_FIREBASE_SERVICE_ACCOUNT_JSON` | Toàn bộ JSON service account Firebase Admin; nhập như secret, không commit |
 | `FASTTOWIN_EMAIL_FROM_NAME` | `Fast To Win` |
+| `FASTTOWIN_TURNSTILE_ENABLED` | Tuỳ chọn, mặc định tắt. `true` cần thêm `FASTTOWIN_TURNSTILE_SITE_KEY` và secret `FASTTOWIN_TURNSTILE_SECRET_KEY` (xem `docs/backend.md`, SEC-07) |
 
 Không gán `DATABASE_URL` bằng nguyên PostgreSQL URL chứa username/password:
 backend cần JDBC URL và nhận credentials bằng biến riêng. Dùng private
