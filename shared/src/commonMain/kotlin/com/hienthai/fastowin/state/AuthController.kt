@@ -19,6 +19,11 @@ import com.hienthai.fastowin.protocol.PlayerGender
 import com.hienthai.fastowin.platform.epochMillis
 import com.hienthai.fastowin.protocol.AuthSessionResponse
 import com.hienthai.fastowin.protocol.AccountSessionSnapshot
+import com.hienthai.fastowin.protocol.HUMAN_VERIFICATION_PAGE_PATH
+import com.hienthai.fastowin.protocol.HUMAN_VERIFICATION_REQUIRED_CODE
+import com.hienthai.fastowin.protocol.HumanVerificationAction
+import com.hienthai.fastowin.protocol.HumanVerificationConfigResponse
+import kotlinx.coroutines.CompletableDeferred
 import io.ktor.client.plugins.HttpRequestTimeoutException
 import io.ktor.client.network.sockets.ConnectTimeoutException
 import io.ktor.client.network.sockets.SocketTimeoutException
@@ -52,6 +57,18 @@ data class AuthState(
     val accountSessions: List<AccountSessionSnapshot> = emptyList(),
     val areSessionsLoading: Boolean = false
 )
+
+/** SEC-07: a Turnstile challenge the UI must show; [challengePageUrl] is the mobile WebView page. */
+data class HumanVerificationRequest(
+    val id: Long,
+    val siteKey: String,
+    val action: HumanVerificationAction,
+    val challengePageUrl: String,
+    val languageTag: String
+)
+
+/** The player closed the challenge; the form simply stays as it was. */
+class HumanVerificationCancelledException : Exception("Human verification was cancelled.")
 
 class AuthController(
     private val serverUrl: String,
@@ -94,6 +111,11 @@ class AuthController(
         }
     )
     val state: StateFlow<AuthState> = _state.asStateFlow()
+    private val _humanVerification = MutableStateFlow<HumanVerificationRequest?>(null)
+    val humanVerification: StateFlow<HumanVerificationRequest?> = _humanVerification.asStateFlow()
+    private var humanVerificationConfig: HumanVerificationConfigResponse? = null
+    private var pendingHumanVerification: CompletableDeferred<String?>? = null
+    private var nextHumanVerificationId = 0L
     private val refreshMutex = Mutex()
     private class RefreshWork(val session: StoredAuthSession, val result: Deferred<String?>)
     private var refreshWork: RefreshWork? = null
@@ -150,9 +172,13 @@ class AuthController(
         scope.launch { contentEntryConsent.begin { version ->
             _state.update { it.copy(isLoading = true, error = null) }
             try {
-                val response = api.register(email, password, displayName, devicePlatform, gender, version)
+                val response = withHumanVerification(HumanVerificationAction.REGISTER) { token ->
+                    api.register(email, password, displayName, devicePlatform, gender, version, token)
+                }
                 persist(email, displayName.trim(), response)
-                if (!response.emailVerified) requestEmailVerification()
+                if (!response.emailVerified) requestEmailVerification(challenge = false)
+            } catch (_: HumanVerificationCancelledException) {
+                _state.update { it.copy(isLoading = false) }
             } catch (error: Exception) { showError(error); throw error }
         } }
     }
@@ -167,10 +193,14 @@ class AuthController(
         scope.launch { contentEntryConsent.begin { version ->
             _state.update { it.copy(isLoading = true, error = null) }
             try {
-                val response = api.upgradeGuest(resumeToken, email, password, devicePlatform, version)
+                val response = withHumanVerification(HumanVerificationAction.UPGRADE_GUEST) { token ->
+                    api.upgradeGuest(resumeToken, email, password, devicePlatform, version, token)
+                }
                 persist(email, response.displayName, response)
                 resumeTokenStore.clear(serverUrl)
-                if (!response.emailVerified) requestEmailVerification()
+                if (!response.emailVerified) requestEmailVerification(challenge = false)
+            } catch (_: HumanVerificationCancelledException) {
+                _state.update { it.copy(isLoading = false) }
             } catch (error: Exception) { showError(error); throw error }
         } }
     }
@@ -323,7 +353,9 @@ class AuthController(
         _state.update { it.copy(isLoading = true, error = null, notice = null) }
         scope.launch {
             runCatching {
-                api.requestPasswordReset(email, messageMapper.language.languageTag)
+                withHumanVerification(HumanVerificationAction.PASSWORD_RESET) { token ->
+                    api.requestPasswordReset(email, messageMapper.language.languageTag, token)
+                }
             }
                 .onSuccess { response ->
                     _state.update {
@@ -353,14 +385,20 @@ class AuthController(
         }
     }
 
-    fun requestEmailVerification() {
+    /**
+     * [challenge] is false for the automatic send right after sign-up: the server lets that one
+     * through on the sign-up challenge, and asks again (handled below) only if it was already used.
+     */
+    fun requestEmailVerification(challenge: Boolean = true) {
         if (_state.value.isLoading || _state.value.session == null) return
         _state.update { it.copy(isLoading = true, error = null, notice = null) }
         scope.launch {
             val accessToken = actionAccessToken(::showError) ?: return@launch
             val expected = sessionForAccessToken(accessToken) ?: return@launch
             runCatching {
-                api.requestEmailVerification(accessToken, messageMapper.language.languageTag)
+                withHumanVerification(HumanVerificationAction.EMAIL_VERIFICATION, eager = challenge) { token ->
+                    api.requestEmailVerification(accessToken, messageMapper.language.languageTag, token)
+                }
             }
                 .onSuccess { response ->
                     if (response.emailVerified == true) {
@@ -527,6 +565,7 @@ class AuthController(
         closed = true
         diagnostics.emit(AuthDiagnosticPhase.CONTROLLER_CLOSED)
         contentEntryConsent.dismiss()
+        pendingHumanVerification?.complete(null)
         termsApi.close()
         api.close()
         scope.cancel()
@@ -553,7 +592,67 @@ class AuthController(
         diagnostics.credentialsStored(AuthDiagnosticPhase.SIGNED_IN)
     }
 
+    fun completeHumanVerification(token: String) {
+        if (token.isNotBlank()) pendingHumanVerification?.complete(token)
+    }
+
+    fun cancelHumanVerification() {
+        pendingHumanVerification?.complete(null)
+    }
+
+    /**
+     * Runs a protected call with a Turnstile token when the server asks for one. A stale "off"
+     * configuration (Turnstile switched on after it was read) is repaired by one challenged retry.
+     */
+    private suspend fun <T> withHumanVerification(
+        action: HumanVerificationAction,
+        eager: Boolean = true,
+        call: suspend (token: String?) -> T
+    ): T {
+        val token = if (eager) humanVerificationToken(action, refreshConfig = false) else null
+        return try {
+            call(token)
+        } catch (error: AuthApiException) {
+            if (error.code != HUMAN_VERIFICATION_REQUIRED_CODE) throw error
+            val fresh = humanVerificationToken(action, refreshConfig = true) ?: throw error
+            call(fresh)
+        }
+    }
+
+    /** Null when the server does not use Turnstile; throws when the player closes the challenge. */
+    private suspend fun humanVerificationToken(action: HumanVerificationAction, refreshConfig: Boolean): String? {
+        val config = humanVerificationConfig.takeUnless { refreshConfig }
+            ?: runCatching { api.humanVerificationConfig() }
+                .onSuccess { humanVerificationConfig = it }
+                .getOrNull()
+            ?: humanVerificationConfig
+            ?: return null
+        val siteKey = config.siteKey?.takeIf { config.enabled && it.isNotBlank() } ?: return null
+        pendingHumanVerification?.complete(null)
+        val pending = CompletableDeferred<String?>()
+        pendingHumanVerification = pending
+        _humanVerification.value = HumanVerificationRequest(
+            id = ++nextHumanVerificationId,
+            siteKey = siteKey,
+            action = action,
+            challengePageUrl = api.serverBaseUrl + HUMAN_VERIFICATION_PAGE_PATH,
+            languageTag = messageMapper.language.languageTag
+        )
+        try {
+            return pending.await() ?: throw HumanVerificationCancelledException()
+        } finally {
+            if (pendingHumanVerification === pending) {
+                pendingHumanVerification = null
+                _humanVerification.value = null
+            }
+        }
+    }
+
     private fun showError(error: Throwable) {
+        if (error is HumanVerificationCancelledException) {
+            _state.update { it.copy(isLoading = false) }
+            return
+        }
         _state.update {
             it.copy(
                 isLoading = false,

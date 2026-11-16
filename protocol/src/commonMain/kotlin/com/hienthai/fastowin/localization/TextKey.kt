@@ -421,5 +421,7 @@ ClanRaceTitle, ClanRacePrizes, ClanRacePerMember, ClanRaceEligibility, ClanRaceW
     TournamentCheckedIn, TournamentCheckInCount, TournamentCheckInCountdown,
     TournamentStartCountdown, TournamentStarting, TournamentRefundRule, TournamentScheduledHostInfo,
     TournamentCancelledRefund, TournamentRecordedParticipants, TournamentScheduledInvitationRule,
-    TournamentRefundRuleCompact
+    TournamentRefundRuleCompact,
+    HumanVerificationTitle, HumanVerificationDescription, HumanVerificationLoading,
+    HumanVerificationRequired, HumanVerificationFailed, HumanVerificationUnavailable
 }

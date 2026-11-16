@@ -9,6 +9,8 @@ import com.hienthai.fastowin.protocol.ChangePasswordRequest
 import com.hienthai.fastowin.protocol.DeleteAccountRequest
 import com.hienthai.fastowin.protocol.EmailVerificationConfirmRequest
 import com.hienthai.fastowin.protocol.EmailVerificationRequest
+import com.hienthai.fastowin.protocol.HUMAN_VERIFICATION_CONFIG_PATH
+import com.hienthai.fastowin.protocol.HumanVerificationConfigResponse
 import com.hienthai.fastowin.protocol.LoginRequest
 import com.hienthai.fastowin.protocol.LogoutRequest
 import com.hienthai.fastowin.protocol.PasswordResetConfirmRequest
@@ -25,6 +27,7 @@ import io.ktor.client.call.body
 import io.ktor.client.plugins.HttpTimeout
 import io.ktor.client.plugins.contentnegotiation.ContentNegotiation
 import io.ktor.client.request.HttpRequestBuilder
+import io.ktor.client.request.get
 import io.ktor.client.request.post
 import io.ktor.client.request.setBody
 import io.ktor.http.ContentType
@@ -59,10 +62,11 @@ class AuthApiClient(
         displayName: String,
         devicePlatform: String,
         gender: PlayerGender,
-        acceptedContentTermsVersion: String? = null
+        acceptedContentTermsVersion: String? = null,
+        humanVerificationToken: String? = null
     ): AuthSessionResponse = execute(
         "$baseUrl/auth/register",
-        RegisterRequest(email, password, displayName, devicePlatform, gender, acceptedContentTermsVersion)
+        RegisterRequest(email, password, displayName, devicePlatform, gender, acceptedContentTermsVersion, humanVerificationToken)
     )
 
     suspend fun login(email: String, password: String, devicePlatform: String): AuthSessionResponse =
@@ -73,10 +77,11 @@ class AuthApiClient(
         email: String,
         password: String,
         devicePlatform: String,
-        acceptedContentTermsVersion: String? = null
+        acceptedContentTermsVersion: String? = null,
+        humanVerificationToken: String? = null
     ): AuthSessionResponse = execute(
         "$baseUrl/auth/upgrade-guest",
-        UpgradeGuestRequest(resumeToken, email, password, devicePlatform, acceptedContentTermsVersion)
+        UpgradeGuestRequest(resumeToken, email, password, devicePlatform, acceptedContentTermsVersion, humanVerificationToken)
     )
 
     suspend fun refresh(
@@ -112,10 +117,11 @@ class AuthApiClient(
 
     suspend fun requestPasswordReset(
         email: String,
-        languageTag: String
+        languageTag: String,
+        humanVerificationToken: String? = null
     ): AccountActionResponse = executeAction(
         "$baseUrl/auth/password-reset/request",
-        PasswordResetRequest(email, languageTag)
+        PasswordResetRequest(email, languageTag, humanVerificationToken)
     )
 
     suspend fun confirmPasswordReset(
@@ -129,11 +135,24 @@ class AuthApiClient(
 
     suspend fun requestEmailVerification(
         accessToken: String,
-        languageTag: String
+        languageTag: String,
+        humanVerificationToken: String? = null
     ): AccountActionResponse = executeAction(
         "$baseUrl/auth/email-verification/request",
-        EmailVerificationRequest(accessToken, languageTag)
+        EmailVerificationRequest(accessToken, languageTag, humanVerificationToken)
     )
+
+    /** SEC-07: whether the server wants a Turnstile token on the protected forms. */
+    suspend fun humanVerificationConfig(): HumanVerificationConfigResponse {
+        val response = client.get("$baseUrl$HUMAN_VERIFICATION_CONFIG_PATH") { requestConfigurator.configure(this) }
+        // Older servers do not have the endpoint and never ask for a token.
+        if (response.status.value == 404) return HumanVerificationConfigResponse()
+        if (!response.status.isSuccess()) throw response.toAuthException()
+        return response.body()
+    }
+
+    /** Base URL the mobile WebView challenge page is loaded from. */
+    val serverBaseUrl: String get() = baseUrl
 
     suspend fun confirmEmailVerification(
         accessToken: String,
