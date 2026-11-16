@@ -312,6 +312,14 @@ fun FastToWinApp(
                     { entryScope.launch { authController.contentEntryConsent.accept() } },
                     { entryScope.launch { authController.contentEntryConsent.retry() } },
                     authController.contentEntryConsent::dismiss, dismissWhileSubmitting = false)
+                val humanVerification by authController.humanVerification.collectAsState()
+                humanVerification?.let { request ->
+                    com.hienthai.fastowin.ui.components.HumanVerificationDialog(
+                        request = request,
+                        onToken = authController::completeHumanVerification,
+                        onCancel = authController::cancelHumanVerification
+                    )
+                }
                 AuthScreen(
                     state = authState,
                     onOpenLogin = authController::openLogin,

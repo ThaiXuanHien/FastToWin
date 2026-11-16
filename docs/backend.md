@@ -160,6 +160,44 @@ Backend hỗ trợ tài khoản email/mật khẩu qua JSON API:
 Request, response, mã HTTP, mã lỗi và quy tắc cookie Web của từng endpoint được mô
 tả tại [đặc tả API tài khoản](account-api.md).
 
+### Xác minh chống bot (Cloudflare Turnstile, SEC-07)
+
+Turnstile **tắt mặc định**. Khi bật, `register`, `upgrade-guest`,
+`password-reset/request` và `email-verification/request` yêu cầu trường
+`humanVerificationToken`. Server kiểm tra token với Cloudflare sau các bước rate
+limit (để không gọi Cloudflare cho request bị chặn) và trước khi băm mật khẩu
+hoặc gửi email. Token phải được giải cho đúng form (`action` = `register`,
+`upgrade_guest`, `password_reset`, `email_verification`), nên token của form này
+không mở khoá được form khác.
+
+| Biến | Ý nghĩa |
+|---|---|
+| `FASTTOWIN_TURNSTILE_ENABLED` | `true` để bật; mặc định tắt |
+| `FASTTOWIN_TURNSTILE_SITE_KEY` | Site key công khai (bắt buộc khi bật) |
+| `FASTTOWIN_TURNSTILE_SECRET_KEY` hoặc `_FILE` | Secret key (bắt buộc khi bật; nhập như secret) |
+| `FASTTOWIN_TURNSTILE_HOSTNAMES` | Tuỳ chọn: danh sách hostname hợp lệ, cách nhau bởi dấu phẩy |
+
+Thiếu key khi đã bật thì server không khởi động. Phản hồi lỗi:
+`HUMAN_VERIFICATION_REQUIRED` (400, thiếu token), `HUMAN_VERIFICATION_FAILED`
+(403, token sai/hết hạn/sai form) và `HUMAN_VERIFICATION_UNAVAILABLE` (503,
+Cloudflare không phản hồi hoặc secret sai). Server từ chối (fail closed) khi
+Cloudflare lỗi.
+
+Email xác minh **đầu tiên** của mỗi tài khoản trong 15 phút không cần token,
+vì lần gửi tự động ngay sau đăng ký đã dựa trên challenge của bước đăng ký; các
+lần gửi lại trong cửa sổ đó phải giải challenge mới.
+
+Client đọc `GET /auth/human-verification` (`{"enabled":..., "siteKey":...}`).
+Web hiển thị widget ngay trong trang (CSP trong Caddyfile cho phép
+`https://challenges.cloudflare.com`). Android/iOS mở WebView tới
+`/auth/human-verification/challenge?action=...`, do server phục vụ trên cùng
+host với game, và nhận token qua cầu nối native. Trang này không có script
+inline và chỉ điều hướng trong host game và `challenges.cloudflare.com`.
+
+Cách bật: tạo widget Turnstile (chế độ **Managed**) trong Cloudflare Dashboard
+với hostname của game (ví dụ `fasttowin.up.railway.app`), đặt ba biến trên cho
+service `server`, deploy, rồi thử đăng ký trên Web, Android và iOS.
+
 Ví dụ đăng ký:
 
 ```json
