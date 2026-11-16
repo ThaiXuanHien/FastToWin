@@ -64,6 +64,7 @@ import com.hienthai.fastowin.data.preferences.AppPreferences
 import com.hienthai.fastowin.data.preferences.BoardStyle
 import com.hienthai.fastowin.platform.AppPushStatus
 import com.hienthai.fastowin.platform.AppInstallStatus
+import com.hienthai.fastowin.platform.PublicEndpoints
 import com.hienthai.fastowin.protocol.PushPreferencesSnapshot
 import com.hienthai.fastowin.ui.components.ArcadeBackdrop
 import com.hienthai.fastowin.ui.components.ArcadeDialog
@@ -113,7 +114,7 @@ fun SettingsScreen(
     modifier: Modifier = Modifier
 ) {
     val uriHandler = LocalUriHandler.current
-    val legalSuffix = if (LocalLocalization.current.language == AppLanguage.VIETNAMESE) "" else "/en"
+    val legalLanguage = LocalLocalization.current.language
     var showLanguageDialog by rememberSaveable { mutableStateOf(false) }
     val systemLanguage = resolveSavedLanguage("system", systemLanguageTags)
     if (showLanguageDialog) {
@@ -361,7 +362,7 @@ fun SettingsScreen(
                         ).forEach { (label, path) ->
                             ArcadeActionButton(
                                 label = localized(label),
-                                onClick = { uriHandler.openUri("https://fasttowin.up.railway.app/$path$legalSuffix") },
+                                onClick = { uriHandler.openUri(PublicEndpoints.legalUrl(path, legalLanguage)) },
                                 style = ArcadeActionStyle.OUTLINE,
                                 modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp).testTag("legal_$path")
                             )

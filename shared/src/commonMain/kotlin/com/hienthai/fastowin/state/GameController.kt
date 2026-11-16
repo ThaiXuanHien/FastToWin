@@ -100,9 +100,18 @@ class GameController private constructor(
                 messageMapper.message(code, null, emptyMap(), fallback)
             )
         },
+        // SCL-05: a deploy drops every socket at once; random spread stops all clients
+        // from reconnecting in the same instant. Injected test transports keep exact timing.
+        retryJitter = if (transport == null) {
+            com.hienthai.fastowin.data.network.RetryJitter { Random.nextLong(0, RECONNECT_JITTER_MILLIS) }
+        } else {
+            com.hienthai.fastowin.data.network.RetryJitter { 0L }
+        },
         transport = transport
     )
     private val scope = controllerScope ?: CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
+    /** APP-02: the server no longer accepts this app version. */
+    val updateRequired: StateFlow<Boolean> get() = socket.updateRequired
 
     val ugc = UgcController { socket.sendMessage(it) }
     private val termsApi = com.hienthai.fastowin.data.network.ContentTermsApiClient(serverUrl)
@@ -2610,6 +2619,8 @@ class GameController private constructor(
     }
 
     private companion object {
+        /** Upper bound of the random delay added to every automatic reconnect backoff. */
+        const val RECONNECT_JITTER_MILLIS = 2_000L
         val ROOM_BROWSER_REJECTION_CODES = setOf(
             "WRONG_PASSWORD",
             "ROOM_NOT_FOUND",

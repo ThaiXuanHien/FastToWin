@@ -75,7 +75,10 @@ android {
             buildConfigField(
                 "String",
                 "GAME_SERVER_URL",
-                "\"${providers.gradleProperty("FASTTOWIN_PROD_WS_URL").orElse("wss://fasttowin.up.railway.app/game").get()}\""
+                // APP-01: derived from FASTTOWIN_PUBLIC_HOST; FASTTOWIN_PROD_WS_URL stays as an explicit override.
+                "\"${providers.gradleProperty("FASTTOWIN_PROD_WS_URL").orElse(
+                    providers.gradleProperty("FASTTOWIN_PUBLIC_HOST").map { "wss://${com.hienthai.fastowin.build.PublicHost.validated(it)}/game" }
+                ).get()}\""
             )
             resValue("string", "app_name", "Fast To Win")
         }
