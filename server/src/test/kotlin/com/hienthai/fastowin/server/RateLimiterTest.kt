@@ -30,7 +30,7 @@ class RateLimiterTest {
     fun `buckets are isolated and bounded`() = runTest {
         var now = 1_000L
         val policy = RateLimitPolicy(capacity = 1, refillWindowMillis = 1_000L)
-        val limiter = InMemoryRateLimiter(nowMillis = { now }, maxBuckets = 2)
+        val limiter = InMemoryRateLimiter(nowMillis = { now }, maxKeysPerBucket = 1)
 
         assertTrue(limiter.consume("login", "first", policy).allowed)
         assertTrue(limiter.consume("join", "first", policy).allowed)
@@ -38,6 +38,19 @@ class RateLimiterTest {
 
         now += 15 * 60_000L
         assertTrue(limiter.consume("login", "second", policy).allowed)
+    }
+
+    @Test
+    fun `flooding one bucket with new keys does not block other buckets`() = runTest {
+        val policy = RateLimitPolicy(capacity = 5, refillWindowMillis = 60_000L)
+        val limiter = InMemoryRateLimiter(nowMillis = { 1_000L }, maxKeysPerBucket = 3)
+
+        repeat(3) { assertTrue(limiter.consume("login-ip", "attacker-$it", policy).allowed) }
+        assertFalse(limiter.consume("login-ip", "attacker-new", policy).allowed)
+
+        assertTrue(limiter.consume("websocket-message-player", "player", policy).allowed)
+        assertTrue(limiter.consume("register-ip", "player", policy).allowed)
+        assertTrue(limiter.consume("login-ip", "attacker-0", policy).allowed)
     }
 
     @Test
