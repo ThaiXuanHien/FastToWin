@@ -19,6 +19,10 @@ data class RateLimitPolicy(
 data class ServerRateLimitPolicies(
     val loginPerIp: RateLimitPolicy = RateLimitPolicy(20, 60_000L),
     val loginPerAccount: RateLimitPolicy = RateLimitPolicy(8, 5 * 60_000L),
+    // Registration hashes a password (PBKDF2, ~0.1-0.2 s CPU), so it is checked before any work.
+    // The IP allowance leaves room for players sharing a carrier-grade NAT address.
+    val registerPerIp: RateLimitPolicy = RateLimitPolicy(10, 15 * 60_000L),
+    val registerPerAccount: RateLimitPolicy = RateLimitPolicy(3, 15 * 60_000L),
     val passwordResetPerIp: RateLimitPolicy = RateLimitPolicy(10, 15 * 60_000L),
     val passwordResetPerAccount: RateLimitPolicy = RateLimitPolicy(3, 15 * 60_000L),
     val passwordResetConfirmPerIp: RateLimitPolicy = RateLimitPolicy(30, 15 * 60_000L),
@@ -49,6 +53,22 @@ data class ServerRateLimitPolicies(
     val reportPerIp: RateLimitPolicy = RateLimitPolicy(30, 10 * 60_000L)
 )
 
+/**
+ * Production keeps the strict registration allowance. Development servers (local runs and the
+ * Web E2E suites, which register many accounts from one loopback address) get a large one.
+ * FASTTOWIN_REGISTER_LIMIT_PER_IP (registrations per IP per 15 minutes) overrides either.
+ */
+fun serverRateLimitPolicies(environment: String, values: Map<String, String> = System.getenv()): ServerRateLimitPolicies {
+    val defaults = ServerRateLimitPolicies()
+    val override = values["FASTTOWIN_REGISTER_LIMIT_PER_IP"]?.trim()?.takeIf(String::isNotEmpty)?.let {
+        requireNotNull(it.toIntOrNull()?.takeIf { value -> value > 0 }) { "FASTTOWIN_REGISTER_LIMIT_PER_IP must be a positive whole number." }
+    }
+    val perIp = override ?: if (environment == "dev") DEV_REGISTER_LIMIT_PER_IP else defaults.registerPerIp.capacity
+    return defaults.copy(registerPerIp = RateLimitPolicy(perIp, defaults.registerPerIp.refillWindowMillis))
+}
+
+private const val DEV_REGISTER_LIMIT_PER_IP = 10_000
+
 data class RateLimitResult(
     val allowed: Boolean,
     val retryAfterMillis: Long = 0L
@@ -58,17 +78,22 @@ interface RateLimiter {
     suspend fun consume(bucket: String, key: String, policy: RateLimitPolicy): RateLimitResult
 }
 
+/**
+ * Keys are capped per bucket name (SEC-04), so flooding one unauthenticated bucket
+ * such as `login-ip` with new keys cannot deny service to other buckets, including
+ * the per-player buckets of already authenticated sessions.
+ */
 class InMemoryRateLimiter(
     private val nowMillis: () -> Long = { System.nanoTime() / 1_000_000L },
-    private val maxBuckets: Int = DEFAULT_MAX_BUCKETS
+    private val maxKeysPerBucket: Int = DEFAULT_MAX_KEYS_PER_BUCKET
 ) : RateLimiter {
     private val mutex = Mutex()
-    private val states = mutableMapOf<String, BucketState>()
+    private val buckets = mutableMapOf<String, MutableMap<String, BucketState>>()
     private var checks = 0L
-    private var lastCapacityCleanupAtMillis: Long? = null
+    private val lastCapacityCleanupAtMillis = mutableMapOf<String, Long>()
 
     init {
-        require(maxBuckets > 0) { "Maximum rate limit bucket count must be positive." }
+        require(maxKeysPerBucket > 0) { "Maximum rate limit key count must be positive." }
     }
 
     override suspend fun consume(
@@ -80,16 +105,16 @@ class InMemoryRateLimiter(
         checks++
         if (checks % CLEANUP_INTERVAL_CHECKS == 0L) removeIdleBuckets(now)
 
-        val stateKey = "$bucket:$key"
-        var state = states[stateKey]
+        val states = buckets.getOrPut(bucket) { mutableMapOf() }
+        var state = states[key]
         if (state == null) {
-            if (states.size >= maxBuckets) {
-                val lastCleanup = lastCapacityCleanupAtMillis
+            if (states.size >= maxKeysPerBucket) {
+                val lastCleanup = lastCapacityCleanupAtMillis[bucket]
                 if (lastCleanup == null || now - lastCleanup >= CAPACITY_CLEANUP_INTERVAL_MILLIS) {
-                    removeIdleBuckets(now)
-                    lastCapacityCleanupAtMillis = now
+                    removeIdleKeys(states, now)
+                    lastCapacityCleanupAtMillis[bucket] = now
                 }
-                if (states.size >= maxBuckets) {
+                if (states.size >= maxKeysPerBucket) {
                     return@withLock RateLimitResult(false, BUCKET_CAPACITY_RETRY_MILLIS)
                 }
             }
@@ -98,7 +123,7 @@ class InMemoryRateLimiter(
                 refilledAtMillis = now,
                 lastSeenAtMillis = now
             )
-            states[stateKey] = state
+            states[key] = state
         }
 
         val elapsedMillis = (now - state.refilledAtMillis).coerceAtLeast(0L)
@@ -123,6 +148,11 @@ class InMemoryRateLimiter(
     }
 
     private fun removeIdleBuckets(now: Long) {
+        buckets.values.forEach { removeIdleKeys(it, now) }
+        buckets.entries.removeAll { (_, states) -> states.isEmpty() }
+    }
+
+    private fun removeIdleKeys(states: MutableMap<String, BucketState>, now: Long) {
         states.entries.removeAll { (_, state) -> now - state.lastSeenAtMillis >= IDLE_BUCKET_TTL_MILLIS }
     }
 
@@ -133,7 +163,8 @@ class InMemoryRateLimiter(
     )
 
     private companion object {
-        const val DEFAULT_MAX_BUCKETS = 50_000
+        // About 200 bytes per key: 50k keys in each bucket stay near 10 MB.
+        const val DEFAULT_MAX_KEYS_PER_BUCKET = 50_000
         const val CLEANUP_INTERVAL_CHECKS = 1_024L
         const val CAPACITY_CLEANUP_INTERVAL_MILLIS = 1_000L
         const val IDLE_BUCKET_TTL_MILLIS = 15 * 60_000L
@@ -146,6 +177,8 @@ internal object RateLimitBuckets {
     const val AVATAR_IP = "avatar-ip"
     const val LOGIN_IP = "login-ip"
     const val LOGIN_ACCOUNT = "login-account"
+    const val REGISTER_IP = "register-ip"
+    const val REGISTER_ACCOUNT = "register-account"
     const val PASSWORD_RESET_IP = "password-reset-ip"
     const val PASSWORD_RESET_ACCOUNT = "password-reset-account"
     const val PASSWORD_RESET_CONFIRM_IP = "password-reset-confirm-ip"

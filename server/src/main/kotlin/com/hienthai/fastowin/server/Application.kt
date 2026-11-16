@@ -102,6 +102,7 @@ fun Application.gameModule(
     rateLimitPolicies: ServerRateLimitPolicies = ServerRateLimitPolicies(),
     authEmailSender: AuthEmailSender = DisabledAuthEmailSender,
     trustProxyHeaders: Boolean = false,
+    connectionLimiter: WebSocketConnectionLimiter = WebSocketConnectionLimiter(),
     seasonLifecycleRepository: SeasonLifecycleRepository = NoOpSeasonLifecycleRepository,
     pushReminderService: PushReminderService = NoOpPushReminderService,
     serviceStatusProvider: () -> ServiceStatusResponse = ::serviceStatusFromEnvironment,
@@ -395,7 +396,9 @@ fun Application.gameModule(
             call.response.header(HttpHeaders.CacheControl, "no-store")
             call.respondText(
                 metrics.render() + ((rateLimiter as? com.hienthai.fastowin.server.ratelimit.RateLimitRuntime)?.renderMetrics() ?: "") +
-                    presenceStore?.renderMetrics().orEmpty(),
+                    presenceStore?.renderMetrics().orEmpty() +
+                    (authEmailSender as? MeteredAuthEmailSender)?.renderMetrics().orEmpty() +
+                    connectionLimiter.renderMetrics(),
                 ContentType.parse("text/plain; version=0.0.4; charset=utf-8")
             )
         }
@@ -403,7 +406,12 @@ fun Application.gameModule(
         get("/api/content-terms") { call.respond(engine.moderationService.publicTerms()) }
         post("/auth/register") {
             if (call.rejectMaintenanceNewIntent(engine.newIntentAllowed())) return@post
+            if (!call.consumeHttpRateLimit(rateLimiter, RateLimitBuckets.REGISTER_IP, call.clientRateLimitKey(), rateLimitPolicies.registerPerIp)) return@post
             val request = call.receiveOrReject<RegisterRequest>() ?: return@post
+            if (!call.consumeHttpRateLimit(
+                    rateLimiter, RateLimitBuckets.REGISTER_ACCOUNT,
+                    stableRateLimitKey(request.email.trim().lowercase()), rateLimitPolicies.registerPerAccount
+                )) return@post
             val webSession = call.resolveWebSessionRequest(request.devicePlatform, allowedWebOrigins)
                 ?: return@post
             call.respondAuthResult(
@@ -460,7 +468,13 @@ fun Application.gameModule(
 
         post("/auth/upgrade-guest") {
             if (call.rejectMaintenanceNewIntent(engine.newIntentAllowed())) return@post
+            // Upgrading a guest hashes a password too, so it shares the registration allowance.
+            if (!call.consumeHttpRateLimit(rateLimiter, RateLimitBuckets.REGISTER_IP, call.clientRateLimitKey(), rateLimitPolicies.registerPerIp)) return@post
             val request = call.receiveOrReject<UpgradeGuestRequest>() ?: return@post
+            if (!call.consumeHttpRateLimit(
+                    rateLimiter, RateLimitBuckets.REGISTER_ACCOUNT,
+                    stableRateLimitKey(request.email.trim().lowercase()), rateLimitPolicies.registerPerAccount
+                )) return@post
             val webSession = call.resolveWebSessionRequest(request.devicePlatform, allowedWebOrigins)
                 ?: return@post
             call.respondAuthResult(
@@ -570,7 +584,12 @@ fun Application.gameModule(
                     )
                 }.onFailure { error ->
                     // Keep the response generic so delivery errors cannot reveal registered accounts.
-                    System.err.println("Could not send password reset email: ${error.message}")
+                    // MeteredAuthEmailSender counts the failure for alerting (EML-03).
+                    if (error is EmailDailyLimitReachedException) {
+                        System.err.println("Password reset email skipped: daily email allowance reached")
+                    } else {
+                        System.err.println("Could not send password reset email: ${error.message}")
+                    }
                 }
             }
             call.respondAccountAction(result, exposeResetToken = environment == "dev")
@@ -631,6 +650,13 @@ fun Application.gameModule(
                         result.emailVerificationCode,
                         resolveNotificationLanguage(request.languageTag)
                     )
+                } catch (_: EmailDailyLimitReachedException) {
+                    System.err.println("Email verification skipped: daily email allowance reached")
+                    call.respond(
+                        HttpStatusCode.ServiceUnavailable,
+                        structuredAuthError("EMAIL_DAILY_LIMIT_REACHED", legacyFallback("Chưa thể gửi email. Vui lòng thử lại sau."))
+                    )
+                    return@post
                 } catch (error: Exception) {
                     System.err.println("Could not send email verification: ${error.message}")
                     call.respond(
@@ -682,6 +708,13 @@ fun Application.gameModule(
                 return@webSocket
             }
             val clientRateLimitKey = stableRateLimitKey(call.request.origin.remoteHost)
+            val connectionLease = connectionLimiter.tryAcquire(clientRateLimitKey)
+            if (connectionLease == null) {
+                metrics.webSocketRateLimited()
+                close(CloseReason(CloseReason.Codes.TRY_AGAIN_LATER, "Too many open connections"))
+                metrics.webSocketClosed()
+                return@webSocket
+            }
             var playerId: String? = null
             var playerRateLimitKey: String? = null
             var accountAccessToken: String? = null
@@ -920,6 +953,7 @@ fun Application.gameModule(
                 }
             } finally {
                 metrics.webSocketClosed()
+                connectionLease.release()
                 kotlinx.coroutines.withContext(kotlinx.coroutines.NonCancellable) {
                     presenceHeartbeat?.cancelAndJoin()
                     val connection = registeredConnection

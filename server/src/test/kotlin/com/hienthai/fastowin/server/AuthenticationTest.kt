@@ -211,6 +211,45 @@ class AuthenticationTest {
     }
 
     @Test
+    fun `registration is rate limited by email before any password hashing`() = testApplication {
+        val policies = ServerRateLimitPolicies(
+            registerPerIp = RateLimitPolicy(capacity = 10, refillWindowMillis = 60_000L),
+            registerPerAccount = RateLimitPolicy(capacity = 2, refillWindowMillis = 60_000L)
+        )
+        application { gameModule(rateLimiter = InMemoryRateLimiter(nowMillis = { 1_000L }), rateLimitPolicies = policies) }
+
+        assertEquals(HttpStatusCode.Created, client.postJson(
+            "/auth/register", RegisterRequest(" Spam@Example.com ", PASSWORD, "First", "android")
+        ).status)
+        // The duplicate still consumes the email allowance even though it fails.
+        assertEquals(HttpStatusCode.Conflict, client.postJson(
+            "/auth/register", RegisterRequest("spam@example.com", PASSWORD, "Second", "android")
+        ).status)
+        val limited = client.postJson("/auth/register", RegisterRequest("SPAM@example.com", PASSWORD, "Third", "android"))
+        assertEquals(HttpStatusCode.TooManyRequests, limited.status)
+        assertEquals("RATE_LIMITED", limited.decode<AuthErrorResponse>().code)
+
+        assertEquals(HttpStatusCode.Created, client.postJson(
+            "/auth/register", RegisterRequest("other@example.com", PASSWORD, "Other", "android")
+        ).status)
+    }
+
+    @Test
+    fun `registration is rate limited by client address`() = testApplication {
+        val policies = ServerRateLimitPolicies(registerPerIp = RateLimitPolicy(capacity = 2, refillWindowMillis = 60_000L))
+        application { gameModule(rateLimiter = InMemoryRateLimiter(nowMillis = { 1_000L }), rateLimitPolicies = policies) }
+
+        repeat(2) { index ->
+            assertEquals(HttpStatusCode.Created, client.postJson(
+                "/auth/register", RegisterRequest("ip-$index@example.com", PASSWORD, "Player $index", "android")
+            ).status)
+        }
+        val limited = client.postJson("/auth/register", RegisterRequest("ip-3@example.com", PASSWORD, "Player 3", "android"))
+        assertEquals(HttpStatusCode.TooManyRequests, limited.status)
+        assertTrue(limited.headers[HttpHeaders.RetryAfter].orEmpty().isNotBlank())
+    }
+
+    @Test
     fun `login is rate limited by account and client address`() = testApplication {
         var now = 1_000L
         val policies = ServerRateLimitPolicies(

@@ -1,6 +1,15 @@
 {
 	admin off
 	auto_https off
+	# SEC-01: only proxies inside these ranges may supply the client IP header.
+	# Railway's edge reaches this service over its private network; when Cloudflare
+	# is in front, set FASTTOWIN_CLIENT_IP_HEADERS=CF-Connecting-IP (see
+	# docs/infrastructure-runbook.md). An untrusted peer falls back to its own address.
+	servers {
+		trusted_proxies static {$FASTTOWIN_TRUSTED_PROXIES:private_ranges 100.64.0.0/10}
+		client_ip_headers {$FASTTOWIN_CLIENT_IP_HEADERS:X-Real-IP X-Forwarded-For}
+		trusted_proxies_strict
+	}
 }
 
 :{$PORT:8080} {
@@ -16,6 +25,11 @@
 		reverse_proxy {$BACKEND_UPSTREAM} {
 			# This service is reached only through Railway's HTTPS edge.
 			header_up X-Forwarded-Proto https
+			# The backend keys rate limits on the first X-Forwarded-For value, so it
+			# must be exactly the resolved client IP and never a client-supplied chain.
+			header_up X-Forwarded-For {client_ip}
+			header_up -X-Real-IP
+			header_up -CF-Connecting-IP
 		}
 	}
 

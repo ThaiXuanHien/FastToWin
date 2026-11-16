@@ -44,7 +44,11 @@ fun main() {
             ?.let { RedisPresenceStore(it) }
         val (adminService, moderationService) = createModerationRuntime(database, adminConfiguration, rateLimitRuntime)
         val authService = AuthenticationService(database?.authRepository ?: InMemoryAuthRepository(), moderationService = moderationService)
-        val authEmailSender = configuredAuthEmailSender()
+        val authEmailSender = MeteredAuthEmailSender(
+            configuredAuthEmailSender(),
+            database?.emailDailyBudget ?: InMemoryEmailDailyBudget(),
+            EmailDeliverySettings.fromEnvironment()
+        )
         val identityRepository = database?.identityRepository ?: InMemoryGuestIdentityRepository()
         val matchResultRepository = database?.matchResultRepository ?: NoOpMatchResultRepository
         val playerProfileRepository = database?.playerProfileRepository ?: NoOpPlayerProfileRepository
@@ -119,10 +123,12 @@ fun main() {
             gameModule(
                 engine = engine,
                 rateLimiter = rateLimitRuntime,
+                rateLimitPolicies = serverRateLimitPolicies(environment),
                 authService = authService,
                 authEmailSender = authEmailSender,
                 environment = environment,
                 trustProxyHeaders = trustProxyHeaders,
+                connectionLimiter = WebSocketConnectionLimiter.fromEnvironment(),
                 seasonLifecycleRepository = seasonLifecycleRepository,
                 pushReminderService = pushReminderService,
                 adminService = adminService,
