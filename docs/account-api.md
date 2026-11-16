@@ -416,6 +416,13 @@ Request Web sai origin/header nhận `403 INVALID_WEB_SESSION_REQUEST`.
 | Thử mã xác minh theo IP | 120 lần/15 phút |
 | Thử mã xác minh theo tài khoản | 8 lần/15 phút |
 
+Khi bật Cloudflare Turnstile (SEC-07, tắt mặc định), đăng ký, nâng cấp khách,
+gửi mã khôi phục và gửi lại mã xác minh nhận thêm trường `humanVerificationToken`.
+Thiếu token trả `400 HUMAN_VERIFICATION_REQUIRED`, token không hợp lệ trả
+`403 HUMAN_VERIFICATION_FAILED`, Cloudflare không phản hồi trả
+`503 HUMAN_VERIFICATION_UNAVAILABLE`. Client đọc `GET /auth/human-verification`
+để biết có cần challenge hay không. Chi tiết xem `docs/backend.md`.
+
 Khi vượt giới hạn, server trả `429 Too Many Requests`, lỗi `RATE_LIMITED` và header
 `Retry-After`. Rate limiter hiện nằm trong bộ nhớ của từng backend instance; cần
 Redis hoặc kho dùng chung trước khi scale ngang.
