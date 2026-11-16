@@ -19,9 +19,23 @@ class AdminService(
     val configuration: AdminConfiguration,
     private val passwordHasher: PasswordHasher = PasswordHasher(),
     private val nowMillis: () -> Long = System::currentTimeMillis,
-    private val rateLimiter: RateLimiter = InMemoryRateLimiter()
+    private val rateLimiter: RateLimiter = InMemoryRateLimiter(),
+    val alerts: AdminAlertSink = AdminAlertSink.NONE,
+    val publishLimits: AdminPublishLimits = AdminPublishLimits()
 ) {
     private val random = SecureRandom()
+    private val failedLogins = FailedLoginTracker(nowMillis)
+
+    /** ADM-11: called only after the transaction that caused the event has committed. */
+    internal fun alert(title: String, vararg details: Pair<String, String?>) {
+        alerts.alert(AdminAlert(title, details.mapNotNull { (k, v) -> v?.let { k to it } }, nowMillis()))
+    }
+
+    private fun failedSignIn(email: String, address: String?) {
+        failedLogins.record(email)?.let { count ->
+            alert("Nhiều lần đăng nhập quản trị thất bại", "Email" to email, "Số lần trong 15 phút" to count.toString(), "IP" to address)
+        }
+    }
     private val dummyHash by lazy { passwordHasher.hash(randomToken()) }
     private fun randomToken(): String = Base64.getUrlEncoder().withoutPadding().encodeToString(ByteArray(32).also(random::nextBytes))
     private fun csrf(token: String) = hashToken("admin-csrf:$token")
@@ -53,9 +67,9 @@ class AdminService(
         }
         val candidate = repository.readTransaction { accountByEmail(normalized) }
         val valid = withContext(Dispatchers.Default) { passwordHasher.verify(password, candidate?.passwordHash ?: dummyHash) }
-        if (!valid || candidate == null) unauthorized()
+        if (!valid || candidate == null) { failedSignIn(normalized, address); unauthorized() }
         val token = randomToken()
-        return repository.transaction<AdminLoginOutcome> {
+        val outcome = repository.transaction<AdminLoginOutcome> {
             val current = account(candidate.identity.id)
             if (current == null || !current.identity.active || current.passwordHash != candidate.passwordHash) unauthorized()
             val mfa = mfa(current.identity.id)
@@ -74,15 +88,21 @@ class AdminService(
             AdminLoginOutcome.Challenge(AdminMfaChallengeResponse("ENROLL", token, Base32.encode(secret),
                 Totp.otpauthUri(current.identity.email, secret)))
         }
+        if (outcome is AdminLoginOutcome.Session) signedIn(outcome.login.response.admin, address, "Mật khẩu")
+        return outcome
     }
 
+    private fun signedIn(admin: AdminIdentity, address: String?, method: String) =
+        alert("Đăng nhập quản trị", "Email" to admin.email, "Vai trò" to admin.role.name, "Cách xác thực" to method, "IP" to address)
+
     /** Completes a challenge with a TOTP code or, for enrolled accounts, a single-use recovery code. */
-    suspend fun completeMfa(request: AdminMfaVerifyRequest, origin: String?): AdminMfaLogin {
+    suspend fun completeMfa(request: AdminMfaVerifyRequest, origin: String?, address: String? = null): AdminMfaLogin {
         requireOrigin(origin)
         if (!request.challengeToken.matches(Regex("[A-Za-z0-9_-]{43}"))) unauthorized()
         if ((request.code == null) == (request.recoveryCode == null)) invalid()
         if ((request.code?.length ?: 0) > 16 || (request.recoveryCode?.length ?: 0) > 32) invalid()
         val token = randomToken()
+        var failedEmail: String? = null
         // Failed attempts must persist, so failures are returned from the transaction and thrown after commit.
         val result = repository.transaction<Result<AdminMfaLogin>> {
             val tokenHash = hashToken(request.challengeToken)
@@ -109,6 +129,7 @@ class AdminService(
                 val attempts = challenge.attempts + 1
                 if (attempts >= MFA_MAX_ATTEMPTS) deleteMfaChallenge(tokenHash) else putMfaChallenge(challenge.copy(attempts = attempts))
                 auditEntry(account.identity.id, "ADMIN_MFA_FAILED")
+                failedEmail = account.identity.email
                 return@transaction Result.failure(mfaFailure(if (attempts >= MFA_MAX_ATTEMPTS) "MFA_CHALLENGE_EXPIRED" else "MFA_INVALID_CODE"))
             }
             deleteMfaChallenge(tokenHash)
@@ -122,7 +143,12 @@ class AdminService(
             val opened = openSession(account.copy(identity = account.identity.copy(mfaEnabled = true)), token)
             Result.success(AdminMfaLogin(opened.token, AdminMfaSessionResponse(opened.response.admin, opened.response.csrfToken, recoveryCodes)))
         }
-        return result.getOrThrow()
+        val login = result.getOrElse { failure ->
+            failedEmail?.let { failedSignIn(it, address) }
+            throw failure
+        }
+        signedIn(login.response.admin, address, if (request.recoveryCode != null) "Mã khôi phục" else "Mật khẩu + TOTP")
+        return login
     }
 
     /** Owner-only: removes another admin's second factor (lost device) and ends their sessions. */
@@ -140,7 +166,7 @@ class AdminService(
             auditEntry(actor.id, "ADMIN_MFA_RESET", id, request.requestId, request.reason)
             putDeduplication(actor.id, request.requestId, AdminDeduplication(fingerprint, identity))
             identity
-        }
+        }.also { alert("Đặt lại xác thực hai lớp", "Tài khoản" to it.email, "Lý do" to request.reason) }
     }
 
     /**
@@ -225,7 +251,7 @@ class AdminService(
                 putDeduplication(actor.id, request.requestId, AdminDeduplication(fingerprint, identity))
                 identity
             }
-        }
+        }.also { alert("Cấp tài khoản quản trị mới", "Tài khoản" to it.email, "Vai trò" to it.role.name, "Lý do" to request.reason) }
     }
 
     suspend fun changeAccess(token: String?, csrfToken: String?, origin: String?, id: String, request: ChangeAdminAccessRequest): AdminIdentity {
@@ -242,7 +268,7 @@ class AdminService(
             auditEntry(actor.id, "ADMIN_ACCESS", id, request.requestId, request.reason, accessSummary(existing.identity), accessSummary(identity))
             putDeduplication(actor.id, request.requestId, AdminDeduplication(fingerprint, identity))
             identity
-        }
+        }.also { alert("Thay đổi quyền quản trị", "Tài khoản" to it.email, "Quyền mới" to accessSummary(it), "Lý do" to request.reason) }
     }
 
     suspend fun createPlayer(token: String?, csrfToken: String?, origin: String?, request: CreatePlayerRequest): UserDetail {

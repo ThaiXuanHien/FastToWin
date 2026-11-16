@@ -1,7 +1,9 @@
 package com.hienthai.fastowin.server
 
 import com.hienthai.fastowin.server.avatars.*
+import com.hienthai.fastowin.server.admin.AdminAlertSink
 import com.hienthai.fastowin.server.admin.AdminConfiguration
+import com.hienthai.fastowin.server.admin.AdminPublishLimits
 import com.hienthai.fastowin.server.admin.AdminService
 import com.hienthai.fastowin.server.admin.InMemoryAdminRepository
 import com.hienthai.fastowin.server.announcements.AnnouncementService
@@ -177,7 +179,8 @@ internal fun createModerationRuntime(
 ): Pair<AdminService?, com.hienthai.fastowin.server.moderation.ModerationService> {
     val memoryAdmins = if (database == null) InMemoryAdminRepository() else null
     val adminService = adminConfiguration?.let { configuration ->
-        AdminService(database?.adminRepository ?: checkNotNull(memoryAdmins), configuration, rateLimiter = rateLimiter)
+        AdminService(database?.adminRepository ?: checkNotNull(memoryAdmins), configuration, rateLimiter = rateLimiter,
+            alerts = AdminAlertSink.fromEnvironment(), publishLimits = AdminPublishLimits.fromEnvironment())
     }
     val moderationService = com.hienthai.fastowin.server.moderation.ModerationService(
         database?.moderationRepository ?: com.hienthai.fastowin.server.moderation.InMemoryModerationRepository(checkNotNull(memoryAdmins)),

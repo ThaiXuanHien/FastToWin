@@ -145,21 +145,44 @@ class CompensationRoundService(val repository: GiftRepository, private val admin
         val result = preview(i, r, c).first; audit(actor, "COMPENSATION_ROUND_PREVIEW", roundId, request.requestId, request.reason, c.version, c.version)
         save(actor.id, request.requestId, fp, "ROUND_PREVIEW", result)
     }
-    suspend fun publish(context: GiftAdminContext, incidentId: String, id: String, request: CompensationRoundPublishRequest): CompensationRoundDetail = repository.transaction(true) {
+    suspend fun publish(context: GiftAdminContext, incidentId: String, id: String, request: CompensationRoundPublishRequest): CompensationRoundDetail {
+        var control: DualControl = DualControl.Allowed
+        var label = ""
+        val result = repository.transaction(true) { publishLocked(context, incidentId, id, request) { actorId, roundId, version, amounts, recipients, title ->
+            label = title
+            control = admin.dualControl("COMPENSATION_ROUND", roundId, "v$version", actorId,
+                admins.publishLimits.exceeded(amounts, recipients), nowMillis())
+            control !is DualControl.Pending
+        } }
+        when (val decided = control) {
+            is DualControl.Pending -> {
+                if (decided.newlyRequested) admins.alert("Yêu cầu duyệt công bố bồi thường vượt trần", "Nội dung" to label, "Vượt trần" to decided.reasons.joinToString("; "))
+                approvalRequired(decided)
+            }
+            is DualControl.Approved -> admins.alert("Đã duyệt và công bố bồi thường vượt trần", "Nội dung" to label, "Vượt trần" to decided.reasons.joinToString("; "))
+            DualControl.Allowed -> Unit
+        }
+        return result ?: error("unreachable: pending publication was reported")
+    }
+    private fun GiftTransaction.publishLocked(
+        context: GiftAdminContext, incidentId: String, id: String, request: CompensationRoundPublishRequest,
+        approve: GiftTransaction.(actorId: String, roundId: String, version: Int, amounts: com.hienthai.fastowin.server.admin.RewardAmounts, recipients: Long, title: String) -> Boolean
+    ): CompensationRoundDetail? {
         val actor = authorize(context, true, true); val target = canonical(incidentId); val roundId = canonical(id)
         guards(request.incidentVersion, request.expectedVersion, request.requestId, request.reason)
         if (!request.previewToken.matches(Regex("[a-f0-9]{64}"))) invalid()
         val fp = hashToken("round-publish:$target:$roundId:" + Json.encodeToString(request))
-        replay<CompensationRoundDetail>(actor.id, request.requestId, fp, "ROUND_DETAIL")?.let { return@transaction it }
+        replay<CompensationRoundDetail>(actor.id, request.requestId, fp, "ROUND_DETAIL")?.let { return it }
         val i = incident(target, request.incidentVersion, true); val (mapping, old) = mapped(i, roundId, true)
         if (old.state != CampaignState.DRAFT || old.version != request.expectedVersion) conflict()
         val (fresh, audience) = preview(i, mapping, old)
         if (fresh.invalidUserIds.isNotEmpty()) invalid()
         if (fresh.previewToken != request.previewToken) conflict()
+        if (!approve(actor.id, roundId, old.version, content(i, mapping, old).draft.rewardAmounts(), audience.users.size.toLong(), old.draft.titleVi)) return null
         val r = mapping.copy(updatedByAdminId = actor.id, updatedAtEpochMillis = nowMillis(), publishedByAdminId = actor.id)
         val c = content(i, r, old).copy(state = CampaignState.PUBLISHED, version = nextVersion(old.version), publishedAtEpochMillis = nowMillis())
         freeze(c.id, audience.users); putCampaign(c); compensation.putRound(r); audit(actor, "COMPENSATION_ROUND_PUBLISH", roundId, request.requestId, request.reason, old.version, c.version)
-        save(actor.id, request.requestId, fp, "ROUND_DETAIL", result(i, r, c))
+        return save(actor.id, request.requestId, fp, "ROUND_DETAIL", result(i, r, c))
     }
     suspend fun cancel(context: GiftAdminContext, incidentId: String, id: String, request: CompensationRoundCancelRequest): CompensationRoundDetail = repository.transaction(true) {
         val actor = authorize(context, true, true); val target = canonical(incidentId); val roundId = canonical(id)

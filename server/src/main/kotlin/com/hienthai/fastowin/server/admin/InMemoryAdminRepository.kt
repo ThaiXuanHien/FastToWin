@@ -26,11 +26,12 @@ class InMemoryAdminRepository : AdminRepository {
         val mfa: MutableMap<String, AdminMfaRecord> = linkedMapOf(),
         /** adminId to (code hash to used). */
         val recoveryCodes: MutableMap<String, Map<String, Boolean>> = linkedMapOf(),
-        val mfaChallenges: MutableMap<String, AdminMfaChallenge> = linkedMapOf()
+        val mfaChallenges: MutableMap<String, AdminMfaChallenge> = linkedMapOf(),
+        val approvals: MutableMap<Triple<String, String, String>, PublishApproval> = linkedMapOf()
     ) {
         fun snapshot() = State(accounts.toMutableMap(), sessions.toMutableMap(), requests.toMutableMap(), audits.toMutableList(),
             users.toMutableMap(), matches.toMutableMap(), wallet.toMutableMap(), announcementPush.toMutableMap(), playerStorageAvailable,
-            mfa.toMutableMap(), recoveryCodes.toMutableMap(), mfaChallenges.toMutableMap())
+            mfa.toMutableMap(), recoveryCodes.toMutableMap(), mfaChallenges.toMutableMap(), approvals.toMutableMap())
     }
     suspend fun seedUser(user: UserDetail, matches: List<MatchEntry> = emptyList(), wallet: List<WalletEntry> = emptyList()) = mutex.withLock {
         state.playerStorageAvailable = true; state.users[user.id] = user; state.matches[user.id] = matches; state.wallet[user.id] = wallet
@@ -94,6 +95,13 @@ class InMemoryAdminRepository : AdminRepository {
             override fun mfaChallenge(tokenHash: String) = next.mfaChallenges[tokenHash]
             override fun putMfaChallenge(challenge: AdminMfaChallenge) { next.mfaChallenges[challenge.tokenHash] = challenge }
             override fun deleteMfaChallenge(tokenHash: String) { next.mfaChallenges.remove(tokenHash) }
+            override fun publishApproval(kind: String, targetId: String, versionKey: String) = next.approvals[Triple(kind, targetId, versionKey)]
+            override fun putPublishApproval(approval: PublishApproval) {
+                next.approvals.putIfAbsent(Triple(approval.kind, approval.targetId, approval.versionKey), approval)
+            }
+            override fun deletePublishApprovals(kind: String, targetId: String) {
+                next.approvals.keys.removeAll { it.first == kind && it.second == targetId }
+            }
             override fun deduplication(actorId: String, requestId: String) = next.requests[actorId to requestId]
             override fun putDeduplication(actorId: String, requestId: String, value: AdminDeduplication) { next.requests[actorId to requestId] = value }
             override fun appendAudit(entry: AuditEntry) { next.audits.add(entry) }

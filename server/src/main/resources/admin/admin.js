@@ -27,6 +27,7 @@ const labels = {
   PLAYER_SUPPORT_CREATE: 'Tạo tài khoản người chơi để hỗ trợ',
   ADMIN_MFA_ENROLL: 'Bật xác thực hai lớp', ADMIN_MFA_FAILED: 'Mã xác thực sai', ADMIN_MFA_RESET: 'Đặt lại xác thực hai lớp',
   ADMIN_MFA_RECOVERY_CODE_USED: 'Đăng nhập bằng mã khôi phục', ADMIN_OFFLINE_RECOVERY: 'Khôi phục tài khoản ngoại tuyến',
+  PUBLISH_APPROVAL_REQUESTED: 'Yêu cầu duyệt công bố vượt trần', PUBLISH_APPROVAL_GRANTED: 'Duyệt công bố vượt trần',
 };
 const label = value => Object.hasOwn(labels, value) ? labels[value] : value;
 let session = null;

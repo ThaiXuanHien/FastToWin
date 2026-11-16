@@ -31,6 +31,10 @@ interface AdminTransaction {
     fun mfaChallenge(tokenHash: String): AdminMfaChallenge?
     fun putMfaChallenge(challenge: AdminMfaChallenge)
     fun deleteMfaChallenge(tokenHash: String)
+    fun publishApproval(kind: String, targetId: String, versionKey: String): PublishApproval?
+    fun putPublishApproval(approval: PublishApproval)
+    /** Removes every pending version for the target, so a completed or changed draft starts over. */
+    fun deletePublishApprovals(kind: String, targetId: String)
     fun deduplication(actorId: String, requestId: String): AdminDeduplication?
     fun putDeduplication(actorId: String, requestId: String, value: AdminDeduplication)
     fun appendAudit(entry: AuditEntry)

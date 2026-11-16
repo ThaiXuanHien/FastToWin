@@ -49,7 +49,7 @@ internal fun interface EmailHttpTransport {
     fun send(request: HttpRequest): Int
 }
 
-private object JdkEmailHttpTransport : EmailHttpTransport {
+internal object JdkEmailHttpTransport : EmailHttpTransport {
     private val client by lazy {
         HttpClient.newBuilder()
             .connectTimeout(Duration.ofSeconds(10))
