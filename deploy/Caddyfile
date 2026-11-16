@@ -39,10 +39,11 @@
 
 	@runtime path / /index.html /config.js /service-worker.js
 	header @runtime Cache-Control "no-store"
+	# SEC-07: Cloudflare Turnstile loads its script and challenge iframe from challenges.cloudflare.com.
 	@gameCsp {
 		not path /admin /admin/*
 	}
-	header @gameCsp Content-Security-Policy "default-src 'self'; script-src 'self' https://www.gstatic.com 'wasm-unsafe-eval'; connect-src 'self' https://*.googleapis.com https://*.google.com wss:; img-src 'self' data: blob: https:; style-src 'self' 'unsafe-inline'; font-src 'self' data:; worker-src 'self' blob:; object-src 'none'; base-uri 'self'; frame-ancestors 'none'; form-action 'self'"
+	header @gameCsp Content-Security-Policy "default-src 'self'; script-src 'self' https://www.gstatic.com https://challenges.cloudflare.com 'wasm-unsafe-eval'; connect-src 'self' https://*.googleapis.com https://*.google.com https://challenges.cloudflare.com wss:; frame-src https://challenges.cloudflare.com; img-src 'self' data: blob: https:; style-src 'self' 'unsafe-inline'; font-src 'self' data:; worker-src 'self' blob:; object-src 'none'; base-uri 'self'; frame-ancestors 'none'; form-action 'self'"
 
 	header {
 		Strict-Transport-Security "max-age=31536000; includeSubDomains"

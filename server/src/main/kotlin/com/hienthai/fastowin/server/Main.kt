@@ -114,10 +114,11 @@ fun main() {
         // Memory/dev operation still uses environment policy; durable admin controls explicitly return 503.
         val maintenanceRuntime = MaintenanceRuntime(engine, maintenanceService.takeIf { database != null }, ::serviceStatusFromEnvironment)
 
+        val humanVerifier = configuredTurnstileVerifier()
         val emailDelivery = if (authEmailSender.isConfigured) configuredAuthEmailProvider().name.lowercase() else "disabled"
         println(
             "Starting Fast To Win server: environment=$environment, host=$host, port=$port, " +
-                "storage=$storage, email=$emailDelivery"
+                "storage=$storage, email=$emailDelivery, turnstile=${if (humanVerifier.siteKey != null) "enabled" else "disabled"}"
         )
         embeddedServer(Netty, host = host, port = port) {
             gameModule(
@@ -126,6 +127,7 @@ fun main() {
                 rateLimitPolicies = serverRateLimitPolicies(environment),
                 authService = authService,
                 authEmailSender = authEmailSender,
+                humanVerifier = humanVerifier,
                 environment = environment,
                 trustProxyHeaders = trustProxyHeaders,
                 connectionLimiter = WebSocketConnectionLimiter.fromEnvironment(),
