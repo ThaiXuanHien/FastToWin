@@ -35,6 +35,23 @@ Tài liệu này hướng dẫn các việc trong `system-upgrade-checklist.xlsx
    Đặt lifecycle rule trên bucket để giữ khoảng 30 bản gần nhất.
 3. Mỗi tháng diễn tập khôi phục một lần: `pg_restore` vào một database staging trống, khởi động server staging, đăng nhập bằng một tài khoản thử và kiểm tra ví. Ghi kết quả vào `docs/staging-rehearsal.md`.
 
+**Trạng thái 17/11/2026:**
+
+- Bước 1 không làm được: gói Railway Hobby chỉ xem được backup có sẵn, tạo backup và lịch tự động cần gói Pro.
+- Bước 2 đã chạy bằng service cron **`db-backup`** trên Railway (mã nguồn `deploy/railway/db-backup/`). Lịch `0 19 * * *` UTC, tức 02:00 giờ Việt Nam. Job chạy `pg_dump` qua mạng nội bộ, mã hóa bằng `age` cho khóa công khai `BACKUP_AGE_RECIPIENT`, từ chối file nhỏ hơn 4 KB, rồi đẩy file `.dump.age` kèm `.sha256` vào thư mục `postgres/` của bucket R2 `fasttowin-db-backups` (riêng tư, khu vực châu Á – Thái Bình Dương).
+- Lifecycle rule *Delete backups after 30 days* trên prefix `postgres/`. Token R2 `fasttowin-db-backup-writer` chỉ có quyền Object Read & Write trên bucket này.
+- Khóa giải mã chỉ chủ dự án giữ (trình quản lý mật khẩu và `D:\HienTX\Keys\FastToWin\db-backup-age-key.txt`). Mất khóa thì không mở được bản backup nào; đổi khóa thì cập nhật `BACKUP_AGE_RECIPIENT`.
+- Đã kiểm tra bản đầu `fasttowin-2026-11-17T0712Z.dump.age`: giải mã được, `pg_restore --list` đọc được 116 bảng dữ liệu, có `users`, `wallet_transactions`, `daily_check_ins`.
+
+Kiểm tra một bản backup trên máy (tải file từ R2 về thư mục Downloads trước):
+
+```bash
+age --decrypt -i db-backup-age-key.txt fasttowin-<thời điểm>.dump.age > restore.dump
+pg_restore --list restore.dump | grep -c 'TABLE DATA'
+```
+
+Chạy ngay một bản backup ngoài lịch: Railway → service `db-backup` → **Cron Runs** → *Run now*, hoặc deploy lại service.
+
 ## SEC-01 – Xác minh backend nhận đúng IP người chơi
 
 **Đã có trong code (PR1):** Caddy chỉ tin header IP từ dải mạng riêng (Railway edge) và chuyển đúng `{client_ip}` cho backend.
@@ -112,6 +129,18 @@ Cấu hình này đã được thử bằng Docker: request thiếu hoặc sai b
 2. Backup (INF-03), tạo Postgres mới ở region `asia-southeast1`, restore bản backup, kiểm tra số dòng của các bảng chính (`users`, `wallet_transactions`, `match_results`).
 3. Chuyển service server và web sang region Singapore và trỏ `DATABASE_URL` tới DB mới.
 4. Mở lại dịch vụ. Đo ping từ Việt Nam (mục tiêu dưới 60 ms). Giữ DB cũ ở chế độ chỉ đọc 7 ngày rồi mới xóa.
+
+**Đã thực hiện 17/11/2026 (07:24–07:36 UTC, gián đoạn khoảng 12 phút):**
+
+- Không có trận nào đang chạy nên dừng thẳng server bằng `railway down` thay vì bật bảo trì (người chơi thấy lỗi kết nối thay vì thông báo bảo trì).
+- Backup an toàn `fasttowin-2026-11-17T0725Z.dump.age` (INF-03) trước khi dừng.
+- Service mới **`Postgres-SG`** ở `asia-southeast1-eqsg3a` (PostgreSQL 18.6). Job một lần chạy `pg_dump` → `pg_restore` qua mạng nội bộ rồi so số dòng: 116/116 bảng khớp, schema V83.
+- `DATABASE_URL`, `DATABASE_USER`, `DATABASE_PASSWORD` của server và `DATABASE_URL` của `db-backup` giờ là biến tham chiếu `${{Postgres-SG.*}}`.
+- Redis (`rate-limit-redis`) chuyển region tại chỗ bằng `railway service scale --service <tên> asia-southeast1-eqsg3a=1 sfo=0`: giữ nguyên tên nội bộ nên URL Redis của server không đổi. Làm tương tự cho `redis-monitor`, `metrics-sender`, `db-backup`, `server`, `web`.
+- Server deploy lại bản `63cdd99f` (deployment `e219c242`), web `c61342a1`.
+- Kiểm tra: `/health`, `/status`, `/`, `/rooms` trả 200; request đầu (gồm bắt tay TLS) khoảng 130 ms (trước: 310 ms), request trên kết nối có sẵn khoảng 47 ms; chủ dự án chơi thử một trận trên điện thoại ổn.
+- Service `Postgres` cũ (sfo) giữ nguyên, không còn service nào trỏ tới. Xóa sau ngày 24/11/2026, sau khi chủ dự án đồng ý. `owned-worker` vẫn đang dừng ở sfo.
+- Runbook gốc thiếu Redis: Redis phải chuyển cùng server, nếu không mỗi lần kiểm tra rate limit đều gọi ngược về Mỹ.
 
 ## INF-04 – Giám sát và cảnh báo
 
