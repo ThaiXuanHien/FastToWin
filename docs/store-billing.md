@@ -65,17 +65,39 @@ Giao dịch test phải được Google API xác minh, đúng sản phẩm/trạ
 
 Gỡ UUID QA khỏi cấu hình sau nghiệm thu và áp dụng cấu hình bằng lần deploy được duyệt. Bộ đồng bộ doanh thu dùng chung thứ tự chọn credential ở trên, nhưng vẫn opt-in riêng bằng `FINANCIAL_GOOGLE_ENABLED=true` và cần mốc `FINANCIAL_COLLECTION_START` hợp lệ; cấu hình Billing không tự bật thu thập. Credential riêng sai khiến collector không khả dụng, không tự dùng credential khác. Xem [financial-analytics-sources.md](financial-analytics-sources.md). Thay đổi cấu hình nguồn này chưa được deploy hoặc bật collector trên production.
 
-## iOS
+## iOS (StoreKit 2)
 
-Trên Windows, iOS hiện có gateway sandbox để kiểm tra đầy đủ UI → server → ví. Khi `FASTTOWIN_ENV=prod`, giao dịch App Store bị từ chối an toàn.
+Luồng mua giống Android, chỉ khác Store:
 
-Trước khi phát hành iOS cần làm trên macOS/Xcode:
+1. Swift host `iosApp/iosApp/StoreKitCoordinator.swift` sở hữu StoreKit 2 và cài cầu nối `IosStoreKitBridge` khi app khởi động. Logic cửa hàng dùng chung nằm ở `StoreKitBillingGateway` (commonMain, có test).
+2. App tải giá bằng `Product.products(for:)`; giá hiển thị là `displayPrice` địa phương do App Store trả về.
+3. Khi mua, app gắn `appAccountToken` = UUID suy ra từ SHA-256 của ID tài khoản (`appStoreAccountToken`, server dùng đúng công thức). Apple không thấy ID nội bộ.
+4. Giao dịch đã xác minh trên máy được gửi lên server dưới dạng JWS (`jwsRepresentation`) qua cùng `/api/store-purchases/verify`.
+5. Chỉ gọi `transaction.finish()` sau khi server trả `GRANTED` hoặc `ALREADY_GRANTED`. Giao dịch chưa finish (tắt app, mất mạng, server lỗi) được đọc lại từ `Transaction.unfinished` mỗi lần mở Cửa hàng.
+6. `Transaction.updates` nhận Ask to Buy được duyệt, giao dịch bị gián đoạn và hoàn tiền. Mua đang chờ (`.pending`) hiện thông báo chờ, không cộng Gem. Giao dịch đã bị thu hồi trước khi cấp thì chỉ finish, không gửi lên server.
 
-1. Tạo ba consumable In-App Purchase với cùng product ID trong App Store Connect.
-2. Tích hợp StoreKit 2 và lấy signed transaction JWS.
-3. Xác thực JWS/App Store Server API ở backend.
-4. Chỉ gọi `finish()` sau khi server đã cấp Gem.
-5. Test StoreKit Configuration, sandbox account và TestFlight.
+Server (`AppStorePurchaseVerifier`) xác thực offline, không cần secret nào của Apple:
+
+- JWS phải là ES256, chuỗi `x5c` gồm leaf → intermediate → Apple Root CA - G3 (đóng gói trong `server/src/main/resources/appstore`, kiểm tra SHA-256 khi khởi động), leaf/intermediate có OID đánh dấu của Apple, chuỗi hợp lệ tại thời điểm `signedDate`;
+- `bundleId` = `com.hienthai.fastowin`, `productId` khớp gói, `type` = `Consumable`, `quantity` = 1, không có `revocationDate`, `appAccountToken` khớp tài khoản gửi lên;
+- khóa chống nhận trùng là `transactionId` + môi trường (`LIVE`/`SANDBOX`), không phải chuỗi JWS, vì mỗi lần StoreKit trả về JWS được ký lại.
+
+Cấu hình server (đều tùy chọn, mặc định đã bật):
+
+```text
+APP_STORE_BUNDLE_ID=com.hienthai.fastowin   # mặc định
+APP_STORE_ALLOW_SANDBOX=true                # mặc định; App Review và TestFlight luôn mua bằng Sandbox
+APP_STORE_TEST_PLAYER_IDS=<UUID QA>         # chỉ dùng khi APP_STORE_ALLOW_SANDBOX=false
+APP_STORE_BILLING_ENABLED=false             # tắt hẳn mua iOS khi cần
+```
+
+Apple duyệt app trên bản production nhưng mua bằng tài khoản Sandbox, nên server production phải nhận giao dịch `Sandbox`, nếu không app sẽ bị từ chối. Hệ quả: tester TestFlight nhận Gem mà không mất tiền. Sau khi app đã lên App Store, có thể đặt `APP_STORE_ALLOW_SANDBOX=false` cùng `APP_STORE_TEST_PLAYER_IDS`, nhưng phải bật lại trước mỗi lần gửi duyệt. Môi trường `Xcode` (StoreKit Configuration cục bộ) chỉ được nhận khi `FASTTOWIN_ENV=dev`.
+
+Chưa có: App Store Server Notifications V2 (thu hồi Gem khi hoàn tiền) và đồng bộ doanh thu App Store. Android hiện cũng chưa thu hồi Gem khi hoàn tiền, nên hai nền tảng đang giống nhau. Giao dịch App Store không ghi vào `store_financial_orders`.
+
+Token `dev:APP_STORE:` vẫn dùng được với server dev khi StoreKit không trả sản phẩm (ví dụ simulator không có StoreKit Configuration).
+
+Việc chủ app cần làm trong App Store Connect: xem [app-store-iap-checklist.md](app-store-iap-checklist.md).
 
 ## Chống gian lận và nhận trùng
 

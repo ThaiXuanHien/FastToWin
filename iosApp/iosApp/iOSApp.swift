@@ -123,6 +123,8 @@ final class AppDelegate: NSObject, UIApplicationDelegate, MessagingDelegate, UNU
         Messaging.messaging().delegate = self
         UNUserNotificationCenter.current().delegate = self
         PushNotificationCoordinator.shared.start()
+        // Install before Compose creates the billing gateway; also starts Transaction.updates.
+        StoreKitCoordinator.shared.start()
         return true
     }
 

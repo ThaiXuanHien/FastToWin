@@ -9,7 +9,7 @@ class StorePurchaseService(
     private val storePurchaseVerifier: StorePurchaseVerifier = RejectingStorePurchaseVerifier
 ) {
     suspend fun verify(playerId: String, request: StorePurchaseRequest): ServerMessage.StorePurchaseResult {
-        if (request.requestId.length !in 1..64 || request.purchaseToken.length !in 1..4_096 ||
+        if (request.requestId.length !in 1..64 || request.purchaseToken.length !in 1..maxTokenLength(request.store) ||
             request.productId.length !in 1..128) {
             return result(
                 request,
@@ -44,7 +44,7 @@ class StorePurchaseService(
                 messageArgs = verification.messageArgs
             )
         }
-        val fingerprint = storePurchaseFingerprint(request.store, request.purchaseToken)
+        val fingerprint = verification.receiptKey ?: storePurchaseFingerprint(request.store, request.purchaseToken)
         val grantStatus = if (verification.verifiedOrder == null) playerProfileRepository.grantStorePurchase(
             playerId, request.store.name, request.productId, fingerprint, gemPackage.gems
         ) else playerProfileRepository.grantVerifiedStorePurchase(
@@ -74,6 +74,9 @@ class StorePurchaseService(
             message = result.second
         )
     }
+
+    /** StoreKit 2 signed transactions embed a three-certificate x5c chain. */
+    private fun maxTokenLength(store: StorePlatform) = if (store == StorePlatform.APP_STORE) 16_384 else 4_096
 
     private fun result(
         request: StorePurchaseRequest,

@@ -2,69 +2,48 @@ package com.hienthai.fastowin.platform
 
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
-import com.hienthai.fastowin.localization.LocalizedText
-import com.hienthai.fastowin.localization.TextKey
-import com.hienthai.fastowin.protocol.GemPackageSnapshot
-import com.hienthai.fastowin.protocol.StorePlatform
-import kotlinx.coroutines.flow.Flow
-import kotlinx.coroutines.flow.MutableSharedFlow
-import kotlinx.coroutines.flow.MutableStateFlow
-import kotlinx.coroutines.flow.StateFlow
-import kotlinx.coroutines.flow.asSharedFlow
-import kotlinx.coroutines.flow.asStateFlow
-import kotlinx.coroutines.flow.update
-import kotlin.random.Random
 
 @Composable
-actual fun rememberStoreBillingGateway(): StoreBillingGateway = remember { IosSandboxStoreBillingGateway() }
+actual fun rememberStoreBillingGateway(): StoreBillingGateway = remember {
+    StoreKitBillingGateway(IosStoreKitBridge.host).also(IosStoreKitBridge::attach)
+}
 
-private class IosSandboxStoreBillingGateway : StoreBillingGateway {
-    private val _state = MutableStateFlow(StoreBillingState(StorePlatform.APP_STORE))
-    override val state: StateFlow<StoreBillingState> = _state.asStateFlow()
-    private val _purchases = MutableSharedFlow<PlatformStorePurchase>(extraBufferCapacity = 4)
-    override val purchases: Flow<PlatformStorePurchase> = _purchases.asSharedFlow()
-    private var packages = emptyList<GemPackageSnapshot>()
-    private var sandboxEnabled = false
+/**
+ * StoreKit 2 bridge owned by the Swift host (`StoreKitCoordinator.swift`), like the push bridge.
+ * Swift installs the native operations at launch and reports StoreKit results on the main thread.
+ */
+object IosStoreKitBridge : StoreKitEvents {
+    private var installed: StoreKitHost? = null
+    private var events: StoreKitEvents? = null
 
-    override fun connect(packages: List<GemPackageSnapshot>, sandboxEnabled: Boolean) {
-        this.packages = packages
-        this.sandboxEnabled = sandboxEnabled
-        _state.value = if (sandboxEnabled) {
-            StoreBillingState(
-                platform = StorePlatform.APP_STORE,
-                isReady = true,
-                isSandboxFallback = true,
-                prices = packages.associate {
-                    it.productId to StoreProductPrice(it.productId, "Sandbox")
-                },
-                notice = LocalizedText(TextKey.BillingStoreKitSandboxNotice)
-            )
-        } else {
-            StoreBillingState(
-                platform = StorePlatform.APP_STORE,
-                error = LocalizedText(TextKey.BillingAppStoreNotConfigured)
-            )
+    internal val host: StoreKitHost? get() = installed
+
+    fun install(
+        loadProducts: (List<String>) -> Unit,
+        purchase: (String, String) -> Unit,
+        finish: (String) -> Unit
+    ) {
+        installed = object : StoreKitHost {
+            override fun loadProducts(productIds: List<String>) = loadProducts(productIds)
+            override fun purchase(productId: String, appAccountToken: String) = purchase(productId, appAccountToken)
+            override fun finish(transactionId: String) = finish(transactionId)
         }
     }
 
-    override fun purchase(productId: String, accountId: String?) {
-        if (!sandboxEnabled || packages.none { it.productId == productId }) return
-        val suffix = Random.nextLong().toString().replace("-", "")
-        val token = "dev:${StorePlatform.APP_STORE.name}:$productId:$suffix"
-        val requestId = "ios-$suffix"
-        _state.update { it.copy(purchasingProductId = productId, notice = LocalizedText(TextKey.BillingSandboxVerifying)) }
-        _purchases.tryEmit(PlatformStorePurchase(
-            requestId = requestId,
-            store = StorePlatform.APP_STORE,
-            productId = productId,
-            purchaseToken = token,
-            accountId = accountId
-        ))
+    internal fun attach(gateway: StoreKitEvents) {
+        events = gateway
     }
 
-    override fun finishPurchase(purchaseToken: String) {
-        _state.update { it.copy(purchasingProductId = null, notice = LocalizedText(TextKey.BillingGemsAdded)) }
+    override fun onProductsLoaded(productIds: List<String>, displayPrices: List<String>) {
+        events?.onProductsLoaded(productIds, displayPrices)
     }
-
-    override fun close() = Unit
+    override fun onProductsFailed() { events?.onProductsFailed() }
+    override fun onTransaction(transactionId: String, productId: String, signedTransaction: String, appAccountToken: String?) {
+        // Before Compose attaches, connect() re-reads Transaction.unfinished, so nothing is lost.
+        events?.onTransaction(transactionId, productId, signedTransaction, appAccountToken)
+    }
+    override fun onPurchaseCancelled() { events?.onPurchaseCancelled() }
+    override fun onPurchasePending() { events?.onPurchasePending() }
+    override fun onPurchaseFailed() { events?.onPurchaseFailed() }
+    override fun onFinished(transactionId: String, success: Boolean) { events?.onFinished(transactionId, success) }
 }

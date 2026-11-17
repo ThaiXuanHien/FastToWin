@@ -33,8 +33,11 @@ class StorePurchaseApiClient(
         }
     }
 
+    /** StoreKit 2 signed transactions embed a certificate chain; Play tokens stay short. Mirrors the server. */
+    private fun maxTokenLength(store: StorePlatform) = if (store == StorePlatform.APP_STORE) 16_384 else 4_096
+
     override suspend fun verify(request: StorePurchaseRequest): ServerMessage.StorePurchaseResult {
-        if (request.requestId.length !in 1..64 || request.productId.length !in 1..128 || request.purchaseToken.length !in 1..4096) {
+        if (request.requestId.length !in 1..64 || request.productId.length !in 1..128 || request.purchaseToken.length !in 1..maxTokenLength(request.store)) {
             return failure(request, StorePurchaseStatus.INVALID, "BillingIncomplete")
         }
         return try {
