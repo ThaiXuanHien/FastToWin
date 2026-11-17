@@ -1,6 +1,14 @@
 package com.hienthai.fastowin
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
+import com.hienthai.fastowin.ui.theme.ArcadePalette
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -2233,29 +2241,44 @@ internal fun ReconnectOverlay(
     Box(
         modifier = modifier
             .fillMaxSize()
-            .background(Color(0xB8071824))
+            // Near-opaque scrim: the board must not read through while input is blocked.
+            .background(Color(0xE6040E1F))
             .clickable(onClick = {})
             .testTag("reconnect_overlay"),
         contentAlignment = Alignment.Center
     ) {
         Column(
             modifier = Modifier
+                .padding(horizontal = 20.dp)
                 .fillMaxWidth()
                 .widthIn(max = 360.dp)
-                .padding(24.dp)
+                .background(
+                    Brush.verticalGradient(listOf(Color(0xFF123269), Color(0xFF091D43))),
+                    RoundedCornerShape(24.dp)
+                )
+                .border(1.dp, Color(0xFF5680CA), RoundedCornerShape(24.dp))
+                .padding(20.dp)
                 .testTag("reconnect_blocker"),
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.spacedBy(14.dp)
         ) {
+            CircularProgressIndicator(
+                modifier = Modifier.size(28.dp),
+                color = ArcadePalette.Gold500,
+                strokeWidth = 3.dp
+            )
             Text(
                 text = localized(TextKey.ReconnectingMatch),
                 style = MaterialTheme.typography.titleMedium,
-                color = Color.White
+                fontWeight = FontWeight.Bold,
+                color = Color.White,
+                textAlign = TextAlign.Center
             )
             Text(
                 text = localized(TextKey.ReconnectBlockingHint),
                 style = MaterialTheme.typography.bodyMedium,
-                color = Color.White.copy(alpha = 0.82f)
+                color = Color(0xFFDDE8FF),
+                textAlign = TextAlign.Center
             )
             ArcadeActionButton(
                 label = localized(TextKey.ReconnectAction),
