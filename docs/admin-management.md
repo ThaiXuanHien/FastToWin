@@ -26,6 +26,32 @@ Production bắt buộc mọi vai trò (Owner, Operator, Support) dùng ứng d�
 4. Khi một admin mất thiết bị: Owner khác vào **Tài khoản quản trị**, bấm biểu tượng khóa ở tài khoản đó và nhập lý do. Thao tác này xóa MFA của tài khoản và đăng xuất mọi phiên của họ. Owner không thể tự đặt lại MFA cho chính mình qua console.
 5. Development không bắt buộc MFA. Muốn thử, đặt `FASTTOWIN_ADMIN_MFA_REQUIRED=true`. Không có khóa thì development dùng một khóa cố định công khai, nên khóa này chỉ an toàn cho môi trường local.
 
+## Cảnh báo hoạt động admin (ADM-11)
+
+Đặt `FASTTOWIN_ADMIN_ALERT_EMAILS` là danh sách email nhận cảnh báo, phân cách bằng dấu phẩy. Tính năng này cần `FASTTOWIN_EMAIL_PROVIDER=brevo`; nếu thiếu, server ghi cảnh báo vào log và không gửi thư. Hệ thống gửi email khi:
+
+- Có admin đăng nhập thành công (kèm cách xác thực và IP).
+- Một tài khoản đăng nhập sai mật khẩu hoặc mã 2 lớp 5 lần trong 15 phút.
+- Owner cấp tài khoản quản trị mới, đổi quyền hoặc đặt lại 2 lớp.
+- Có yêu cầu duyệt, hoặc vừa duyệt, một lần công bố quà, mã quà hoặc bồi thường vượt trần.
+
+Thư không chứa mật khẩu, token hay mã xác thực. Cảnh báo được gửi sau khi thao tác đã lưu xong. Nếu gửi lỗi, thao tác admin không bị ảnh hưởng; lỗi chỉ được ghi vào log. Thư cảnh báo không trừ vào trần email hằng ngày của người chơi, nhưng vẫn tính vào quota của Brevo.
+
+## Trần giá trị quà và duyệt bởi Owner thứ hai (ADM-12)
+
+Khi công bố **quà admin**, **đợt bồi thường** hoặc **mã quà** vượt trần, Owner thứ nhất bấm Công bố thì hệ thống ghi lại yêu cầu và báo `Cần một Owner khác`. Một **Owner khác** phải mở đúng phiên bản đó và bấm Công bố thì nội dung mới được phát hành. Với mã quà, Owner thứ hai phải nhập lại đúng mã, phần thưởng, hạn dùng và giới hạn lượt nhận. Nếu bản nháp bị sửa, yêu cầu duyệt cũ hết hiệu lực.
+
+| Trần | Mặc định | Biến môi trường |
+| --- | --- | --- |
+| Vàng mỗi người nhận / mỗi lượt mã | 50.000 | `FASTTOWIN_GIFT_CAP_RECIPIENT_GOLD` |
+| Gem mỗi người nhận / mỗi lượt mã | 100 | `FASTTOWIN_GIFT_CAP_RECIPIENT_GEMS` |
+| XP mỗi người nhận / mỗi lượt mã | 5.000 | `FASTTOWIN_GIFT_CAP_RECIPIENT_XP` |
+| Lượt chơi mỗi người nhận / mỗi lượt mã | 20 | `FASTTOWIN_GIFT_CAP_RECIPIENT_PLAYS` |
+| Tổng Vàng của một lần công bố | 50.000.000 | `FASTTOWIN_GIFT_CAP_TOTAL_GOLD` |
+| Tổng Gem của một lần công bố | 50.000 | `FASTTOWIN_GIFT_CAP_TOTAL_GEMS` |
+
+Tổng XP và tổng lượt chơi mặc định không giới hạn; có thể đặt bằng `FASTTOWIN_GIFT_CAP_TOTAL_XP` và `FASTTOWIN_GIFT_CAP_TOTAL_PLAYS`. Mã quà **không giới hạn lượt nhận** mà có Vàng hoặc Gem luôn cần Owner thứ hai duyệt, vì không tính được tổng. Hệ thống cần ít nhất 2 Owner đang hoạt động để công bố nội dung vượt trần.
+
 ## Khôi phục khẩn cấp (ADM-10)
 
 Luôn duy trì **ít nhất 2 Owner đang hoạt động**, có MFA và mã khôi phục được lưu riêng. Khi Owner duy nhất còn lại mất mật khẩu hoặc mất cả thiết bị lẫn mã khôi phục, hoặc khi nghi tài khoản bị chiếm:

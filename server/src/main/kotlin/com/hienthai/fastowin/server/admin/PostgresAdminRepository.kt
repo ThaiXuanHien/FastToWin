@@ -107,6 +107,18 @@ internal class JdbcAdminTransaction(private val connection: Connection) : AdminT
         update("DELETE FROM admin_mfa_challenges WHERE expires_at < CURRENT_TIMESTAMP - INTERVAL '1 day'")
     }
     override fun deleteMfaChallenge(tokenHash: String) { update("DELETE FROM admin_mfa_challenges WHERE token_hash=?", tokenHash) }
+    override fun publishApproval(kind: String, targetId: String, versionKey: String) = rows(
+        "SELECT requested_by,requested_at FROM admin_publish_approvals WHERE kind=? AND target_id=? AND version_key=? FOR UPDATE",
+        listOf(kind, targetId, versionKey)
+    ) { PublishApproval(kind, targetId, versionKey, it.getString("requested_by"), it.getTimestamp("requested_at").time) }.singleOrNull()
+    override fun putPublishApproval(approval: PublishApproval) {
+        update("""INSERT INTO admin_publish_approvals(kind,target_id,version_key,requested_by,requested_at) VALUES (?,?,?,?,?)
+            ON CONFLICT(kind,target_id,version_key) DO NOTHING""",
+            approval.kind, approval.targetId, approval.versionKey, UUID.fromString(approval.requestedBy), Timestamp(approval.requestedAtEpochMillis))
+    }
+    override fun deletePublishApprovals(kind: String, targetId: String) {
+        update("DELETE FROM admin_publish_approvals WHERE kind=? AND target_id=?", kind, targetId)
+    }
     override fun deduplication(actorId: String, requestId: String) = rows("SELECT fingerprint,safe_result FROM admin_requests WHERE actor_id=? AND request_id=?", listOf(UUID.fromString(actorId),requestId)) {
         AdminDeduplication(it.getString("fingerprint"), Json.decodeFromString<AdminIdentity>(it.getString("safe_result")))
     }.singleOrNull()

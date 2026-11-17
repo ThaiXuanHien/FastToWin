@@ -1,5 +1,6 @@
 package com.hienthai.fastowin.server.gifts
 
+import com.hienthai.fastowin.server.legacyFallback
 import com.hienthai.fastowin.protocol.*
 import com.hienthai.fastowin.server.admin.*
 import com.hienthai.fastowin.server.hashToken
@@ -27,7 +28,37 @@ class GiftService(val repository: GiftRepository, private val admins: AdminServi
         listCodes(page)
     }
 
-    suspend fun publishGiftCode(context: GiftAdminContext, request: GiftCodePublishRequest): GiftCode = repository.transaction(true) {
+    suspend fun publishGiftCode(context: GiftAdminContext, request: GiftCodePublishRequest): GiftCode {
+        val service = admins ?: unavailable()
+        var control: DualControl = DualControl.Allowed
+        val published = publishGiftCode(context, request) { actorId, key ->
+            val reward = request.reward
+            // The version is the code's content without the request id or reason, so a second
+            // Owner approves by submitting the same code, reward, expiry and claim limit.
+            val version = hashToken("gift-code-approval:" + Json.encodeToString(request.copy(code = key, reason = "", requestId = "")))
+            control = admin.dualControl("GIFT_CODE", key, version, actorId, service.publishLimits.exceeded(
+                RewardAmounts(reward.gold.toLong(), reward.gems.toLong(), reward.xp.toLong(), reward.plays.toLong()),
+                request.maximumClaims?.toLong()), nowMillis())
+            control !is DualControl.Pending
+        }
+        reportDualControl(service, control, legacyFallback("mã quà"), request.code.trim().uppercase())
+        return published ?: error("unreachable: pending publication was reported")
+    }
+
+    private fun reportDualControl(service: AdminService, control: DualControl, kind: String, label: String) {
+        when (control) {
+            is DualControl.Pending -> {
+                if (control.newlyRequested) service.alert(legacyFallback("Yêu cầu duyệt công bố $kind vượt trần"), legacyFallback("Nội dung") to label, legacyFallback("Vượt trần") to control.reasons.joinToString("; "))
+                approvalRequired(control)
+            }
+            is DualControl.Approved -> service.alert(legacyFallback("Đã duyệt và công bố $kind vượt trần"), legacyFallback("Nội dung") to label, legacyFallback("Vượt trần") to control.reasons.joinToString("; "))
+            DualControl.Allowed -> Unit
+        }
+    }
+
+    private suspend fun publishGiftCode(
+        context: GiftAdminContext, request: GiftCodePublishRequest, approve: GiftTransaction.(actorId: String, key: String) -> Boolean
+    ): GiftCode? = repository.transaction(true) {
         val actor = authorize(context, mutation = true, owner = true)
         mutation(request.reason, request.requestId)
         val key = normalizedCode(request.code)
@@ -43,6 +74,7 @@ class GiftService(val repository: GiftRepository, private val admins: AdminServi
             request.expiresAt <= nowMillis() || request.expiresAt > 253402300799999L ||
             (request.maximumClaims != null && request.maximumClaims <= 0)) invalid()
         if (code(key) != null) conflict()
+        if (!approve(actor.id, key)) return@transaction null
         val published = GiftCode(key, reward, request.expiresAt, request.maximumClaims)
         insertCode(published)
         recordGiftCodeMutation(actor.id, request.requestId, fingerprint)
@@ -142,18 +174,33 @@ class GiftService(val repository: GiftRepository, private val admins: AdminServi
         if (c.state != CampaignState.DRAFT || c.version != request.expectedVersion) conflict()
         val result = preview(c, audience(c)); audit(actor.id, "GIFT_PREVIEW", id); result
     }
-    suspend fun publish(context: GiftAdminContext, id: String, request: GiftPublishRequest): GiftCampaignDetail = repository.transaction(true) {
-        val actor = authorize(context, true, true); uuid(id); mutation(request.reason, request.requestId)
-        val fp = hashToken("publish:$id:" + Json.encodeToString(request))
-        val c = ordinaryCampaign(id, true)
-        replay(actor.id, request.requestId, fp)?.let { return@transaction it }
-        if (c.state != CampaignState.DRAFT || c.version != request.expectedVersion) conflict()
-        val audience = audience(c); val fresh = preview(c, audience)
-        if (fresh.invalidUserIds.isNotEmpty()) invalid()
-        if (fresh.previewToken != request.previewToken) conflict()
+    suspend fun publish(context: GiftAdminContext, id: String, request: GiftPublishRequest): GiftCampaignDetail {
+        val service = admins ?: unavailable()
+        var control: DualControl = DualControl.Allowed
+        var title = ""
+        val result = repository.transaction(true) {
+            val actor = authorize(context, true, true); uuid(id); mutation(request.reason, request.requestId)
+            val fp = hashToken("publish:$id:" + Json.encodeToString(request))
+            val c = ordinaryCampaign(id, true)
+            replay(actor.id, request.requestId, fp)?.let { return@transaction it }
+            if (c.state != CampaignState.DRAFT || c.version != request.expectedVersion) conflict()
+            val audience = audience(c); val fresh = preview(c, audience)
+            if (fresh.invalidUserIds.isNotEmpty()) invalid()
+            if (fresh.previewToken != request.previewToken) conflict()
+            title = c.draft.titleVi
+            control = admin.dualControl("GIFT_CAMPAIGN", id, "v${c.version}", actor.id,
+                service.publishLimits.exceeded(c.draft.rewardAmounts(), audience.users.size.toLong()), nowMillis())
+            if (control is DualControl.Pending) return@transaction null
+            publishApproved(actor, id, request, fp, c, audience)
+        }
+        reportDualControl(service, control, legacyFallback("quà"), title)
+        return result ?: error("unreachable: pending publication was reported")
+    }
+    private fun GiftTransaction.publishApproved(actor: AdminIdentity, id: String, request: GiftPublishRequest, fp: String,
+        c: GiftCampaign, audience: GiftCampaignOperations.Audience): GiftCampaignDetail {
         val updated = c.copy(state = CampaignState.PUBLISHED, version = Math.addExact(c.version, 1), publishedAtEpochMillis = nowMillis())
         freeze(id, audience.users); putCampaign(updated); audit(actor.id, "GIFT_PUBLISH", id, request.requestId, request.reason)
-        save(actor.id, request.requestId, fp, detail(updated))
+        return save(actor.id, request.requestId, fp, detail(updated))
     }
     suspend fun cancel(context: GiftAdminContext, id: String, request: GiftCancelRequest): GiftCampaignDetail = repository.transaction(true) {
         val actor = authorize(context, true, true); uuid(id); mutation(request.reason, request.requestId)
@@ -225,6 +272,7 @@ class GiftService(val repository: GiftRepository, private val admins: AdminServi
         if (reason.isBlank() || reason.length > 500 || reason.any(Char::isISOControl) || !request.matches(Regex("[A-Za-z0-9_-]{1,128}"))) invalid()
     }
 }
+internal fun GiftDraftRequest.rewardAmounts() = RewardAmounts(gold.toLong(), gems.toLong(), xp.toLong(), plays.toLong())
 internal fun uuid(id: String) { if (runCatching { UUID.fromString(id).toString() == id.lowercase() }.getOrDefault(false).not()) invalid() }
 internal fun gift(c: GiftCampaign, r: GiftRecipient, now: Long) = MailboxGift(c.id, c.draft.titleVi, c.draft.titleEn, c.draft.bodyVi, c.draft.bodyEn,
     c.draft.gold, c.draft.xp, c.draft.availableAtEpochMillis, c.draft.expiresAtEpochMillis!!,
