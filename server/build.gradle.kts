@@ -44,6 +44,7 @@ dependencies {
     testImplementation(libs.ktor.client.websockets)
     testImplementation(libs.ktor.client.okhttp)
     testImplementation(libs.kotlinx.coroutines.test)
+    testImplementation("org.bouncycastle:bcpkix-jdk18on:1.79")
 }
 
 tasks.test {

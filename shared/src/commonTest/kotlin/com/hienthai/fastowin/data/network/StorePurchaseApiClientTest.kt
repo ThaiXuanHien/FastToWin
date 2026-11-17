@@ -57,6 +57,10 @@ class StorePurchaseApiClientTest {
         val client = HttpClient(MockEngine { count++; respond("{}") })
         val api = StorePurchaseApiClient("http://localhost", { null }, client = client)
         assertEquals(StorePurchaseStatus.INVALID, api.verify(receipt.copy(purchaseToken = "x".repeat(4097))).status)
+        val appStore = receipt.copy(store = StorePlatform.APP_STORE)
+        assertEquals(StorePurchaseStatus.INVALID, api.verify(appStore.copy(purchaseToken = "x".repeat(16_385))).status)
+        // Signed StoreKit transactions are longer than Play tokens; only the missing bearer stops this one.
+        assertEquals(StorePurchaseStatus.UNAVAILABLE, api.verify(appStore.copy(purchaseToken = "x".repeat(9_000))).status)
         assertEquals(StorePurchaseStatus.UNAVAILABLE, api.verify(receipt).status)
         assertEquals(0, count)
         api.close()

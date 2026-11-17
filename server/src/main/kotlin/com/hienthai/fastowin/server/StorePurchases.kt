@@ -44,7 +44,9 @@ data class StoreVerificationResult(
         StoreVerificationStatus.UNAVAILABLE -> TextKey.ServerUnavailable.name
     },
     val messageArgs: Map<String, String> = emptyMap(),
-    val verifiedOrder: VerifiedStoreOrder? = null
+    val verifiedOrder: VerifiedStoreOrder? = null,
+    /** Stable idempotency key when the provider token is not stable (App Store JWS is re-signed per fetch). */
+    val receiptKey: String? = null
 )
 
 /** Provider identity only; the economy transaction remains the receipt fingerprint. */
@@ -165,7 +167,8 @@ fun configuredStorePurchaseVerifier(environment: String, values: Map<String, Str
     } else {
         null
     }
-    return EnvironmentStorePurchaseVerifier(environment, googlePlayVerifier = googleVerifier)
+    return EnvironmentStorePurchaseVerifier(environment, googlePlayVerifier = googleVerifier,
+        appStoreVerifier = configuredAppStoreVerifier(environment, values))
 }
 
 fun storePurchaseFingerprint(store: StorePlatform, purchaseToken: String): String =

@@ -12,6 +12,7 @@
 		A10000000000000000000003 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = B10000000000000000000005 /* Assets.xcassets */; };
 		A10000000000000000000004 /* GoogleService-Info.plist in Resources */ = {isa = PBXBuildFile; fileRef = B10000000000000000000006 /* GoogleService-Info.plist */; };
 		A10000000000000000000005 /* FirebaseMessaging in Frameworks */ = {isa = PBXBuildFile; productRef = H10000000000000000000002 /* FirebaseMessaging */; };
+		A10000000000000000000006 /* StoreKitCoordinator.swift in Sources */ = {isa = PBXBuildFile; fileRef = B10000000000000000000008 /* StoreKitCoordinator.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -22,6 +23,7 @@
 		B10000000000000000000005 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
 		B10000000000000000000006 /* GoogleService-Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = "GoogleService-Info.plist"; sourceTree = "<group>"; };
 		B10000000000000000000007 /* iosApp.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = iosApp.entitlements; sourceTree = "<group>"; };
+		B10000000000000000000008 /* StoreKitCoordinator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StoreKitCoordinator.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -49,6 +51,7 @@
 			children = (
 				B10000000000000000000001 /* iOSApp.swift */,
 				B10000000000000000000002 /* ContentView.swift */,
+				B10000000000000000000008 /* StoreKitCoordinator.swift */,
 				B10000000000000000000003 /* Info.plist */,
 				B10000000000000000000005 /* Assets.xcassets */,
 				B10000000000000000000006 /* GoogleService-Info.plist */,
@@ -166,6 +169,7 @@
 			files = (
 				A10000000000000000000001 /* iOSApp.swift in Sources */,
 				A10000000000000000000002 /* ContentView.swift in Sources */,
+				A10000000000000000000006 /* StoreKitCoordinator.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
