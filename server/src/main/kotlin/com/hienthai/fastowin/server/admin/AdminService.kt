@@ -33,7 +33,7 @@ class AdminService(
 
     private fun failedSignIn(email: String, address: String?) {
         failedLogins.record(email)?.let { count ->
-            alert("Nhiều lần đăng nhập quản trị thất bại", "Email" to email, "Số lần trong 15 phút" to count.toString(), "IP" to address)
+            alert(legacyFallback("Nhiều lần đăng nhập quản trị thất bại"), "Email" to email, legacyFallback("Số lần trong 15 phút") to count.toString(), "IP" to address)
         }
     }
     private val dummyHash by lazy { passwordHasher.hash(randomToken()) }
@@ -88,12 +88,12 @@ class AdminService(
             AdminLoginOutcome.Challenge(AdminMfaChallengeResponse("ENROLL", token, Base32.encode(secret),
                 Totp.otpauthUri(current.identity.email, secret)))
         }
-        if (outcome is AdminLoginOutcome.Session) signedIn(outcome.login.response.admin, address, "Mật khẩu")
+        if (outcome is AdminLoginOutcome.Session) signedIn(outcome.login.response.admin, address, legacyFallback("Mật khẩu"))
         return outcome
     }
 
     private fun signedIn(admin: AdminIdentity, address: String?, method: String) =
-        alert("Đăng nhập quản trị", "Email" to admin.email, "Vai trò" to admin.role.name, "Cách xác thực" to method, "IP" to address)
+        alert(legacyFallback("Đăng nhập quản trị"), "Email" to admin.email, legacyFallback("Vai trò") to admin.role.name, legacyFallback("Cách xác thực") to method, "IP" to address)
 
     /** Completes a challenge with a TOTP code or, for enrolled accounts, a single-use recovery code. */
     suspend fun completeMfa(request: AdminMfaVerifyRequest, origin: String?, address: String? = null): AdminMfaLogin {
@@ -147,7 +147,7 @@ class AdminService(
             failedEmail?.let { failedSignIn(it, address) }
             throw failure
         }
-        signedIn(login.response.admin, address, if (request.recoveryCode != null) "Mã khôi phục" else "Mật khẩu + TOTP")
+        signedIn(login.response.admin, address, if (request.recoveryCode != null) legacyFallback("Mã khôi phục") else legacyFallback("Mật khẩu + TOTP"))
         return login
     }
 
@@ -166,7 +166,7 @@ class AdminService(
             auditEntry(actor.id, "ADMIN_MFA_RESET", id, request.requestId, request.reason)
             putDeduplication(actor.id, request.requestId, AdminDeduplication(fingerprint, identity))
             identity
-        }.also { alert("Đặt lại xác thực hai lớp", "Tài khoản" to it.email, "Lý do" to request.reason) }
+        }.also { alert(legacyFallback("Đặt lại xác thực hai lớp"), legacyFallback("Tài khoản") to it.email, legacyFallback("Lý do") to request.reason) }
     }
 
     /**
@@ -258,7 +258,7 @@ class AdminService(
                 putDeduplication(actor.id, request.requestId, AdminDeduplication(fingerprint, identity))
                 identity
             }
-        }.also { alert("Cấp tài khoản quản trị mới", "Tài khoản" to it.email, "Vai trò" to it.role.name, "Lý do" to request.reason) }
+        }.also { alert(legacyFallback("Cấp tài khoản quản trị mới"), legacyFallback("Tài khoản") to it.email, legacyFallback("Vai trò") to it.role.name, legacyFallback("Lý do") to request.reason) }
     }
 
     suspend fun changeAccess(token: String?, csrfToken: String?, origin: String?, id: String, request: ChangeAdminAccessRequest): AdminIdentity {
@@ -275,7 +275,7 @@ class AdminService(
             auditEntry(actor.id, "ADMIN_ACCESS", id, request.requestId, request.reason, accessSummary(existing.identity), accessSummary(identity))
             putDeduplication(actor.id, request.requestId, AdminDeduplication(fingerprint, identity))
             identity
-        }.also { alert("Thay đổi quyền quản trị", "Tài khoản" to it.email, "Quyền mới" to accessSummary(it), "Lý do" to request.reason) }
+        }.also { alert(legacyFallback("Thay đổi quyền quản trị"), legacyFallback("Tài khoản") to it.email, legacyFallback("Quyền mới") to accessSummary(it), legacyFallback("Lý do") to request.reason) }
     }
 
     suspend fun createPlayer(token: String?, csrfToken: String?, origin: String?, request: CreatePlayerRequest): UserDetail {

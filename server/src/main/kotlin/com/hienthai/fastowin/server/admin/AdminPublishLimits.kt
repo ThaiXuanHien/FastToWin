@@ -23,16 +23,16 @@ data class AdminPublishLimits(
     fun exceeded(amounts: RewardAmounts, recipients: Long?): List<String> = buildList {
         fun check(label: String, value: Long, perCap: Long, totalCap: Long) {
             if (value <= 0) return
-            if (value > perCap) add("$label mỗi người ${format(value)} > ${format(perCap)}")
+            if (value > perCap) add(legacyFallback("$label mỗi người ${format(value)} > ${format(perCap)}"))
             if (totalCap == Long.MAX_VALUE) return
             val total = recipients?.let { runCatching { Math.multiplyExact(value, it) }.getOrDefault(Long.MAX_VALUE) }
-            if (total == null) add("$label không giới hạn số lượt nhận")
-            else if (total > totalCap) add("$label tổng ${format(total)} > ${format(totalCap)}")
+            if (total == null) add(legacyFallback("$label không giới hạn số lượt nhận"))
+            else if (total > totalCap) add(legacyFallback("$label tổng ${format(total)} > ${format(totalCap)}"))
         }
-        check("Vàng", amounts.gold, perRecipient.gold, total.gold)
+        check(legacyFallback("Vàng"), amounts.gold, perRecipient.gold, total.gold)
         check("Gem", amounts.gems, perRecipient.gems, total.gems)
         check("XP", amounts.xp, perRecipient.xp, total.xp)
-        check("Lượt chơi", amounts.plays, perRecipient.plays, total.plays)
+        check(legacyFallback("Lượt chơi"), amounts.plays, perRecipient.plays, total.plays)
     }
 
     companion object {
@@ -100,7 +100,7 @@ internal fun AdminTransaction.dualControl(
 }
 
 internal fun approvalRequired(pending: DualControl.Pending): Nothing = throw AdminException(409, "SECOND_OWNER_APPROVAL_REQUIRED", legacyFallback(
-    (if (pending.newlyRequested) "Đã gửi yêu cầu duyệt. " else "Đang chờ duyệt. ") +
-        "Vượt trần (" + pending.reasons.joinToString("; ") + "): cần một Owner khác mở đúng phiên bản này và bấm Công bố."))
+    (if (pending.newlyRequested) legacyFallback("Đã gửi yêu cầu duyệt. ") else legacyFallback("Đang chờ duyệt. ")) +
+        legacyFallback("Vượt trần (") + pending.reasons.joinToString("; ") + legacyFallback("): cần một Owner khác mở đúng phiên bản này và bấm Công bố.")))
 
 private fun isUuid(value: String) = runCatching { java.util.UUID.fromString(value).toString() == value.lowercase() }.getOrDefault(false)

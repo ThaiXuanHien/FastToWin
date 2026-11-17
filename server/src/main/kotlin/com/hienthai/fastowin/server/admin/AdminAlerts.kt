@@ -1,5 +1,6 @@
 package com.hienthai.fastowin.server.admin
 
+import com.hienthai.fastowin.server.legacyFallback
 import com.hienthai.fastowin.server.BrevoEmailSettings
 import com.hienthai.fastowin.server.EmailHttpTransport
 import com.hienthai.fastowin.server.JdkEmailHttpTransport
@@ -69,7 +70,7 @@ internal class BrevoAdminAlertSink(
     internal fun request(alert: AdminAlert): HttpRequest {
         val time = DateTimeFormatter.ofPattern("dd/MM/yyyy HH:mm:ss").withZone(ZoneId.of("Asia/Bangkok"))
             .format(Instant.ofEpochMilli(alert.atEpochMillis))
-        val rows = (listOf("Thời điểm" to "$time (giờ Việt Nam)") + alert.details).joinToString("") { (label, value) ->
+        val rows = (listOf(legacyFallback("Thời điểm") to legacyFallback("$time (giờ Việt Nam)")) + alert.details).joinToString("") { (label, value) ->
             "<tr><th align=\"left\" style=\"padding:4px 12px 4px 0\">${escape(label)}</th><td style=\"padding:4px 0\">${escape(value)}</td></tr>"
         }
         val payload = buildJsonObject {
@@ -77,7 +78,7 @@ internal class BrevoAdminAlertSink(
             put("to", buildJsonArray { recipients.forEach { add(buildJsonObject { put("email", it) }) } })
             put("subject", "[FastToWin Admin] ${alert.title}")
             put("htmlContent", "<p><strong>${escape(alert.title)}</strong></p><table>$rows</table>" +
-                "<p>Nếu đây không phải thao tác của nhóm, hãy kiểm tra Nhật ký kiểm toán và làm theo mục Khôi phục khẩn cấp trong docs/admin-management.md.</p>")
+                legacyFallback("<p>Nếu đây không phải thao tác của nhóm, hãy kiểm tra Nhật ký kiểm toán và làm theo mục Khôi phục khẩn cấp trong docs/admin-management.md.</p>"))
         }
         return HttpRequest.newBuilder(URI.create("https://api.brevo.com/v3/smtp/email"))
             .header("api-key", settings.apiKey)

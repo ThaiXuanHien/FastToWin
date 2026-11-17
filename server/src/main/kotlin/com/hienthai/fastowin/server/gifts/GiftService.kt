@@ -1,5 +1,6 @@
 package com.hienthai.fastowin.server.gifts
 
+import com.hienthai.fastowin.server.legacyFallback
 import com.hienthai.fastowin.protocol.*
 import com.hienthai.fastowin.server.admin.*
 import com.hienthai.fastowin.server.hashToken
@@ -40,17 +41,17 @@ class GiftService(val repository: GiftRepository, private val admins: AdminServi
                 request.maximumClaims?.toLong()), nowMillis())
             control !is DualControl.Pending
         }
-        reportDualControl(service, control, "mã quà", request.code.trim().uppercase())
+        reportDualControl(service, control, legacyFallback("mã quà"), request.code.trim().uppercase())
         return published ?: error("unreachable: pending publication was reported")
     }
 
     private fun reportDualControl(service: AdminService, control: DualControl, kind: String, label: String) {
         when (control) {
             is DualControl.Pending -> {
-                if (control.newlyRequested) service.alert("Yêu cầu duyệt công bố $kind vượt trần", "Nội dung" to label, "Vượt trần" to control.reasons.joinToString("; "))
+                if (control.newlyRequested) service.alert(legacyFallback("Yêu cầu duyệt công bố $kind vượt trần"), legacyFallback("Nội dung") to label, legacyFallback("Vượt trần") to control.reasons.joinToString("; "))
                 approvalRequired(control)
             }
-            is DualControl.Approved -> service.alert("Đã duyệt và công bố $kind vượt trần", "Nội dung" to label, "Vượt trần" to control.reasons.joinToString("; "))
+            is DualControl.Approved -> service.alert(legacyFallback("Đã duyệt và công bố $kind vượt trần"), legacyFallback("Nội dung") to label, legacyFallback("Vượt trần") to control.reasons.joinToString("; "))
             DualControl.Allowed -> Unit
         }
     }
@@ -192,7 +193,7 @@ class GiftService(val repository: GiftRepository, private val admins: AdminServi
             if (control is DualControl.Pending) return@transaction null
             publishApproved(actor, id, request, fp, c, audience)
         }
-        reportDualControl(service, control, "quà", title)
+        reportDualControl(service, control, legacyFallback("quà"), title)
         return result ?: error("unreachable: pending publication was reported")
     }
     private fun GiftTransaction.publishApproved(actor: AdminIdentity, id: String, request: GiftPublishRequest, fp: String,

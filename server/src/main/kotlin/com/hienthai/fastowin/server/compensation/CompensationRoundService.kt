@@ -1,5 +1,6 @@
 package com.hienthai.fastowin.server.compensation
 
+import com.hienthai.fastowin.server.legacyFallback
 import com.hienthai.fastowin.server.admin.*
 import com.hienthai.fastowin.server.gifts.*
 import com.hienthai.fastowin.server.hashToken
@@ -156,10 +157,10 @@ class CompensationRoundService(val repository: GiftRepository, private val admin
         } }
         when (val decided = control) {
             is DualControl.Pending -> {
-                if (decided.newlyRequested) admins.alert("Yêu cầu duyệt công bố bồi thường vượt trần", "Nội dung" to label, "Vượt trần" to decided.reasons.joinToString("; "))
+                if (decided.newlyRequested) admins.alert(legacyFallback("Yêu cầu duyệt công bố bồi thường vượt trần"), legacyFallback("Nội dung") to label, legacyFallback("Vượt trần") to decided.reasons.joinToString("; "))
                 approvalRequired(decided)
             }
-            is DualControl.Approved -> admins.alert("Đã duyệt và công bố bồi thường vượt trần", "Nội dung" to label, "Vượt trần" to decided.reasons.joinToString("; "))
+            is DualControl.Approved -> admins.alert(legacyFallback("Đã duyệt và công bố bồi thường vượt trần"), legacyFallback("Nội dung") to label, legacyFallback("Vượt trần") to decided.reasons.joinToString("; "))
             DualControl.Allowed -> Unit
         }
         return result ?: error("unreachable: pending publication was reported")
