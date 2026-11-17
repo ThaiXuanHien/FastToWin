@@ -66,6 +66,24 @@ class DatabaseRuntime private constructor(
 ) : AutoCloseable {
     override fun close() = dataSource.close()
 
+    /**
+     * SCL-04: pool saturation for alerting. Sustained `pending > 0` means requests wait for a
+     * connection: raise DATABASE_POOL_SIZE carefully or add PgBouncer, never per WebSocket.
+     */
+    fun renderPoolMetrics(): String {
+        val pool = dataSource.hikariPoolMXBean ?: return ""
+        return buildString {
+            append("# HELP fasttowin_db_pool_connections Database pool connections by state.\n")
+            append("# TYPE fasttowin_db_pool_connections gauge\n")
+            append("fasttowin_db_pool_connections{state=\"active\"} ").append(pool.activeConnections).append('\n')
+            append("fasttowin_db_pool_connections{state=\"idle\"} ").append(pool.idleConnections).append('\n')
+            append("fasttowin_db_pool_connections{state=\"max\"} ").append(dataSource.maximumPoolSize).append('\n')
+            append("# HELP fasttowin_db_pool_pending_threads Threads waiting for a database connection.\n")
+            append("# TYPE fasttowin_db_pool_pending_threads gauge\n")
+            append("fasttowin_db_pool_pending_threads ").append(pool.threadsAwaitingConnection).append('\n')
+        }
+    }
+
     companion object {
         fun open(settings: DatabaseSettings): DatabaseRuntime {
             val dataSource = HikariDataSource(HikariConfig().apply {
