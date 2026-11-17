@@ -35,6 +35,23 @@ Tài liệu này hướng dẫn các việc trong `system-upgrade-checklist.xlsx
    Đặt lifecycle rule trên bucket để giữ khoảng 30 bản gần nhất.
 3. Mỗi tháng diễn tập khôi phục một lần: `pg_restore` vào một database staging trống, khởi động server staging, đăng nhập bằng một tài khoản thử và kiểm tra ví. Ghi kết quả vào `docs/staging-rehearsal.md`.
 
+**Trạng thái 17/11/2026:**
+
+- Bước 1 không làm được: gói Railway Hobby chỉ xem được backup có sẵn, tạo backup và lịch tự động cần gói Pro.
+- Bước 2 đã chạy bằng service cron **`db-backup`** trên Railway (mã nguồn `deploy/railway/db-backup/`). Lịch `0 19 * * *` UTC, tức 02:00 giờ Việt Nam. Job chạy `pg_dump` qua mạng nội bộ, mã hóa bằng `age` cho khóa công khai `BACKUP_AGE_RECIPIENT`, từ chối file nhỏ hơn 4 KB, rồi đẩy file `.dump.age` kèm `.sha256` vào thư mục `postgres/` của bucket R2 `fasttowin-db-backups` (riêng tư, khu vực châu Á – Thái Bình Dương).
+- Lifecycle rule *Delete backups after 30 days* trên prefix `postgres/`. Token R2 `fasttowin-db-backup-writer` chỉ có quyền Object Read & Write trên bucket này.
+- Khóa giải mã chỉ chủ dự án giữ (trình quản lý mật khẩu và `D:\HienTX\Keys\FastToWin\db-backup-age-key.txt`). Mất khóa thì không mở được bản backup nào; đổi khóa thì cập nhật `BACKUP_AGE_RECIPIENT`.
+- Đã kiểm tra bản đầu `fasttowin-2026-11-17T0712Z.dump.age`: giải mã được, `pg_restore --list` đọc được 116 bảng dữ liệu, có `users`, `wallet_transactions`, `daily_check_ins`.
+
+Kiểm tra một bản backup trên máy (tải file từ R2 về thư mục Downloads trước):
+
+```bash
+age --decrypt -i db-backup-age-key.txt fasttowin-<thời điểm>.dump.age > restore.dump
+pg_restore --list restore.dump | grep -c 'TABLE DATA'
+```
+
+Chạy ngay một bản backup ngoài lịch: Railway → service `db-backup` → **Cron Runs** → *Run now*, hoặc deploy lại service.
+
 ## SEC-01 – Xác minh backend nhận đúng IP người chơi
 
 **Đã có trong code (PR1):** Caddy chỉ tin header IP từ dải mạng riêng (Railway edge) và chuyển đúng `{client_ip}` cho backend.
