@@ -33,6 +33,11 @@ import androidx.compose.material.icons.rounded.Language
 import androidx.compose.material.icons.automirrored.rounded.KeyboardArrowRight
 import androidx.compose.material3.RadioButton
 import androidx.compose.material.icons.rounded.TaskAlt
+import androidx.compose.material.icons.rounded.Shield
+import androidx.compose.material.icons.rounded.MilitaryTech
+import androidx.compose.material.icons.rounded.CardGiftcard
+import androidx.compose.material.icons.rounded.Schedule
+import androidx.compose.material.icons.rounded.PersonAdd
 import androidx.compose.material.icons.rounded.Vibration
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
@@ -266,6 +271,56 @@ fun SettingsScreen(
                                     enabled = !pushPreferencesSaving,
                                     onCheckedChange = {
                                         onPushPreferencesChange(preferences.copy(dailyCheckInEnabled = it))
+                                    }
+                                )
+                                SettingsSwitchRow(
+                                    icon = Icons.Rounded.PersonAdd,
+                                    title = localized(TextKey.SettingsFriendActivityTitle),
+                                    subtitle = localized(TextKey.SettingsFriendActivitySubtitle),
+                                    checked = preferences.friendActivityEnabled,
+                                    enabled = !pushPreferencesSaving,
+                                    onCheckedChange = {
+                                        onPushPreferencesChange(preferences.copy(friendActivityEnabled = it))
+                                    }
+                                )
+                                SettingsSwitchRow(
+                                    icon = Icons.Rounded.Schedule,
+                                    title = localized(TextKey.SettingsTournamentRemindersTitle),
+                                    subtitle = localized(TextKey.SettingsTournamentRemindersSubtitle),
+                                    checked = preferences.tournamentRemindersEnabled,
+                                    enabled = !pushPreferencesSaving,
+                                    onCheckedChange = {
+                                        onPushPreferencesChange(preferences.copy(tournamentRemindersEnabled = it))
+                                    }
+                                )
+                                SettingsSwitchRow(
+                                    icon = Icons.Rounded.CardGiftcard,
+                                    title = localized(TextKey.SettingsGiftsTitle),
+                                    subtitle = localized(TextKey.SettingsGiftsSubtitle),
+                                    checked = preferences.giftsEnabled,
+                                    enabled = !pushPreferencesSaving,
+                                    onCheckedChange = {
+                                        onPushPreferencesChange(preferences.copy(giftsEnabled = it))
+                                    }
+                                )
+                                SettingsSwitchRow(
+                                    icon = Icons.Rounded.MilitaryTech,
+                                    title = localized(TextKey.SettingsSeasonUpdatesTitle),
+                                    subtitle = localized(TextKey.SettingsSeasonUpdatesSubtitle),
+                                    checked = preferences.seasonUpdatesEnabled,
+                                    enabled = !pushPreferencesSaving,
+                                    onCheckedChange = {
+                                        onPushPreferencesChange(preferences.copy(seasonUpdatesEnabled = it))
+                                    }
+                                )
+                                SettingsSwitchRow(
+                                    icon = Icons.Rounded.Shield,
+                                    title = localized(TextKey.SettingsClanActivityTitle),
+                                    subtitle = localized(TextKey.SettingsClanActivitySubtitle),
+                                    checked = preferences.clanActivityEnabled,
+                                    enabled = !pushPreferencesSaving,
+                                    onCheckedChange = {
+                                        onPushPreferencesChange(preferences.copy(clanActivityEnabled = it))
                                     }
                                 )
                             }

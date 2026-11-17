@@ -352,7 +352,12 @@ enum class PushNotificationCategory {
     ROOM_INVITATIONS,
     TOURNAMENT_INVITATIONS,
     MISSION_REWARDS,
-    DAILY_CHECK_IN
+    DAILY_CHECK_IN,
+    FRIEND_ACTIVITY,
+    TOURNAMENT_REMINDERS,
+    GIFTS,
+    SEASON_UPDATES,
+    CLAN_ACTIVITY
 }
 
 @Serializable
@@ -360,7 +365,13 @@ data class PushPreferencesSnapshot(
     val roomInvitationsEnabled: Boolean = true,
     val tournamentInvitationsEnabled: Boolean = true,
     val missionRewardsEnabled: Boolean = true,
-    val dailyCheckInEnabled: Boolean = true
+    val dailyCheckInEnabled: Boolean = true,
+    // Added later: older clients omit these, so they default to on.
+    val friendActivityEnabled: Boolean = true,
+    val tournamentRemindersEnabled: Boolean = true,
+    val giftsEnabled: Boolean = true,
+    val seasonUpdatesEnabled: Boolean = true,
+    val clanActivityEnabled: Boolean = true
 )
 
 @Serializable

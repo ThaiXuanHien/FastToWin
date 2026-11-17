@@ -1692,6 +1692,16 @@ class GameEngine(
                             messageArgs = mapOf("player" to request.displayName, "playerId" to request.userId)
                         ))
                     )
+                    pushIfEnabled(
+                        playerId = result.recipientId,
+                        category = PushNotificationCategory.FRIEND_ACTIVITY,
+                        content = LocalizedPushContent(
+                            titleKey = TextKey.PushFriendRequestTitle,
+                            bodyKey = TextKey.PushFriendRequestMessage,
+                            bodyArguments = mapOf("player" to moderatedName(UgcTargetType.PLAYER_PROFILE, request.userId, request.displayName, "Player"))
+                        ),
+                        destinationPath = "/friends"
+                    )
                 }
                 listOf(Delivery(ServerMessage.SocialNotice(
                     legacyFallback("Đã gửi lời mời kết bạn."),
@@ -1741,6 +1751,20 @@ class GameEngine(
         return when (val result = friendRepository.respond(playerId, command.requestId, command.accept, nowMillis())) {
             is FriendResponseResult.Success -> {
                 notificationRepository.dismissNotifications(playerId, "friend:${command.requestId}", nowMillis())
+                if (command.accept) {
+                    val accepter = sessionsByPlayerId[playerId]?.displayName
+                        ?: playerProfileRepository.findByPlayerId(playerId)?.displayName
+                    if (accepter != null) pushIfEnabled(
+                        playerId = result.requesterId,
+                        category = PushNotificationCategory.FRIEND_ACTIVITY,
+                        content = LocalizedPushContent(
+                            titleKey = TextKey.PushFriendAcceptedTitle,
+                            bodyKey = TextKey.PushFriendAcceptedMessage,
+                            bodyArguments = mapOf("player" to moderatedName(UgcTargetType.PLAYER_PROFILE, playerId, accepter, "Player"))
+                        ),
+                        destinationPath = "/friends"
+                    )
+                }
                 val notice = if (command.accept) legacyFallback("Đã chấp nhận lời mời kết bạn.") else legacyFallback("Đã từ chối lời mời kết bạn.")
                 val noticeKey = if (command.accept) TextKey.FriendRequestAcceptedNotice else TextKey.FriendRequestDeclinedNotice
                 val noticeCode = if (command.accept) "FRIEND_REQUEST_ACCEPTED" else "FRIEND_REQUEST_DECLINED"
@@ -2626,6 +2650,26 @@ class GameEngine(
             }
         }
         return true
+    }
+
+    /** Push text leaves the app, so moderated names are replaced exactly like in-app projections. */
+    private suspend fun moderatedName(type: UgcTargetType, id: String, name: String, neutral: String): String {
+        val fingerprint = com.hienthai.fastowin.server.moderation.contentRevision(name)
+        val suppressed = runCatching { moderationService.suppressions() }.getOrDefault(emptyList()).any {
+            it.targetType == type && it.targetId == id && (it.revision == fingerprint || it.nameRevision == fingerprint)
+        }
+        return if (suppressed) neutral else name
+    }
+
+    /** Sends one push if the player has a device token and has not turned [category] off. */
+    private suspend fun pushIfEnabled(
+        playerId: String,
+        category: PushNotificationCategory,
+        content: LocalizedPushContent,
+        destinationPath: String
+    ) {
+        val target = runCatching { playerProfileRepository.findPushTarget(playerId, category) }.getOrNull() ?: return
+        sendPushNotification(playerId, target, content, destinationPath)
     }
 
     private suspend fun sendPushNotification(
@@ -4827,6 +4871,16 @@ class GameEngine(
                     messageArgs = mapOf("clan" to clan.name, "clanId" to clan.id)
                 )
                 notificationRepository.createNotifications(command.userId, listOf(notification))
+                if (approved) pushIfEnabled(
+                    playerId = command.userId,
+                    category = PushNotificationCategory.CLAN_ACTIVITY,
+                    content = LocalizedPushContent(
+                        titleKey = TextKey.PushClanJoinApprovedTitle,
+                        bodyKey = TextKey.PushClanJoinApprovedMessage,
+                        bodyArguments = mapOf("clan" to moderatedName(UgcTargetType.CLAN, clan.id, clan.name, "Clan"))
+                    ),
+                    destinationPath = "/clan"
+                )
                 val updatedClan = clanRepository.getClanById(command.clanId)
                 buildList {
                     add(Delivery(

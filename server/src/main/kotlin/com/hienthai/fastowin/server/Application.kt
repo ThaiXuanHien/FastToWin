@@ -397,7 +397,7 @@ fun Application.gameModule(
         while (isActive) {
             runCatching { pushReminderService.sendDueReminders() }
                 .onSuccess { delivered ->
-                    if (delivered > 0) println("Sent $delivered daily push reminder(s).")
+                    if (delivered > 0) println("Sent $delivered scheduled push reminder(s).")
                 }
                 .onFailure { error ->
                     System.err.println("Could not send daily push reminders: ${error.message}")

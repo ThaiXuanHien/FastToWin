@@ -43,6 +43,13 @@ interface PlayerProfileRepository {
         playerId: String,
         reminderKey: String
     ): Boolean = false
+    /** One page of players due a [kind] push now; each row carries its own once-only delivery key. */
+    suspend fun loadScheduledPushTargets(
+        kind: ScheduledPushKind,
+        nowMillis: Long,
+        localDate: String,
+        limit: Int = 500
+    ): List<ScheduledPushTarget> = emptyList()
     suspend fun findMatchDetail(playerId: String, matchId: String): MatchDetailSnapshot? = null
     suspend fun equipCosmetics(playerId: String, frameId: String, titleId: String): Boolean = false
     suspend fun claimDailyCheckIn(playerId: String): DailyCheckInClaimResult? = null
@@ -82,6 +89,14 @@ interface PlayerProfileRepository {
     suspend fun buyCosmetic(playerId: String, cosmeticId: String, cosmeticType: String, price: Int): Boolean = false
     suspend fun equipCosmetic(playerId: String, cosmeticId: String, cosmeticType: String): Boolean = false
 }
+
+enum class ScheduledPushKind { STREAK_AT_RISK, TOURNAMENT_CHECK_IN, GIFT_MAILBOX, SEASON_ENDING, CLAN_RACE_ENDING }
+
+data class ScheduledPushTarget(
+    val target: PushReminderTarget,
+    val reminderKey: String,
+    val arguments: Map<String, String> = emptyMap()
+)
 
 data class PushReminderTarget(
     val playerId: String,

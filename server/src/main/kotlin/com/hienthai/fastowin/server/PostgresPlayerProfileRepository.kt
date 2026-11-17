@@ -115,6 +115,11 @@ class PostgresPlayerProfileRepository(
                        u.push_tournament_invitations_enabled,
                        u.push_mission_rewards_enabled,
                        u.push_daily_check_in_enabled,
+                       u.push_friend_activity_enabled,
+                       u.push_tournament_reminders_enabled,
+                       u.push_gifts_enabled,
+                       u.push_season_updates_enabled,
+                       u.push_clan_activity_enabled,
                        cm.clan_id, c.name AS clan_name
                 FROM profiles p
                 JOIN users u ON u.id = p.user_id
@@ -151,7 +156,12 @@ class PostgresPlayerProfileRepository(
                             roomInvitationsEnabled = result.getBoolean("push_room_invitations_enabled"),
                             tournamentInvitationsEnabled = result.getBoolean("push_tournament_invitations_enabled"),
                             missionRewardsEnabled = result.getBoolean("push_mission_rewards_enabled"),
-                            dailyCheckInEnabled = result.getBoolean("push_daily_check_in_enabled")
+                            dailyCheckInEnabled = result.getBoolean("push_daily_check_in_enabled"),
+                            friendActivityEnabled = result.getBoolean("push_friend_activity_enabled"),
+                            tournamentRemindersEnabled = result.getBoolean("push_tournament_reminders_enabled"),
+                            giftsEnabled = result.getBoolean("push_gifts_enabled"),
+                            seasonUpdatesEnabled = result.getBoolean("push_season_updates_enabled"),
+                            clanActivityEnabled = result.getBoolean("push_clan_activity_enabled")
                         )
                     )
                 }
@@ -1279,6 +1289,11 @@ class PostgresPlayerProfileRepository(
             PushNotificationCategory.TOURNAMENT_INVITATIONS -> "push_tournament_invitations_enabled"
             PushNotificationCategory.MISSION_REWARDS -> "push_mission_rewards_enabled"
             PushNotificationCategory.DAILY_CHECK_IN -> "push_daily_check_in_enabled"
+            PushNotificationCategory.FRIEND_ACTIVITY -> "push_friend_activity_enabled"
+            PushNotificationCategory.TOURNAMENT_REMINDERS -> "push_tournament_reminders_enabled"
+            PushNotificationCategory.GIFTS -> "push_gifts_enabled"
+            PushNotificationCategory.SEASON_UPDATES -> "push_season_updates_enabled"
+            PushNotificationCategory.CLAN_ACTIVITY -> "push_clan_activity_enabled"
         }
         dataSource.connection.use { connection ->
             connection.prepareStatement(
@@ -1310,7 +1325,12 @@ class PostgresPlayerProfileRepository(
                 SET push_room_invitations_enabled = ?,
                     push_tournament_invitations_enabled = ?,
                     push_mission_rewards_enabled = ?,
-                    push_daily_check_in_enabled = ?
+                    push_daily_check_in_enabled = ?,
+                    push_friend_activity_enabled = ?,
+                    push_tournament_reminders_enabled = ?,
+                    push_gifts_enabled = ?,
+                    push_season_updates_enabled = ?,
+                    push_clan_activity_enabled = ?
                 WHERE id = ? AND status = 'ACTIVE'
                 """.trimIndent()
             ).use { statement ->
@@ -1318,7 +1338,12 @@ class PostgresPlayerProfileRepository(
                 statement.setBoolean(2, preferences.tournamentInvitationsEnabled)
                 statement.setBoolean(3, preferences.missionRewardsEnabled)
                 statement.setBoolean(4, preferences.dailyCheckInEnabled)
-                statement.setObject(5, UUID.fromString(playerId))
+                statement.setBoolean(5, preferences.friendActivityEnabled)
+                statement.setBoolean(6, preferences.tournamentRemindersEnabled)
+                statement.setBoolean(7, preferences.giftsEnabled)
+                statement.setBoolean(8, preferences.seasonUpdatesEnabled)
+                statement.setBoolean(9, preferences.clanActivityEnabled)
+                statement.setObject(10, UUID.fromString(playerId))
                 statement.executeUpdate() == 1
             }
         }
@@ -1362,6 +1387,40 @@ class PostgresPlayerProfileRepository(
                                 language = resolveNotificationLanguage(
                                     result.getString("notification_language")
                                 )
+                            ))
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    override suspend fun loadScheduledPushTargets(
+        kind: ScheduledPushKind,
+        nowMillis: Long,
+        localDate: String,
+        limit: Int
+    ): List<ScheduledPushTarget> = withContext(Dispatchers.IO) {
+        val date = runCatching { LocalDate.parse(localDate) }.getOrNull() ?: return@withContext emptyList()
+        val query = scheduledPushQuery(kind, nowMillis, date)
+        dataSource.connection.use { connection ->
+            connection.prepareStatement(query.sql + "\nORDER BY u.id\nLIMIT ?").use { statement ->
+                query.parameters.forEachIndexed { index, value -> statement.setObject(index + 1, value) }
+                statement.setInt(query.parameters.size + 1, limit.coerceIn(1, 2_000))
+                statement.executeQuery().use { result ->
+                    buildList {
+                        while (result.next()) {
+                            val argument = result.getString("arg")
+                            add(ScheduledPushTarget(
+                                target = PushReminderTarget(
+                                    playerId = result.getObject("id", UUID::class.java).toString(),
+                                    fcmToken = result.getString("fcm_token"),
+                                    language = resolveNotificationLanguage(result.getString("notification_language"))
+                                ),
+                                reminderKey = result.getString("reminder_key"),
+                                arguments = if (query.argumentName != null && argument != null) {
+                                    mapOf(query.argumentName to argument)
+                                } else emptyMap()
                             ))
                         }
                     }
