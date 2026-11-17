@@ -748,7 +748,7 @@ private fun FriendCard(
                         else -> localized(TextKey.InviteToRoom)
                     },
                     onClick = { onInviteFriend(friend.userId) },
-                    enabled = friend.presence == FriendPresence.ONLINE &&
+                    enabled = isInvitablePresence(friend.presence) &&
                         !isSendingInvitation && !isInvited,
                     style = if (isInvited) ArcadeActionStyle.OUTLINE else ArcadeActionStyle.GOLD,
                     modifier = Modifier.fillMaxWidth()
@@ -757,6 +757,13 @@ private fun FriendCard(
         }
     }
 }
+
+/**
+ * Offline friends can still be invited: the server stores the invitation and sends a push.
+ * iOS suspends a backgrounded app, so its player shows offline while still reachable by push.
+ */
+internal fun isInvitablePresence(presence: FriendPresence): Boolean =
+    presence == FriendPresence.ONLINE || presence == FriendPresence.OFFLINE
 
 private data class PlayerActionTarget(val userId: String, val displayName: String)
 
