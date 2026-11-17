@@ -75,7 +75,10 @@ fun main() {
         val pushReminderService = if (database == null) {
             NoOpPushReminderService
         } else {
-            DailyPushReminderService(playerProfileRepository, pushNotificationService)
+            CompositePushReminderService(listOf(
+                DailyPushReminderService(playerProfileRepository, pushNotificationService),
+                ScheduledPushReminderService(playerProfileRepository, pushNotificationService)
+            ))
         }
         val storePurchaseService = StorePurchaseService(playerProfileRepository, storePurchaseVerifier)
         val financialSync = database?.let {

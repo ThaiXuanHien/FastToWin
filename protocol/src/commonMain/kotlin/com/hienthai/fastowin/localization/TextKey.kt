@@ -423,5 +423,14 @@ ClanRaceTitle, ClanRacePrizes, ClanRacePerMember, ClanRaceEligibility, ClanRaceW
     TournamentCancelledRefund, TournamentRecordedParticipants, TournamentScheduledInvitationRule,
     TournamentRefundRuleCompact,
     HumanVerificationTitle, HumanVerificationDescription, HumanVerificationLoading,
-    HumanVerificationRequired, HumanVerificationFailed, HumanVerificationUnavailable
+    HumanVerificationRequired, HumanVerificationFailed, HumanVerificationUnavailable,
+    PushOptInTitle, PushOptInSubtitle, PushOptInRoomInvites, PushOptInRewards, PushOptInPrivacy,
+    PushOptInEnable,
+    PushFriendRequestTitle, PushFriendRequestMessage, PushFriendAcceptedTitle, PushFriendAcceptedMessage,
+    PushClanJoinApprovedTitle, PushClanJoinApprovedMessage, PushTournamentCheckInTitle, PushTournamentCheckInMessage,
+    PushGiftMailboxTitle, PushGiftMailboxMessage, PushSeasonEndingTitle, PushSeasonEndingMessage,
+    PushStreakAtRiskTitle, PushStreakAtRiskMessage, PushClanRaceEndingTitle, PushClanRaceEndingMessage,
+    SettingsFriendActivityTitle, SettingsFriendActivitySubtitle, SettingsTournamentRemindersTitle, SettingsTournamentRemindersSubtitle,
+    SettingsGiftsTitle, SettingsGiftsSubtitle, SettingsSeasonUpdatesTitle, SettingsSeasonUpdatesSubtitle,
+    SettingsClanActivityTitle, SettingsClanActivitySubtitle
 }

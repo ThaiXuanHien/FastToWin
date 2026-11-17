@@ -109,4 +109,33 @@ class GlobalPromptPriorityTest {
             )
         )
     }
+
+    @Test
+    fun `notification opt-in yields to every other prompt`() {
+        assertEquals(
+            GlobalPrompt.TOURNAMENT_REWARD,
+            selectGlobalPrompt(
+                hasRoomInvitation = false,
+                hasTournamentInvitation = false,
+                hasChallengeError = false,
+                hasFriendRequest = false,
+                canShowWebUpdate = false,
+                canShowSeasonSummary = false,
+                canShowTournamentReward = true,
+                canShowPushOptIn = true
+            )
+        )
+        assertEquals(
+            GlobalPrompt.PUSH_OPT_IN,
+            selectGlobalPrompt(
+                hasRoomInvitation = false,
+                hasTournamentInvitation = false,
+                hasChallengeError = false,
+                hasFriendRequest = false,
+                canShowWebUpdate = false,
+                canShowSeasonSummary = false,
+                canShowPushOptIn = true
+            )
+        )
+    }
 }

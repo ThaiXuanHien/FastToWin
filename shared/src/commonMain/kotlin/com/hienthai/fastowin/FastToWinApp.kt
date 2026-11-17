@@ -1,6 +1,14 @@
 package com.hienthai.fastowin
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
+import com.hienthai.fastowin.ui.theme.ArcadePalette
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -75,6 +83,8 @@ import com.hienthai.fastowin.platform.NoOpAppUpdateBridge
 import com.hienthai.fastowin.platform.AppInstallBridge
 import com.hienthai.fastowin.platform.NoOpAppInstallBridge
 import com.hienthai.fastowin.platform.AppPushBridge
+import com.hienthai.fastowin.state.PushOptInPolicy
+import com.hienthai.fastowin.ui.components.PushOptInDialog
 import com.hienthai.fastowin.platform.NoOpAppPushBridge
 import com.hienthai.fastowin.platform.ChallengeDeepLinkRouter
 import com.hienthai.fastowin.platform.playFeedbackSound
@@ -881,6 +891,13 @@ private fun GameContent(
         !showPracticeLauncher &&
         !showPracticeModePicker &&
         practiceMode == null
+    // Lowest priority: only when the player is idle in the lobby with nothing else to answer.
+    val canShowPushOptIn = !isGuest &&
+        state.connectionStatus == com.hienthai.fastowin.state.ConnectionStatus.CONNECTED &&
+        state.currentRoomId == null && !state.isMatchmaking && !state.isMatchStarted && !state.isGameOver &&
+        !showTutorial && !showSettings && !showSeasonHistory && !showPracticeLauncher &&
+        !showPracticeModePicker && practiceMode == null &&
+        PushOptInPolicy.shouldPrompt(pushStatus, appPreferences, isSignedIn = true, nowMillis = epochMillis())
     val globalPrompt = selectGlobalPrompt(
         hasPlayQuotaDialog = state.showPlayQuotaExhaustedDialog,
         hasPlayFlowRejection = state.playFlowRejection != null,
@@ -897,8 +914,21 @@ private fun GameContent(
         canShowMissionReward = canShowMissionReward,
         canShowClanExperienceReward = canShowClanExperienceReward,
         canShowClanQuestReward = canShowClanQuestReward,
-        canShowTournamentReward = canShowTournamentReward
+        canShowTournamentReward = canShowTournamentReward,
+        canShowPushOptIn = canShowPushOptIn
     )
+    GlobalPromptSlot(globalPrompt, GlobalPrompt.PUSH_OPT_IN) {
+        val recordPushOptIn = {
+            onPreferencesChange(PushOptInPolicy.recordPrompt(appPreferences, epochMillis()))
+        }
+        PushOptInDialog(
+            onEnable = {
+                recordPushOptIn()
+                pushBridge.enable()
+            },
+            onLater = recordPushOptIn
+        )
+    }
 
     GlobalPromptSlot(globalPrompt, GlobalPrompt.PLAY_QUOTA) {
         PlayQuotaExhaustedDialog(
@@ -2211,29 +2241,44 @@ internal fun ReconnectOverlay(
     Box(
         modifier = modifier
             .fillMaxSize()
-            .background(Color(0xB8071824))
+            // Near-opaque scrim: the board must not read through while input is blocked.
+            .background(Color(0xE6040E1F))
             .clickable(onClick = {})
             .testTag("reconnect_overlay"),
         contentAlignment = Alignment.Center
     ) {
         Column(
             modifier = Modifier
+                .padding(horizontal = 20.dp)
                 .fillMaxWidth()
                 .widthIn(max = 360.dp)
-                .padding(24.dp)
+                .background(
+                    Brush.verticalGradient(listOf(Color(0xFF123269), Color(0xFF091D43))),
+                    RoundedCornerShape(24.dp)
+                )
+                .border(1.dp, Color(0xFF5680CA), RoundedCornerShape(24.dp))
+                .padding(20.dp)
                 .testTag("reconnect_blocker"),
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.spacedBy(14.dp)
         ) {
+            CircularProgressIndicator(
+                modifier = Modifier.size(28.dp),
+                color = ArcadePalette.Gold500,
+                strokeWidth = 3.dp
+            )
             Text(
                 text = localized(TextKey.ReconnectingMatch),
                 style = MaterialTheme.typography.titleMedium,
-                color = Color.White
+                fontWeight = FontWeight.Bold,
+                color = Color.White,
+                textAlign = TextAlign.Center
             )
             Text(
                 text = localized(TextKey.ReconnectBlockingHint),
                 style = MaterialTheme.typography.bodyMedium,
-                color = Color.White.copy(alpha = 0.82f)
+                color = Color(0xFFDDE8FF),
+                textAlign = TextAlign.Center
             )
             ArcadeActionButton(
                 label = localized(TextKey.ReconnectAction),
@@ -2297,7 +2342,8 @@ internal enum class GlobalPrompt {
     MISSION_REWARD,
     CLAN_EXPERIENCE_REWARD,
     CLAN_QUEST_REWARD,
-    TOURNAMENT_REWARD
+    TOURNAMENT_REWARD,
+    PUSH_OPT_IN
 }
 
 internal fun selectGlobalPrompt(
@@ -2316,7 +2362,8 @@ internal fun selectGlobalPrompt(
     canShowMissionReward: Boolean = false,
     canShowClanExperienceReward: Boolean = false,
     canShowClanQuestReward: Boolean = false,
-    canShowTournamentReward: Boolean = false
+    canShowTournamentReward: Boolean = false,
+    canShowPushOptIn: Boolean = false
 ): GlobalPrompt? = when {
     hasPlayQuotaDialog -> GlobalPrompt.PLAY_QUOTA
     hasPlayFlowRejection -> GlobalPrompt.PLAY_FLOW_REJECTION
@@ -2334,6 +2381,7 @@ internal fun selectGlobalPrompt(
     canShowClanExperienceReward -> GlobalPrompt.CLAN_EXPERIENCE_REWARD
     canShowClanQuestReward -> GlobalPrompt.CLAN_QUEST_REWARD
     canShowTournamentReward -> GlobalPrompt.TOURNAMENT_REWARD
+    canShowPushOptIn -> GlobalPrompt.PUSH_OPT_IN
     else -> null
 }
 
