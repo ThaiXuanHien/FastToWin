@@ -82,6 +82,14 @@ tasks.register<JavaExec>("bootstrapAdminOwner") {
     standardInput = System.`in`
 }
 
+tasks.register<JavaExec>("recoverAdminAccount") {
+    group = "application"
+    description = "Offline emergency recovery: sets a new admin password, clears MFA and revokes sessions."
+    classpath = sourceSets.main.get().runtimeClasspath
+    mainClass.set("com.hienthai.fastowin.server.admin.AdminRecoveryKt")
+    standardInput = System.`in`
+}
+
 // Export only the test launcher classpath; production distributions contain main sources only.
 tasks.register("missionAcceptanceClasspath") {
     group = "verification"

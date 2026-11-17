@@ -44,6 +44,8 @@ internal class JdbcAdminTransaction(private val connection: Connection) : AdminT
         }
     private fun update(sql: String, vararg values: Any?) = connection.prepareStatement(sql).use { it.bind(values.toList()); it.executeUpdate() }
     private fun count(sql: String, values: List<Any?> = emptyList()) = rows(sql, values) { it.getLong(1) }.single()
+    // Authorization reads only admin_accounts, so it keeps working on any migrated schema;
+    // the MFA flag is filled where it is shown (account list, sign-in response).
     private fun accountRow(rs: ResultSet) = AdminAccount(AdminIdentity(rs.getString("id"), rs.getString("email_normalized"), AdminRole.valueOf(rs.getString("role")), rs.getBoolean("active")), rs.getString("password_hash"))
     override fun accountByEmail(email: String) = rows("SELECT id,email_normalized,password_hash,role,active FROM admin_accounts WHERE email_normalized=?", listOf(email), ::accountRow).singleOrNull()
     override fun account(id: String) = rows("SELECT id,email_normalized,password_hash,role,active FROM admin_accounts WHERE id=?", listOf(UUID.fromString(id)), ::accountRow).singleOrNull()
@@ -61,6 +63,50 @@ internal class JdbcAdminTransaction(private val connection: Connection) : AdminT
             ON CONFLICT(token_hash) DO UPDATE SET revoked=EXCLUDED.revoked""", session.tokenHash, UUID.fromString(session.adminId), session.csrfHash, Timestamp(session.expiresAtEpochMillis), session.revoked)
     }
     override fun revokeSessions(adminId: String) { update("UPDATE admin_sessions SET revoked=TRUE WHERE admin_id=? AND NOT revoked", UUID.fromString(adminId)) }
+    override fun putPassword(adminId: String, passwordHash: String) {
+        update("UPDATE admin_accounts SET password_hash=?,updated_at=CURRENT_TIMESTAMP WHERE id=?", passwordHash, UUID.fromString(adminId))
+    }
+    // Sign-in must still work on a schema migrated only up to an earlier version (migration
+    // replay tests, partially applied history); a missing table means nobody has enrolled.
+    private fun mfaTablePresent() = rows("SELECT to_regclass('admin_mfa') IS NOT NULL") { it.getBoolean(1) }.single()
+    override fun mfa(adminId: String) = if (!mfaTablePresent()) null else rows("SELECT secret_ciphertext,enabled,last_used_step FROM admin_mfa WHERE admin_id=?", listOf(UUID.fromString(adminId))) {
+        AdminMfaRecord(adminId, it.getString("secret_ciphertext"), it.getBoolean("enabled"), it.getLong("last_used_step"))
+    }.singleOrNull()
+    override fun putMfa(record: AdminMfaRecord) {
+        update("""INSERT INTO admin_mfa(admin_id,secret_ciphertext,enabled,last_used_step,updated_at) VALUES (?,?,?,?,CURRENT_TIMESTAMP)
+            ON CONFLICT(admin_id) DO UPDATE SET secret_ciphertext=EXCLUDED.secret_ciphertext,enabled=EXCLUDED.enabled,
+            last_used_step=EXCLUDED.last_used_step,updated_at=CURRENT_TIMESTAMP""",
+            UUID.fromString(record.adminId), record.secretCiphertext, record.enabled, record.lastUsedStep)
+    }
+    override fun deleteMfa(adminId: String) {
+        val id = UUID.fromString(adminId)
+        update("DELETE FROM admin_mfa_challenges WHERE admin_id=?", id)
+        update("DELETE FROM admin_mfa_recovery_codes WHERE admin_id=?", id)
+        update("DELETE FROM admin_mfa WHERE admin_id=?", id)
+    }
+    override fun replaceRecoveryCodes(adminId: String, hashes: List<String>) {
+        val id = UUID.fromString(adminId)
+        update("DELETE FROM admin_mfa_recovery_codes WHERE admin_id=?", id)
+        hashes.forEach { update("INSERT INTO admin_mfa_recovery_codes(admin_id,code_hash) VALUES (?,?)", id, it) }
+    }
+    override fun useRecoveryCode(adminId: String, hash: String, now: Long) =
+        update("UPDATE admin_mfa_recovery_codes SET used_at=? WHERE admin_id=? AND code_hash=? AND used_at IS NULL",
+            Timestamp(now), UUID.fromString(adminId), hash) == 1
+    override fun remainingRecoveryCodes(adminId: String) =
+        count("SELECT count(*) FROM admin_mfa_recovery_codes WHERE admin_id=? AND used_at IS NULL", listOf(UUID.fromString(adminId))).toInt()
+    override fun mfaChallenge(tokenHash: String) = rows(
+        "SELECT token_hash,admin_id,enrollment,attempts,expires_at FROM admin_mfa_challenges WHERE token_hash=? FOR UPDATE", listOf(tokenHash)
+    ) {
+        AdminMfaChallenge(it.getString("token_hash"), it.getString("admin_id"), it.getBoolean("enrollment"), it.getInt("attempts"), it.getTimestamp("expires_at").time)
+    }.singleOrNull()
+    override fun putMfaChallenge(challenge: AdminMfaChallenge) {
+        update("""INSERT INTO admin_mfa_challenges(token_hash,admin_id,enrollment,attempts,expires_at) VALUES (?,?,?,?,?)
+            ON CONFLICT(token_hash) DO UPDATE SET attempts=EXCLUDED.attempts""",
+            challenge.tokenHash, UUID.fromString(challenge.adminId), challenge.enrollment, challenge.attempts, Timestamp(challenge.expiresAtEpochMillis))
+        // Expired challenges hold no secret; prune them opportunistically.
+        update("DELETE FROM admin_mfa_challenges WHERE expires_at < CURRENT_TIMESTAMP - INTERVAL '1 day'")
+    }
+    override fun deleteMfaChallenge(tokenHash: String) { update("DELETE FROM admin_mfa_challenges WHERE token_hash=?", tokenHash) }
     override fun deduplication(actorId: String, requestId: String) = rows("SELECT fingerprint,safe_result FROM admin_requests WHERE actor_id=? AND request_id=?", listOf(UUID.fromString(actorId),requestId)) {
         AdminDeduplication(it.getString("fingerprint"), Json.decodeFromString<AdminIdentity>(it.getString("safe_result")))
     }.singleOrNull()
@@ -72,8 +118,9 @@ internal class JdbcAdminTransaction(private val connection: Connection) : AdminT
             UUID.fromString(entry.id), entry.actorId?.let(UUID::fromString), entry.action, entry.targetId?.let(UUID::fromString), entry.requestId, entry.reason, entry.beforeSummary, entry.afterSummary, Timestamp(entry.createdAtEpochMillis))
     }
     override fun accounts(page: PageRequest): AdminPage<AdminIdentity> {
-        val items = rows("SELECT id,email_normalized,role,active FROM admin_accounts ORDER BY id LIMIT ? OFFSET ?", listOf(page.pageSize,page.offset)) {
-            AdminIdentity(it.getString("id"),it.getString("email_normalized"),AdminRole.valueOf(it.getString("role")),it.getBoolean("active"))
+        val items = rows("""SELECT a.id,a.email_normalized,a.role,a.active,COALESCE(m.enabled,FALSE) AS mfa_enabled
+            FROM admin_accounts a LEFT JOIN admin_mfa m ON m.admin_id=a.id ORDER BY a.id LIMIT ? OFFSET ?""", listOf(page.pageSize,page.offset)) {
+            AdminIdentity(it.getString("id"),it.getString("email_normalized"),AdminRole.valueOf(it.getString("role")),it.getBoolean("active"),it.getBoolean("mfa_enabled"))
         }
         return page.result(items, count("SELECT count(*) FROM admin_accounts"))
     }

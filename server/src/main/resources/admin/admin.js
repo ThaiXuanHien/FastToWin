@@ -25,6 +25,8 @@ const labels = {
   ADMIN_LIST: 'Xem tài khoản quản trị', AUDIT_READ: 'Xem nhật ký kiểm toán', USER_SEARCH: 'Tra cứu người chơi',
   PLAYER_OVERVIEW: 'Xem tổng quan người chơi', USER_DETAIL: 'Xem hồ sơ người chơi', USER_MATCHES: 'Xem lịch sử trận', USER_WALLET: 'Xem lịch sử ví', USER_GIFTS: 'Xem nguồn quà',
   PLAYER_SUPPORT_CREATE: 'Tạo tài khoản người chơi để hỗ trợ',
+  ADMIN_MFA_ENROLL: 'Bật xác thực hai lớp', ADMIN_MFA_FAILED: 'Mã xác thực sai', ADMIN_MFA_RESET: 'Đặt lại xác thực hai lớp',
+  ADMIN_MFA_RECOVERY_CODE_USED: 'Đăng nhập bằng mã khôi phục', ADMIN_OFFLINE_RECOVERY: 'Khôi phục tài khoản ngoại tuyến',
 };
 const label = value => Object.hasOwn(labels, value) ? labels[value] : value;
 let session = null;
@@ -302,7 +304,7 @@ async function api(path, task, payload, csrf = session?.csrfToken, method = 'POS
       throw aborted();
     }
     if (!task.current() || (navigator.serviceWorker?.controller ?? null) !== controller) throw aborted();
-    authRequest = path === '/login' || path === '/logout';
+    authRequest = path === '/login' || path === '/login/mfa' || path === '/logout';
     if (authRequest) authRequests++;
     const response = await fetch(liveness ? '/health' : '/admin/api' + path, {
       credentials: 'same-origin', cache: 'no-store', signal: task.controller.signal,
@@ -510,7 +512,9 @@ function showLogin(message = '', blocked = false) {
     const task = request();
     try {
       const result = await api('/login', task, { email: email.value.trim(), password: password.value }, null);
-      password.value = ''; sessionVersion++; session = result; loggedOut = false; directory();
+      password.value = '';
+      if (result.mfa) { showMfa(result); return; }
+      sessionVersion++; session = result; loggedOut = false; directory();
     } catch (error) { if (task.current() && error.name !== 'AbortError') { password.value = ''; notices.fail(error, true); } }
     finally { if (task.current()) { busy = false; submit.disabled = false; submit.textContent = 'Đăng nhập'; } }
   });
@@ -521,6 +525,103 @@ function showLogin(message = '', blocked = false) {
   );
   main.append(form, footerInfo);
   append(app, header, main);
+}
+// ADM-04: second sign-in step. The challenge token lives only in this closure and the
+// session cookie is issued only after the code verifies.
+function showMfa(challenge) {
+  sessionVersion++; session = null; changeView();
+  const enrolling = challenge.mfa === 'ENROLL';
+  const header = node('header', null, { class: 'header' }); header.append(brand());
+  const main = node('main', null, { id: 'main', class: 'panel login stack' });
+  append(main, append(node('span', null, { class: 'login-mark' }), icon('lock')), node('p', 'Xác thực hai lớp', { class: 'eyebrow' }),
+    node('h1', enrolling ? 'Bật xác thực hai lớp' : 'Nhập mã xác thực'),
+    node('p', enrolling ? 'Tài khoản quản trị cần ứng dụng xác thực (Google Authenticator, Microsoft Authenticator…) trước khi tiếp tục.'
+      : 'Mở ứng dụng xác thực và nhập mã 6 số hiện tại.', { class: 'muted' }));
+  const form = node('form', null, { class: 'stack' });
+  if (enrolling) {
+    const steps = node('ol', null, { class: 'mfa-steps' });
+    const secret = challenge.secret.match(/.{1,4}/g).join(' ');
+    const key = node('code', secret, { class: 'mfa-secret', 'aria-label': 'Khóa thiết lập: ' + secret });
+    const copied = node('span', '', { role: 'status', 'aria-live': 'polite', class: 'muted' });
+    const copy = button('Sao chép khóa', async () => {
+      try { await navigator.clipboard.writeText(challenge.secret); copied.textContent = 'Đã sao chép.'; }
+      catch { copied.textContent = 'Không sao chép được; hãy nhập khóa thủ công.'; }
+    }, { class: 'text-button' });
+    append(steps,
+      node('li', 'Trong ứng dụng xác thực, chọn thêm tài khoản và nhập khóa thiết lập bên dưới (loại: theo thời gian).'),
+      append(node('li', null, { class: 'mfa-secret-row' }), key, copy, copied),
+      append(node('li'), node('a', 'Hoặc mở trực tiếp trong ứng dụng xác thực trên thiết bị này', { href: challenge.otpauthUri })),
+      node('li', 'Nhập mã 6 số mà ứng dụng hiển thị để hoàn tất.'));
+    form.append(steps);
+  }
+  const code = field(form, 'Mã xác thực 6 số', 'mfa-code', 'text', {
+    inputmode: 'numeric', autocomplete: 'one-time-code', pattern: '[0-9 ]{6,8}', maxlength: '8', required: '', 'aria-describedby': 'mfa-code-help',
+  });
+  form.append(node('p', 'Bạn có thể dán mã; khoảng trắng được bỏ qua.', { class: 'muted field-help', id: 'mfa-code-help' }));
+  let recovery = null;
+  const notices = feedback(form);
+  const submit = node('button', enrolling ? 'Xác nhận và bật' : 'Xác nhận', { type: 'submit', class: 'primary' });
+  const actions = node('div', null, { class: 'mfa-actions' });
+  if (!enrolling) {
+    const toggle = button('Dùng mã khôi phục', () => {
+      const useRecovery = !recovery;
+      code.closest('.field').hidden = useRecovery; code.required = !useRecovery; code.value = '';
+      document.getElementById('mfa-code-help').hidden = useRecovery;
+      if (useRecovery) {
+        recovery = field(form, 'Mã khôi phục', 'mfa-recovery', 'text', { autocomplete: 'off', maxlength: '32', required: '', spellcheck: 'false' });
+        form.insertBefore(recovery.closest('.field'), notices.status);
+        toggle.textContent = 'Dùng mã từ ứng dụng'; recovery.focus();
+      } else { recovery.closest('.field').remove(); recovery = null; toggle.textContent = 'Dùng mã khôi phục'; code.focus(); }
+    }, { class: 'text-button' });
+    actions.append(toggle);
+  }
+  actions.append(button('Quay lại đăng nhập', () => showLogin(), { class: 'text-button' }));
+  append(form, submit, actions);
+  const request = channel(); let busy = false;
+  form.addEventListener('submit', async event => {
+    event.preventDefault(); if (busy) return;
+    busy = true; submit.disabled = true; const label = submit.textContent; submit.textContent = 'Đang xác minh…'; notices.clear();
+    const task = request();
+    const body = recovery ? { challengeToken: challenge.challengeToken, recoveryCode: recovery.value.trim() }
+      : { challengeToken: challenge.challengeToken, code: code.value.replace(/\s/g, '') };
+    try {
+      const result = await api('/login/mfa', task, body, null);
+      const established = { admin: result.admin, csrfToken: result.csrfToken };
+      sessionVersion++; session = established; loggedOut = false;
+      if (result.recoveryCodes?.length) showRecoveryCodes(result.recoveryCodes); else directory();
+    } catch (error) {
+      if (!task.current() || error.name === 'AbortError') return;
+      if (error.code === 'MFA_CHALLENGE_EXPIRED') { showLogin(error.message); return; }
+      code.value = ''; if (recovery) recovery.value = ''; notices.fail(error, true);
+    } finally { if (task.current()) { busy = false; submit.disabled = false; submit.textContent = label; } }
+  });
+  main.append(form);
+  append(app, header, main);
+  code.focus();
+}
+function showRecoveryCodes(codes) {
+  changeView();
+  const header = node('header', null, { class: 'header' }); header.append(brand());
+  const main = node('main', null, { id: 'main', class: 'panel login stack' });
+  append(main, append(node('span', null, { class: 'login-mark' }), icon('lock')), node('p', 'Xác thực hai lớp đã bật', { class: 'eyebrow' }),
+    node('h1', 'Lưu mã khôi phục'),
+    node('p', 'Mỗi mã dùng được một lần khi bạn không có ứng dụng xác thực. Mã chỉ hiển thị lần này.', { class: 'muted' }));
+  const list = node('ol', null, { class: 'recovery-codes', 'aria-label': 'Mã khôi phục' });
+  for (const value of codes) list.append(node('li', value));
+  const copied = node('span', '', { role: 'status', 'aria-live': 'polite', class: 'muted' });
+  const copy = button('Sao chép tất cả', async () => {
+    try { await navigator.clipboard.writeText(codes.join('\n')); copied.textContent = 'Đã sao chép.'; }
+    catch { copied.textContent = 'Không sao chép được; hãy chép thủ công.'; }
+  }, { class: 'text-button' });
+  const form = node('form', null, { class: 'stack' });
+  const saved = field(form, 'Tôi đã lưu các mã này ở nơi an toàn', 'recovery-saved', 'checkbox', { required: '' });
+  const next = node('button', 'Tiếp tục', { type: 'submit', class: 'primary' }); next.disabled = true;
+  saved.addEventListener('change', () => { next.disabled = !saved.checked; });
+  form.append(next);
+  form.addEventListener('submit', event => { event.preventDefault(); if (saved.checked) { list.replaceChildren(); directory(); } });
+  append(main, list, append(node('div', null, { class: 'mfa-actions' }), copy, copied), form);
+  append(app, header, main);
+  copy.focus();
 }
 async function restore() {
   if (loggedOut) { showLogin(); return; }
@@ -1000,7 +1101,14 @@ function accounts() {
       for (const account of data.items) {
         const row = node('article', null, { class: 'row account-row' });
         const editControl = iconButton('Sửa quyền ' + account.email, () => edit(account), 'edit', { 'data-tooltip': 'Sửa quyền' }); editControl.disabled = mutationPending; editControls.push(editControl);
-        append(row, avatar(account.email), append(node('div', null, { class: 'row-info' }), node('strong', account.email)), append(node('div', null, { class: 'row-meta' }), node('span', roles[account.role], { class: 'badge' }), node('span', account.active ? 'Đang hoạt động' : 'Đã thu hồi', { class: 'badge badge-' + (account.active ? 'active' : 'inactive') })), editControl);
+        const meta = append(node('div', null, { class: 'row-meta' }), node('span', roles[account.role], { class: 'badge' }),
+          node('span', account.active ? 'Đang hoạt động' : 'Đã thu hồi', { class: 'badge badge-' + (account.active ? 'active' : 'inactive') }),
+          node('span', account.mfaEnabled ? 'Đã bật 2 lớp' : 'Chưa bật 2 lớp', { class: 'badge badge-' + (account.mfaEnabled ? 'active' : 'inactive') }));
+        append(row, avatar(account.email), append(node('div', null, { class: 'row-info' }), node('strong', account.email)), meta, editControl);
+        if (account.mfaEnabled && account.id !== session.admin.id) {
+          const resetControl = iconButton('Đặt lại xác thực hai lớp cho ' + account.email, () => resetMfa(account), 'lock', { 'data-tooltip': 'Đặt lại 2 lớp' });
+          resetControl.disabled = mutationPending; editControls.push(resetControl); row.append(resetControl);
+        }
         results.append(row);
       }
       pagination(results, data, load);
@@ -1022,6 +1130,21 @@ function accounts() {
       else { surface.finish(); confirmation.textContent = 'Đã cập nhật quyền truy cập.'; load(currentPage); }
     }, value => setMutationPending(value, surface));
     surface.show(role);
+  }
+  function resetMfa(account) {
+    if (mutationPending) return;
+    confirmation.textContent = '';
+    const surface = modal('Đặt lại xác thực hai lớp');
+    const form = node('form', null, { class: 'stack modal-form' }); surface.dialog.append(form);
+    append(form, node('p', account.email),
+      node('p', 'Dùng khi người này mất thiết bị xác thực. Mọi phiên của họ sẽ bị đăng xuất và họ phải thiết lập lại ở lần đăng nhập tới.', { class: 'muted' }));
+    const reason = field(form, 'Lý do đặt lại', 'mfa-reset-reason', 'textarea', { required: '', maxlength: '500' });
+    const notices = feedback(form), submit = node('button', 'Đặt lại', { type: 'submit', class: 'primary' });
+    form.append(append(node('div', null, { class: 'modal-actions' }), surface.cancel, submit));
+    mutationForm(form, submit, notices, '/accounts/' + encodeURIComponent(account.id) + '/mfa/reset', () => ({ reason: reason.value.trim() }), () => {
+      surface.finish(); confirmation.textContent = 'Đã đặt lại xác thực hai lớp.'; load(currentPage);
+    }, value => setMutationPending(value, surface));
+    surface.show(reason);
   }
   load();
 }

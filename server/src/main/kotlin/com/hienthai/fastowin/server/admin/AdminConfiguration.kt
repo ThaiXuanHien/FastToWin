@@ -2,7 +2,11 @@ package com.hienthai.fastowin.server.admin
 
 import java.net.URI
 
-data class AdminConfiguration(val origin: String, val secureCookie: Boolean) {
+data class AdminConfiguration(
+    val origin: String,
+    val secureCookie: Boolean,
+    val mfa: AdminMfaSettings = AdminMfaSettings.DEVELOPMENT
+) {
     init {
         val uri = runCatching { URI(origin) }.getOrNull()
         require(uri != null && uri.host != null && uri.rawUserInfo == null && uri.rawPath.isNullOrEmpty() &&
@@ -17,7 +21,11 @@ data class AdminConfiguration(val origin: String, val secureCookie: Boolean) {
             require(enabled in setOf("true", "false")) { "FASTTOWIN_ADMIN_ENABLED must be true or false." }
             if (enabled == "false") return null
             require(environment in setOf("dev", "prod"))
-            return AdminConfiguration(requireNotNull(values["FASTTOWIN_ADMIN_ORIGIN"]) { "FASTTOWIN_ADMIN_ORIGIN is required." }, environment != "dev")
+            return AdminConfiguration(
+                requireNotNull(values["FASTTOWIN_ADMIN_ORIGIN"]) { "FASTTOWIN_ADMIN_ORIGIN is required." },
+                environment != "dev",
+                AdminMfaSettings.fromEnvironment(environment, values)
+            )
         }
     }
 }

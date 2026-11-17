@@ -10,6 +10,37 @@ Console tiếng Việt tại `/admin/` dùng tài khoản quản trị riêng, t
 4. Bootstrap cùng email của Owner đang hoạt động là idempotent, giữ nguyên mật khẩu hiện có. Công cụ từ chối thay thế tài khoản quản trị không phải Owner và không sửa tài khoản người chơi có cùng email. Production provisioning phải thực hiện trong quy trình vận hành được phê duyệt; tài liệu này không tự bật hay cấp bất kỳ tài khoản production nào.
 5. Truy cập đúng origin đã cấu hình và `/admin/`. Có thể đặt reverse proxy cùng origin chuyển toàn bộ `/admin/` (gồm assets và API) tới Ktor. Giữ nguyên `Origin`, `Set-Cookie` và các security header; TLS termination phải cung cấp HTTPS cho trình duyệt. Không cache trang hoặc API; không đưa API quản trị tới origin khác. Danh sách CORS của game không cấp quyền đọc quản trị.
 
+## Xác thực hai lớp (TOTP)
+
+Production bắt buộc mọi vai trò (Owner, Operator, Support) dùng ứng dụng xác thực theo thời gian (Google Authenticator, Microsoft Authenticator…).
+
+1. **Trước khi deploy bản có MFA**, tạo khóa 32 byte và lưu làm secret của service backend. Nếu bật admin trên production mà thiếu khóa, server sẽ dừng ngay khi khởi động:
+
+   ```bash
+   openssl rand -base64 32
+   ```
+
+   Đặt giá trị vào `FASTTOWIN_ADMIN_MFA_KEY`, hoặc vào một file bí mật rồi trỏ `FASTTOWIN_ADMIN_MFA_KEY_FILE` tới file đó. Khóa này mã hóa secret TOTP trong database (AES-256-GCM). Nếu mất khóa, mọi admin phải thiết lập lại MFA bằng công cụ khôi phục bên dưới. Không đổi khóa khi chưa có kế hoạch cho việc đó.
+2. Ở lần đăng nhập đầu tiên sau khi deploy, console hiển thị khóa thiết lập. Admin thêm khóa vào ứng dụng xác thực, nhập mã 6 số, rồi nhận **10 mã khôi phục dùng một lần**. Các mã này chỉ hiển thị đúng một lần và cần được lưu ở trình quản lý mật khẩu.
+3. Mỗi lần đăng nhập sau đó cần mật khẩu và một mã mới. Một mã đã dùng không dùng lại được. Sai 5 lần hoặc quá 5 phút thì phải nhập lại mật khẩu.
+4. Khi một admin mất thiết bị: Owner khác vào **Tài khoản quản trị**, bấm biểu tượng khóa ở tài khoản đó và nhập lý do. Thao tác này xóa MFA của tài khoản và đăng xuất mọi phiên của họ. Owner không thể tự đặt lại MFA cho chính mình qua console.
+5. Development không bắt buộc MFA. Muốn thử, đặt `FASTTOWIN_ADMIN_MFA_REQUIRED=true`. Không có khóa thì development dùng một khóa cố định công khai, nên khóa này chỉ an toàn cho môi trường local.
+
+## Khôi phục khẩn cấp (ADM-10)
+
+Luôn duy trì **ít nhất 2 Owner đang hoạt động**, có MFA và mã khôi phục được lưu riêng. Khi Owner duy nhất còn lại mất mật khẩu hoặc mất cả thiết bị lẫn mã khôi phục, hoặc khi nghi tài khoản bị chiếm:
+
+1. Người có quyền vận hành database chạy công cụ offline trong đúng môi trường production (cùng biến database, admin và khóa MFA):
+
+   ```bash
+   ./gradlew :server:recoverAdminAccount
+   ```
+
+   Công cụ hỏi email, lý do và mật khẩu mới qua console ẩn ký tự. Nếu không có console, dùng `FASTTOWIN_ADMIN_RECOVERY_EMAIL`, `FASTTOWIN_ADMIN_RECOVERY_REASON` và `FASTTOWIN_ADMIN_RECOVERY_PASSWORD_FILE`.
+2. Công cụ đặt mật khẩu mới, xóa MFA, thu hồi mọi phiên của tài khoản đó và ghi `ADMIN_OFFLINE_RECOVERY` vào nhật ký kiểm toán. Công cụ không tạo tài khoản và không đổi vai trò.
+3. Đăng nhập lại để thiết lập MFA mới. Kiểm tra **Nhật ký kiểm toán** để tìm thao tác lạ trong thời gian nghi bị chiếm quyền. Thu hồi hoặc đặt lại các tài khoản liên quan.
+4. Nếu nghi bị chiếm quyền, thu hồi phiên của các Owner khác bằng **Tài khoản quản trị** và đổi khóa `FASTTOWIN_ADMIN_MFA_KEY` theo kế hoạch: mọi admin cùng chạy công cụ khôi phục rồi thiết lập lại MFA.
+
 ## Quyền và bảo mật phiên
 
 ### Cùng origin với game và cập nhật trình duyệt
