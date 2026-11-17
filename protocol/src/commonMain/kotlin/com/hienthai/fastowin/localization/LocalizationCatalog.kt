@@ -13,6 +13,7 @@ import com.hienthai.fastowin.localization.catalogs.matchmakingGuardTexts
 import com.hienthai.fastowin.localization.catalogs.playFlowConflictTexts
 import com.hienthai.fastowin.localization.catalogs.tournamentScheduleTexts
 import com.hienthai.fastowin.localization.catalogs.vietnameseCatalog
+import com.hienthai.fastowin.localization.catalogs.humanVerificationTexts
 
 data class LocalizationCatalog(
     val language: AppLanguage,
@@ -32,7 +33,8 @@ val allLocalizationCatalogs: Map<AppLanguage, LocalizationCatalog> = run {
             rewardEventTexts.getValue(language) + announcementTexts.getValue(language) +
             tournamentScheduleTexts.getValue(language)
         val untranslated = additions.filter { (key, _) -> catalog.texts[key] == englishTexts[key] }
-        catalog.copy(texts = catalog.texts + untranslated + clanRaceTexts.getValue(language) + legalTexts(language) + ugcTexts(language))
+        catalog.copy(texts = catalog.texts + untranslated + clanRaceTexts.getValue(language) + legalTexts(language) + ugcTexts(language) +
+            humanVerificationTexts(language))
     }
 }
 

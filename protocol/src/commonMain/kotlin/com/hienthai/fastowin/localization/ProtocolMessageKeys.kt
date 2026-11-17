@@ -11,6 +11,9 @@ fun protocolTextKeyForCode(code: String): TextKey? = when (code) {
     "INVALID_ACCESS_TOKEN", "INVALID_REFRESH_TOKEN", "INVALID_RESET_TOKEN", "INVALID_RESUME_TOKEN", "INVALID_SESSION_ID",
     "SESSION_NOT_FOUND", "SESSION_EXPIRED", "SESSION_REPLACED" -> TextKey.ServerSessionExpired
     "PROTOCOL_MISMATCH" -> TextKey.ServerProtocolMismatch
+    "HUMAN_VERIFICATION_REQUIRED" -> TextKey.HumanVerificationRequired
+    "HUMAN_VERIFICATION_FAILED" -> TextKey.HumanVerificationFailed
+    "HUMAN_VERIFICATION_UNAVAILABLE" -> TextKey.HumanVerificationUnavailable
     "EMAIL_NOT_VERIFIED" -> TextKey.ServerEmailNotVerified
     "ROOM_NOT_FOUND", "ROOM_NOT_INVITABLE", "ROOM_NOT_WAITING" -> TextKey.ServerRoomNotFound
     "WRONG_PASSWORD" -> TextKey.ServerWrongPassword

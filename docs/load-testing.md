@@ -105,3 +105,16 @@ To compare a change, retain before/after JSON, use identical JVM, hardware, stor
 pairs/rounds and pacing, run on an otherwise quiet machine, and compare errors,
 operation-specific tails and resource counters. Repeat if a result differs materially;
 do not raise concurrency against production to validate these figures.
+
+## Kiểm tra số kết nối đồng thời trên staging (SCL-01)
+
+`scripts/k6/connections.js` đo trần số kết nối đồng thời (CCU) của **một bản staging do dự án sở hữu**; không chạy script này vào production. Mỗi virtual user kết nối dưới dạng khách, chờ `session_ready`, giữ socket mở và cứ 30 giây gửi `get_presence` một lần, giống người chơi đang ở sảnh.
+
+```bash
+k6 run -e TARGET=https://staging.example.com -e PEAK=500 -e RAMP=10m -e HOLD=30m scripts/k6/connections.js
+```
+
+- Chạy lần lượt các mức 500 → 1.000 → 2.000 → 5.000 CCU, mỗi mức giữ 30 phút. Ghi lại p95 của `ftw_session_ready_ms`, CPU, RAM, `fasttowin_db_pool_pending_threads` và số `fasttowin_websocket_connection_limit_rejected_total`.
+- Server giới hạn theo IP nguồn (60 socket mới mỗi phút, tối đa `FASTTOWIN_WS_MAX_PER_IP` socket đang mở), nên một máy chỉ tăng tải được chậm. Hãy chạy từ nhiều máy hoặc IP (k6 Cloud, hoặc vài VM) và chia đều `PEAK` cho từng máy. Có thể tạm tăng `FASTTOWIN_WS_MAX_PER_IP` trên staging trong lúc đo, rồi trả về mặc định sau khi đo xong.
+- Để diễn tập deploy (SCL-05): trong lúc đang giữ tải, deploy lại staging. Kiểm tra `/ready` trả 503 trong khoảng `FASTTOWIN_DRAIN_SECONDS`, các client kết nối lại trải đều thay vì dồn vào một thời điểm, và không có lỗi tăng đột biến.
+- Kịch bản trận đấu (chọn số, kết nối lại giữa trận) vẫn đo bằng `scripts/load-test.mjs` ở phần trên.

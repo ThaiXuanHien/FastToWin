@@ -84,6 +84,55 @@ class PushReminderServiceTest {
         assertFalse("daily-check-in:2026-09-02" in deliveredKeys)
     }
 
+    @Test
+    fun `daily reminders go out in batches of at most 500 and keep per-target outcomes`() = runTest {
+        val targets = List(1_201) { PushReminderTarget("player-$it", if (it == 600) "stale-token" else "token-$it", AppLanguage.ENGLISH) }
+        val delivered = mutableListOf<String>()
+        val cleared = mutableListOf<String>()
+        val repository = object : PlayerProfileRepository by reminderRepository(mutableSetOf()) {
+            override suspend fun loadDailyPushReminderTargets(reminderDate: String, limit: Int) =
+                targets.filter { it.playerId !in delivered && it.fcmToken !in cleared }.take(limit)
+            override suspend fun markPushReminderDelivered(playerId: String, reminderKey: String) = delivered.add(playerId)
+            override suspend fun clearFcmToken(playerId: String, expectedToken: String) = cleared.add(expectedToken)
+        }
+        val batchSizes = mutableListOf<Int>()
+        val push = object : PushNotificationService {
+            override suspend fun sendNotification(fcmToken: String, language: AppLanguage, content: LocalizedPushContent, destinationPath: String) =
+                error("batched delivery must not fall back to single sends")
+            override suspend fun sendNotifications(requests: List<PushRequest>): List<PushDeliveryStatus> {
+                batchSizes += requests.size
+                return requests.map { if (it.fcmToken == "stale-token") PushDeliveryStatus.INVALID_TOKEN else PushDeliveryStatus.SENT }
+            }
+        }
+        val service = DailyPushReminderService(repository, push, ZoneId.of("Asia/Ho_Chi_Minh"), 19,
+            Clock.fixed(Instant.parse("2026-09-02T13:00:00Z"), ZoneId.of("UTC")))
+
+        assertEquals(1_200, service.sendDueReminders())
+        assertEquals(listOf(500, 500, 201), batchSizes)
+        assertEquals(listOf("stale-token"), cleared)
+        assertFalse("player-600" in delivered)
+    }
+
+    @Test
+    fun `a page of failing tokens ends the run instead of looping`() = runTest {
+        var loads = 0
+        val repository = object : PlayerProfileRepository by reminderRepository(mutableSetOf()) {
+            override suspend fun loadDailyPushReminderTargets(reminderDate: String, limit: Int): List<PushReminderTarget> {
+                loads++
+                return List(limit) { PushReminderTarget("player-$it", "token-$it", AppLanguage.ENGLISH) }
+            }
+        }
+        val push = object : PushNotificationService {
+            override suspend fun sendNotification(fcmToken: String, language: AppLanguage, content: LocalizedPushContent, destinationPath: String) =
+                PushDeliveryStatus.FAILED
+        }
+        val service = DailyPushReminderService(repository, push, ZoneId.of("Asia/Ho_Chi_Minh"), 19,
+            Clock.fixed(Instant.parse("2026-09-02T13:00:00Z"), ZoneId.of("UTC")))
+
+        assertEquals(0, service.sendDueReminders())
+        assertEquals(1, loads)
+    }
+
     private fun reminderRepository(deliveredKeys: MutableSet<String>) = object : PlayerProfileRepository {
         override suspend fun findByPlayerId(playerId: String): PlayerProfileSnapshot? = null
 
