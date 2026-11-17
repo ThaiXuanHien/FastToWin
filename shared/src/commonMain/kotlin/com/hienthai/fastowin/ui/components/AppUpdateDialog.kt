@@ -32,15 +32,20 @@ import com.hienthai.fastowin.localization.TextKey
 import com.hienthai.fastowin.localization.localized
 import com.hienthai.fastowin.ui.theme.ArcadePalette
 
+/**
+ * [required] (APP-02) is shown when the server rejects this app version: it cannot be
+ * dismissed, because nothing online works until the player updates.
+ */
 @Composable
 fun UpdateAvailableDialog(
     onUpdate: () -> Unit,
-    onDismiss: () -> Unit
+    onDismiss: () -> Unit,
+    required: Boolean = false
 ) {
     ArcadeDialog(
         title = localized(TextKey.UpdateGameTitle),
-        subtitle = localized(TextKey.UpdateAvailableSubtitle),
-        onDismissRequest = onDismiss
+        subtitle = localized(if (required) TextKey.ServerProtocolMismatch else TextKey.UpdateAvailableSubtitle),
+        onDismissRequest = if (required) ({}) else onDismiss
     ) {
         Column(
             modifier = Modifier
@@ -102,7 +107,7 @@ fun UpdateAvailableDialog(
                 Spacer(Modifier.width(14.dp))
             }
 
-            ArcadePanel(
+            if (!required) ArcadePanel(
                 modifier = Modifier.fillMaxWidth(),
                 accent = ArcadePalette.Mint400
             ) {
@@ -143,7 +148,7 @@ fun UpdateAvailableDialog(
                 icon = Icons.Rounded.Refresh,
                 style = ArcadeActionStyle.GOLD
             )
-            ArcadeActionButton(
+            if (!required) ArcadeActionButton(
                 label = localized(TextKey.Later),
                 onClick = onDismiss,
                 modifier = Modifier.fillMaxWidth(),

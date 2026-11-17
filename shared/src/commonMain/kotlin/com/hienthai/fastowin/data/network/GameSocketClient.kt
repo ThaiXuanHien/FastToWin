@@ -114,6 +114,9 @@ internal class GameSocketClient(
     val isConnected: StateFlow<Boolean> = _isConnected.asStateFlow()
     private val _connectionState = MutableStateFlow(SocketConnectionState.DISCONNECTED)
     val connectionState: StateFlow<SocketConnectionState> = _connectionState.asStateFlow()
+    private val _updateRequired = MutableStateFlow(false)
+    /** True once the server rejected this client's protocol version (APP-02). */
+    val updateRequired: StateFlow<Boolean> = _updateRequired.asStateFlow()
 
     suspend fun connect(displayName: String) = connectMutex.withLock {
         if (closed.value) return@withLock
@@ -436,6 +439,15 @@ internal class GameSocketClient(
                 }
                 "SESSION_EXPIRED", "ACCOUNT_BLOCKED" -> {
                     terminal(run, mailbox, message.code, message.message)
+                    result = AttemptResult.Stop
+                }
+                // APP-02: this build can never connect again. Stop retrying (each retry would be
+                // rejected the same way) and let the UI ask for an update; the account stays signed in.
+                "PROTOCOL_MISMATCH" -> if (isAttemptCurrent(run, mailbox)) {
+                    run.requestStop()
+                    run.machine.reduce(ReconnectEvent.SessionExpired)
+                    _connectionState.value = SocketConnectionState.TERMINAL
+                    _updateRequired.value = true
                     result = AttemptResult.Stop
                 }
             }

@@ -1,5 +1,8 @@
 import com.hienthai.fastowin.build.CheckLocalizedUiTextFixturesTask
 import com.hienthai.fastowin.build.CheckLocalizedUiTextTask
+import com.hienthai.fastowin.build.CheckIosPublicHostTask
+import com.hienthai.fastowin.build.GeneratePublicEndpointsTask
+import com.hienthai.fastowin.build.PublicHost
 import org.jetbrains.kotlin.gradle.dsl.JvmTarget
 import org.jetbrains.kotlin.gradle.plugin.mpp.KotlinNativeTarget
 import org.jetbrains.kotlin.gradle.ExperimentalWasmDsl
@@ -11,6 +14,19 @@ plugins {
     alias(libs.plugins.jetbrains.compose)
     alias(libs.plugins.kotlin.compose)
     alias(libs.plugins.jetbrains.kotlin.plugin.serialization)
+}
+
+val publicHost = providers.gradleProperty(PublicHost.PROPERTY)
+val generatePublicEndpoints by tasks.registering(GeneratePublicEndpointsTask::class) {
+    host.set(publicHost)
+    packageName.set("com.hienthai.fastowin.platform")
+    outputDirectory.set(layout.buildDirectory.dir("generated/publicEndpoints/commonMain/kotlin"))
+}
+val checkIosPublicHost by tasks.registering(CheckIosPublicHostTask::class) {
+    group = "verification"
+    description = "Verifies the iOS release host matches FASTTOWIN_PUBLIC_HOST."
+    host.set(publicHost)
+    projectFile.set(rootProject.layout.projectDirectory.file("iosApp/iosApp.xcodeproj/project.pbxproj"))
 }
 
 kotlin {
@@ -48,6 +64,9 @@ kotlin {
     }
 
     sourceSets {
+        commonMain {
+            kotlin.srcDir(generatePublicEndpoints)
+        }
         commonMain.dependencies {
             implementation(project(":protocol"))
             implementation(compose.runtime)
@@ -154,5 +173,5 @@ val checkLocalizedUiText by tasks.registering(CheckLocalizedUiTextTask::class) {
 }
 
 tasks.named("check") {
-    dependsOn(checkLocalizedUiText)
+    dependsOn(checkLocalizedUiText, checkIosPublicHost)
 }

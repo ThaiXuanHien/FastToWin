@@ -18,6 +18,12 @@ import com.hienthai.fastowin.server.announcements.announcementRoutes
 import com.hienthai.fastowin.server.announcements.startAnnouncementDelivery
 import com.hienthai.fastowin.server.analytics.analyticsRoutes
 import com.hienthai.fastowin.protocol.ClientMessage
+import com.hienthai.fastowin.protocol.HumanVerificationAction
+import com.hienthai.fastowin.protocol.HumanVerificationConfigResponse
+import com.hienthai.fastowin.protocol.HUMAN_VERIFICATION_CONFIG_PATH
+import com.hienthai.fastowin.protocol.HUMAN_VERIFICATION_FAILED_CODE
+import com.hienthai.fastowin.protocol.HUMAN_VERIFICATION_REQUIRED_CODE
+import com.hienthai.fastowin.protocol.HUMAN_VERIFICATION_UNAVAILABLE_CODE
 import com.hienthai.fastowin.protocol.AuthErrorResponse
 import com.hienthai.fastowin.localization.TextKey
 import com.hienthai.fastowin.localization.protocolTextKeyForCode
@@ -101,8 +107,11 @@ fun Application.gameModule(
     rateLimiter: RateLimiter = InMemoryRateLimiter(),
     rateLimitPolicies: ServerRateLimitPolicies = ServerRateLimitPolicies(),
     authEmailSender: AuthEmailSender = DisabledAuthEmailSender,
+    humanVerifier: TurnstileVerifier = DisabledTurnstileVerifier,
     trustProxyHeaders: Boolean = false,
     connectionLimiter: WebSocketConnectionLimiter = WebSocketConnectionLimiter(),
+    serverDrain: ServerDrain = ServerDrain(),
+    extraMetrics: () -> String = { "" },
     seasonLifecycleRepository: SeasonLifecycleRepository = NoOpSeasonLifecycleRepository,
     pushReminderService: PushReminderService = NoOpPushReminderService,
     serviceStatusProvider: () -> ServiceStatusResponse = ::serviceStatusFromEnvironment,
@@ -233,6 +242,16 @@ fun Application.gameModule(
 
     val connections = ConcurrentHashMap<String, SocketConnection>()
     val presenceStore = engine.presenceStore
+    // SCL-05: runs inside Ktor's stop sequence, before the engine closes sockets abruptly.
+    monitor.subscribe(io.ktor.server.application.ApplicationStopPreparing) {
+        runBlocking {
+            withTimeoutOrNull(serverDrain.windowMillis + 2_000) {
+                serverDrain.drain(connections.values.toList().map { connection ->
+                    suspend { connection.session.close(CloseReason(CloseReason.Codes.GOING_AWAY, SERVER_RESTARTING_CLOSE_REASON)) }
+                })
+            }
+        }
+    }
 
     suspend fun publishPresence(playerId: String, connection: SocketConnection, heartbeat: Boolean = false) {
         val store = presenceStore ?: return
@@ -391,6 +410,12 @@ fun Application.gameModule(
         publicMaintenanceStatus(maintenanceRuntime::publicStatus)
 
         get("/health") { call.respondText("OK") }
+        // SCL-05: readiness, unlike liveness, turns 503 while the instance drains before shutdown.
+        get("/ready") {
+            call.response.header(HttpHeaders.CacheControl, "no-store")
+            if (serverDrain.draining) call.respondText("DRAINING", status = HttpStatusCode.ServiceUnavailable)
+            else call.respondText("OK")
+        }
 
         get("/internal/metrics") {
             call.response.header(HttpHeaders.CacheControl, "no-store")
@@ -398,12 +423,18 @@ fun Application.gameModule(
                 metrics.render() + ((rateLimiter as? com.hienthai.fastowin.server.ratelimit.RateLimitRuntime)?.renderMetrics() ?: "") +
                     presenceStore?.renderMetrics().orEmpty() +
                     (authEmailSender as? MeteredAuthEmailSender)?.renderMetrics().orEmpty() +
-                    connectionLimiter.renderMetrics(),
+                    connectionLimiter.renderMetrics() + extraMetrics(),
                 ContentType.parse("text/plain; version=0.0.4; charset=utf-8")
             )
         }
 
         get("/api/content-terms") { call.respond(engine.moderationService.publicTerms()) }
+        get(HUMAN_VERIFICATION_CONFIG_PATH) {
+            call.response.header(HttpHeaders.CacheControl, "no-store")
+            val siteKey = humanVerifier.siteKey
+            call.respond(HumanVerificationConfigResponse(enabled = siteKey != null, siteKey = siteKey))
+        }
+        humanVerificationChallengePage(humanVerifier)
         post("/auth/register") {
             if (call.rejectMaintenanceNewIntent(engine.newIntentAllowed())) return@post
             if (!call.consumeHttpRateLimit(rateLimiter, RateLimitBuckets.REGISTER_IP, call.clientRateLimitKey(), rateLimitPolicies.registerPerIp)) return@post
@@ -414,6 +445,8 @@ fun Application.gameModule(
                 )) return@post
             val webSession = call.resolveWebSessionRequest(request.devicePlatform, allowedWebOrigins)
                 ?: return@post
+            // SEC-07: checked after the cheap rate limits and before the password is hashed.
+            if (!call.passHumanVerification(humanVerifier, request.humanVerificationToken, HumanVerificationAction.REGISTER)) return@post
             call.respondAuthResult(
                 authService.register(
                     request.email,
@@ -477,6 +510,7 @@ fun Application.gameModule(
                 )) return@post
             val webSession = call.resolveWebSessionRequest(request.devicePlatform, allowedWebOrigins)
                 ?: return@post
+            if (!call.passHumanVerification(humanVerifier, request.humanVerificationToken, HumanVerificationAction.UPGRADE_GUEST)) return@post
             call.respondAuthResult(
                 authService.upgradeGuest(
                     request.resumeToken,
@@ -574,6 +608,7 @@ fun Application.gameModule(
                 rateLimitPolicies.passwordResetPerAccount
             )
             if (!accountAllowed) return@post
+            if (!call.passHumanVerification(humanVerifier, request.humanVerificationToken, HumanVerificationAction.PASSWORD_RESET)) return@post
             val result = authService.requestPasswordReset(request.email)
             if (result is AccountActionResult.Success && result.resetToken != null && authEmailSender.isConfigured) {
                 runCatching {
@@ -639,6 +674,21 @@ fun Application.gameModule(
                 rateLimitPolicies.emailVerificationRequestPerAccount
             )
             if (!accountAllowed) return@post
+            // The first code after sign-up rides on the challenge solved for the account itself;
+            // only resends need a new one.
+            val firstSendExempt = request.humanVerificationToken.isNullOrBlank() && humanVerifier.siteKey != null &&
+                authService.authenticateAccessToken(request.accessToken)?.let { account ->
+                    try {
+                        rateLimiter.consume(
+                            RateLimitBuckets.EMAIL_VERIFICATION_UNCHALLENGED,
+                            stableRateLimitKey(account.userId.toString()),
+                            rateLimitPolicies.emailVerificationUnchallengedPerAccount
+                        ).allowed
+                    } catch (_: RateLimitUnavailableException) { false }
+                } == true
+            if (!firstSendExempt &&
+                !call.passHumanVerification(humanVerifier, request.humanVerificationToken, HumanVerificationAction.EMAIL_VERIFICATION)
+            ) return@post
             val result = authService.requestEmailVerification(request.accessToken)
             if (result is AccountActionResult.Success &&
                 result.emailVerificationCode != null && result.emailRecipient != null &&
@@ -704,6 +754,11 @@ fun Application.gameModule(
             metrics.webSocketOpened()
             if (engine.gameConnectionsClosed()) {
                 close(CloseReason(CloseReason.Codes.GOING_AWAY, "Server maintenance"))
+                metrics.webSocketClosed()
+                return@webSocket
+            }
+            if (serverDrain.draining) {
+                close(CloseReason(CloseReason.Codes.GOING_AWAY, SERVER_RESTARTING_CLOSE_REASON))
                 metrics.webSocketClosed()
                 return@webSocket
             }
@@ -980,6 +1035,36 @@ fun Application.gameModule(
 
 private fun ApplicationCall.clientRateLimitKey(): String =
     stableRateLimitKey(request.origin.remoteHost)
+
+/** SEC-07: answers the call and returns false unless the Turnstile token passes (or Turnstile is off). */
+private suspend fun ApplicationCall.passHumanVerification(
+    verifier: TurnstileVerifier,
+    token: String?,
+    action: HumanVerificationAction
+): Boolean {
+    if (verifier.siteKey == null) return true
+    if (token.isNullOrBlank()) {
+        respond(HttpStatusCode.BadRequest, structuredAuthError(
+            HUMAN_VERIFICATION_REQUIRED_CODE, legacyFallback("Vui lòng xác minh bạn không phải robot.")
+        ))
+        return false
+    }
+    return when (verifier.verify(token, action, request.origin.remoteHost)) {
+        TurnstileOutcome.PASSED -> true
+        TurnstileOutcome.REJECTED -> {
+            respond(HttpStatusCode.Forbidden, structuredAuthError(
+                HUMAN_VERIFICATION_FAILED_CODE, legacyFallback("Xác minh không thành công. Vui lòng thử lại.")
+            ))
+            false
+        }
+        TurnstileOutcome.UNAVAILABLE -> {
+            respond(HttpStatusCode.ServiceUnavailable, structuredAuthError(
+                HUMAN_VERIFICATION_UNAVAILABLE_CODE, legacyFallback("Chưa thể xác minh lúc này. Vui lòng thử lại sau.")
+            ))
+            false
+        }
+    }
+}
 
 private suspend fun ApplicationCall.consumeHttpRateLimit(
     rateLimiter: RateLimiter,
@@ -1297,6 +1382,7 @@ private class SocketConnection(
     }
 }
 
+internal const val SERVER_RESTARTING_CLOSE_REASON = "Server restarting"
 private const val SESSION_CLEANUP_INTERVAL_MILLIS = 5_000L
 private val PRESENCE_REQUEST_ID = Regex("[A-Za-z0-9_-]{1,64}")
 private const val GAME_TIMER_INTERVAL_MILLIS = 250L

@@ -485,6 +485,22 @@ class GameSocketClientTest {
     @Test fun `session expired terminal no retry`() = runTest { terminalError("SESSION_EXPIRED") }
     @Test fun `blocked account terminal no retry`() = runTest { terminalError("ACCOUNT_BLOCKED") }
 
+    @Test fun `protocol mismatch asks for an update without retrying or signing out`() = runTest {
+        val f = Fixture(this, account = true)
+        f.start()
+        assertFalse(f.client.updateRequired.value)
+        f.transport.sessions.single().server(ServerMessage.Error("PROTOCOL_MISMATCH", "Update the app"))
+        runCurrent()
+        repeat(3) { f.client.retryNow() }
+        runCurrent()
+        assertTrue(f.client.updateRequired.value)
+        assertEquals(SocketConnectionState.TERMINAL, f.client.connectionState.value)
+        assertEquals(1, f.transport.sessions.size)
+        assertEquals(emptyList(), f.expired)
+        assertEquals("PROTOCOL_MISMATCH", f.errors.single().code)
+        assertEquals(emptyList(), f.sleeper.delays)
+    }
+
     private suspend fun TestScope.terminalError(code: String, account: Boolean = true) {
         val f = Fixture(this, account = account)
         f.start()

@@ -192,8 +192,15 @@ class AdminService(
         return AdminLogin(token, AdminSessionResponse(account.identity, csrf(token)))
     }
 
-    private fun mfaFailure(code: String) = AdminException(401, code, legacyFallback(
-        if (code == "MFA_INVALID_CODE") "Mã xác thực không đúng." else "Phiên xác thực đã hết hạn. Vui lòng đăng nhập lại."))
+    private fun mfaFailure(code: String) = AdminException(
+        401,
+        code,
+        if (code == "MFA_INVALID_CODE") {
+            legacyFallback("Mã xác thực không đúng.")
+        } else {
+            legacyFallback("Phiên xác thực đã hết hạn. Vui lòng đăng nhập lại.")
+        }
+    )
 
     suspend fun authenticate(token: String?): AdminIdentity? = try {
         repository.readTransaction { principal(token).second.identity }
