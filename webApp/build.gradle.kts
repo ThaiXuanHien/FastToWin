@@ -67,6 +67,18 @@ kotlin {
     }
 }
 
+// APP-01: legal pages keep the default host in source; packaging rewrites canonical and
+// alternate links to FASTTOWIN_PUBLIC_HOST so a domain move needs no HTML edits.
+val legalPublicHost = providers.gradleProperty(com.hienthai.fastowin.build.PublicHost.PROPERTY)
+    .map(com.hienthai.fastowin.build.PublicHost::validated)
+tasks.withType<ProcessResources>().configureEach {
+    val host = legalPublicHost
+    inputs.property("publicHost", host)
+    filesMatching("legal/**/*.html") {
+        filter { line -> line.replace("https://fasttowin.up.railway.app/", "https://${host.get()}/") }
+    }
+}
+
 // Kotlin 2.4.10 copies JS glue in the optimizer, but only declares .wasm inputs.
 // Track all linker outputs so a JS-only change cannot reuse stale production glue.
 tasks.named("compileProductionExecutableKotlinWasmJsOptimize") {

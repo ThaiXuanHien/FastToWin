@@ -180,6 +180,9 @@ fun FastToWinApp(
     var serviceStatusRefreshKey by rememberSaveable(serverUrl) { mutableStateOf(0) }
     var launchOfflinePractice by rememberSaveable { mutableStateOf(false) }
     val authController = remember(serverUrl, authSessionStore, devicePlatform, authRequestConfigurator) {
+        // Must run before AuthController reads the store, so a domain move keeps players signed in.
+        com.hienthai.fastowin.data.network.migrateServerScopedSessions(serverUrl,
+            com.hienthai.fastowin.platform.PublicEndpoints.previousGameServerUrls, authSessionStore, resumeTokenStore)
         AuthController(
             serverUrl = serverUrl,
             store = authSessionStore,
@@ -387,7 +390,8 @@ fun FastToWinApp(
                     launchOfflinePractice = launchOfflinePractice,
                     onOfflinePracticeLaunched = { launchOfflinePractice = false },
                     pushBridge = pushBridge,
-                    language = resolvedLanguage
+                    language = resolvedLanguage,
+                    updateUrl = com.hienthai.fastowin.platform.PublicEndpoints.updateUrl(devicePlatform)
                 )
             }
             }
@@ -435,7 +439,8 @@ private fun GameContent(
     launchOfflinePractice: Boolean,
     onOfflinePracticeLaunched: () -> Unit,
     pushBridge: AppPushBridge,
-    language: com.hienthai.fastowin.localization.AppLanguage
+    language: com.hienthai.fastowin.localization.AppLanguage,
+    updateUrl: String?
 ) {
     val controller = remember(serverUrl, resumeTokenStore, accountUserId) {
         GameController(
@@ -449,6 +454,16 @@ private fun GameContent(
         )
     }
     val state by controller.uiState.collectAsState()
+    val updateRequired by controller.updateRequired.collectAsState()
+    if (updateRequired) {
+        // APP-02: blocks the online UI until the player installs a compatible build.
+        val updateUriHandler = androidx.compose.ui.platform.LocalUriHandler.current
+        UpdateAvailableDialog(
+            onUpdate = { updateUrl?.let(updateUriHandler::openUri) ?: updateBridge.applyUpdate() },
+            onDismiss = {},
+            required = true
+        )
+    }
     val guestConsent by controller.guestContentConsent.state.collectAsState()
     val guestConsentScope = rememberCoroutineScope()
     if (guestConsent.showTerms) com.hienthai.fastowin.ui.components.ContentTermsDialog(guestConsent,

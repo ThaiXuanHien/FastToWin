@@ -159,7 +159,7 @@ fun ContentTermsDialog(state: UgcState, onChecked: (Boolean) -> Unit, onAccept: 
 }
 
 fun contentTermsLegalUrl(language: AppLanguage): String =
-    "https://fasttowin.up.railway.app/terms" + if (language == AppLanguage.VIETNAMESE) "" else "/en"
+    com.hienthai.fastowin.platform.PublicEndpoints.legalUrl("terms", language)
 
 @Composable
 fun UgcReportDialog(draft: UgcReportDraft,

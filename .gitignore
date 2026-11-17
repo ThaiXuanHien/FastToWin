@@ -10,6 +10,8 @@
 /.idea/assetWizardSettings.xml
 .DS_Store
 **/build/
+# The buildSrc Kotlin package is named "build"; keep its sources tracked.
+!/buildSrc/src/main/kotlin/com/hienthai/fastowin/build/
 /captures
 .externalNativeBuild
 .cxx
