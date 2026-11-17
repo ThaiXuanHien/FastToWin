@@ -52,7 +52,10 @@ data class AppPreferences(
     val fontScale: AppFontScale = AppFontScale.STANDARD,
     val hasCompletedTutorial: Boolean = false,
     // Keep unknown codes readable when returning from a newer app version.
-    val languageCode: String = "system"
+    val languageCode: String = "system",
+    // In-app explanation before the system notification prompt (see PushOptInPolicy).
+    val pushOptInPromptCount: Int = 0,
+    val pushOptInLastPromptMillis: Long = 0L
 )
 
 interface AppPreferencesStore {

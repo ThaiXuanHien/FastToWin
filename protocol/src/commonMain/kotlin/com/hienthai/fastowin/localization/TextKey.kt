@@ -423,5 +423,7 @@ ClanRaceTitle, ClanRacePrizes, ClanRacePerMember, ClanRaceEligibility, ClanRaceW
     TournamentCancelledRefund, TournamentRecordedParticipants, TournamentScheduledInvitationRule,
     TournamentRefundRuleCompact,
     HumanVerificationTitle, HumanVerificationDescription, HumanVerificationLoading,
-    HumanVerificationRequired, HumanVerificationFailed, HumanVerificationUnavailable
+    HumanVerificationRequired, HumanVerificationFailed, HumanVerificationUnavailable,
+    PushOptInTitle, PushOptInSubtitle, PushOptInRoomInvites, PushOptInRewards, PushOptInPrivacy,
+    PushOptInEnable
 }

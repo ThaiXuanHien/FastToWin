@@ -75,6 +75,8 @@ import com.hienthai.fastowin.platform.NoOpAppUpdateBridge
 import com.hienthai.fastowin.platform.AppInstallBridge
 import com.hienthai.fastowin.platform.NoOpAppInstallBridge
 import com.hienthai.fastowin.platform.AppPushBridge
+import com.hienthai.fastowin.state.PushOptInPolicy
+import com.hienthai.fastowin.ui.components.PushOptInDialog
 import com.hienthai.fastowin.platform.NoOpAppPushBridge
 import com.hienthai.fastowin.platform.ChallengeDeepLinkRouter
 import com.hienthai.fastowin.platform.playFeedbackSound
@@ -881,6 +883,13 @@ private fun GameContent(
         !showPracticeLauncher &&
         !showPracticeModePicker &&
         practiceMode == null
+    // Lowest priority: only when the player is idle in the lobby with nothing else to answer.
+    val canShowPushOptIn = !isGuest &&
+        state.connectionStatus == com.hienthai.fastowin.state.ConnectionStatus.CONNECTED &&
+        state.currentRoomId == null && !state.isMatchmaking && !state.isMatchStarted && !state.isGameOver &&
+        !showTutorial && !showSettings && !showSeasonHistory && !showPracticeLauncher &&
+        !showPracticeModePicker && practiceMode == null &&
+        PushOptInPolicy.shouldPrompt(pushStatus, appPreferences, isSignedIn = true, nowMillis = epochMillis())
     val globalPrompt = selectGlobalPrompt(
         hasPlayQuotaDialog = state.showPlayQuotaExhaustedDialog,
         hasPlayFlowRejection = state.playFlowRejection != null,
@@ -897,8 +906,21 @@ private fun GameContent(
         canShowMissionReward = canShowMissionReward,
         canShowClanExperienceReward = canShowClanExperienceReward,
         canShowClanQuestReward = canShowClanQuestReward,
-        canShowTournamentReward = canShowTournamentReward
+        canShowTournamentReward = canShowTournamentReward,
+        canShowPushOptIn = canShowPushOptIn
     )
+    GlobalPromptSlot(globalPrompt, GlobalPrompt.PUSH_OPT_IN) {
+        val recordPushOptIn = {
+            onPreferencesChange(PushOptInPolicy.recordPrompt(appPreferences, epochMillis()))
+        }
+        PushOptInDialog(
+            onEnable = {
+                recordPushOptIn()
+                pushBridge.enable()
+            },
+            onLater = recordPushOptIn
+        )
+    }
 
     GlobalPromptSlot(globalPrompt, GlobalPrompt.PLAY_QUOTA) {
         PlayQuotaExhaustedDialog(
@@ -2297,7 +2319,8 @@ internal enum class GlobalPrompt {
     MISSION_REWARD,
     CLAN_EXPERIENCE_REWARD,
     CLAN_QUEST_REWARD,
-    TOURNAMENT_REWARD
+    TOURNAMENT_REWARD,
+    PUSH_OPT_IN
 }
 
 internal fun selectGlobalPrompt(
@@ -2316,7 +2339,8 @@ internal fun selectGlobalPrompt(
     canShowMissionReward: Boolean = false,
     canShowClanExperienceReward: Boolean = false,
     canShowClanQuestReward: Boolean = false,
-    canShowTournamentReward: Boolean = false
+    canShowTournamentReward: Boolean = false,
+    canShowPushOptIn: Boolean = false
 ): GlobalPrompt? = when {
     hasPlayQuotaDialog -> GlobalPrompt.PLAY_QUOTA
     hasPlayFlowRejection -> GlobalPrompt.PLAY_FLOW_REJECTION
@@ -2334,6 +2358,7 @@ internal fun selectGlobalPrompt(
     canShowClanExperienceReward -> GlobalPrompt.CLAN_EXPERIENCE_REWARD
     canShowClanQuestReward -> GlobalPrompt.CLAN_QUEST_REWARD
     canShowTournamentReward -> GlobalPrompt.TOURNAMENT_REWARD
+    canShowPushOptIn -> GlobalPrompt.PUSH_OPT_IN
     else -> null
 }
 
