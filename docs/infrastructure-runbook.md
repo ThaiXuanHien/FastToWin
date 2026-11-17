@@ -130,6 +130,18 @@ Cấu hình này đã được thử bằng Docker: request thiếu hoặc sai b
 3. Chuyển service server và web sang region Singapore và trỏ `DATABASE_URL` tới DB mới.
 4. Mở lại dịch vụ. Đo ping từ Việt Nam (mục tiêu dưới 60 ms). Giữ DB cũ ở chế độ chỉ đọc 7 ngày rồi mới xóa.
 
+**Đã thực hiện 17/11/2026 (07:24–07:36 UTC, gián đoạn khoảng 12 phút):**
+
+- Không có trận nào đang chạy nên dừng thẳng server bằng `railway down` thay vì bật bảo trì (người chơi thấy lỗi kết nối thay vì thông báo bảo trì).
+- Backup an toàn `fasttowin-2026-11-17T0725Z.dump.age` (INF-03) trước khi dừng.
+- Service mới **`Postgres-SG`** ở `asia-southeast1-eqsg3a` (PostgreSQL 18.6). Job một lần chạy `pg_dump` → `pg_restore` qua mạng nội bộ rồi so số dòng: 116/116 bảng khớp, schema V83.
+- `DATABASE_URL`, `DATABASE_USER`, `DATABASE_PASSWORD` của server và `DATABASE_URL` của `db-backup` giờ là biến tham chiếu `${{Postgres-SG.*}}`.
+- Redis (`rate-limit-redis`) chuyển region tại chỗ bằng `railway service scale --service <tên> asia-southeast1-eqsg3a=1 sfo=0`: giữ nguyên tên nội bộ nên URL Redis của server không đổi. Làm tương tự cho `redis-monitor`, `metrics-sender`, `db-backup`, `server`, `web`.
+- Server deploy lại bản `63cdd99f` (deployment `e219c242`), web `c61342a1`.
+- Kiểm tra: `/health`, `/status`, `/`, `/rooms` trả 200; request đầu (gồm bắt tay TLS) khoảng 130 ms (trước: 310 ms), request trên kết nối có sẵn khoảng 47 ms; chủ dự án chơi thử một trận trên điện thoại ổn.
+- Service `Postgres` cũ (sfo) giữ nguyên, không còn service nào trỏ tới. Xóa sau ngày 24/11/2026, sau khi chủ dự án đồng ý. `owned-worker` vẫn đang dừng ở sfo.
+- Runbook gốc thiếu Redis: Redis phải chuyển cùng server, nếu không mỗi lần kiểm tra rate limit đều gọi ngược về Mỹ.
+
 ## INF-04 – Giám sát và cảnh báo
 
 Endpoint `/metrics` (định dạng Prometheus) đã có các chỉ số dưới đây. Kết nối Grafana Cloud (gói Free) hoặc stack trong `deploy/monitoring`, rồi tạo các cảnh báo:
