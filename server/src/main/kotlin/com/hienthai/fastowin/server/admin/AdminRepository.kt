@@ -3,6 +3,13 @@ package com.hienthai.fastowin.server.admin
 /** Each block is atomic. PostgreSQL uses one connection/transaction and serializes access changes. */
 interface AdminRepository {
     suspend fun <T> transaction(block: AdminTransaction.() -> T): T
+
+    /**
+     * For blocks that never change admin access state (lookups, audit appends are fine).
+     * They may run concurrently with each other and with player registration, but still
+     * wait for access changes made through [transaction].
+     */
+    suspend fun <T> readTransaction(block: AdminTransaction.() -> T): T = transaction(block)
 }
 interface AdminTransaction {
     fun accountByEmail(email: String): AdminAccount?

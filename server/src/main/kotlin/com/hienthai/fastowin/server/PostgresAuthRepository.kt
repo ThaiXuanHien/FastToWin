@@ -20,7 +20,9 @@ class PostgresAuthRepository(private val dataSource: DataSource) : AuthRepositor
         dataSource.connection.use { connection ->
             connection.autoCommit = false
             try {
-                connection.prepareStatement("SELECT pg_advisory_xact_lock(7421092187349)").use { it.execute() }
+                // Shared (ADM-01): only moderation terms must stay stable; unique keys and row locks
+                // order concurrent registrations, so they no longer queue behind each other.
+                com.hienthai.fastowin.server.admin.AdminAuthorizationLock.shared(connection)
                 val moderation = com.hienthai.fastowin.server.moderation.JdbcModerationTransaction(connection)
                 insertUser(connection, account)
                 insertProfile(connection, account)
@@ -386,7 +388,9 @@ class PostgresAuthRepository(private val dataSource: DataSource) : AuthRepositor
             dataSource.connection.use { connection ->
                 connection.autoCommit = false
                 try {
-                    connection.prepareStatement("SELECT pg_advisory_xact_lock(7421092187349)").use { it.execute() }
+                    // Shared (ADM-01): only moderation terms must stay stable; unique keys and row locks
+                    // order concurrent registrations, so they no longer queue behind each other.
+                    com.hienthai.fastowin.server.admin.AdminAuthorizationLock.shared(connection)
                     val moderation = com.hienthai.fastowin.server.moderation.JdbcModerationTransaction(connection)
                     val guest = findGuestForUpgrade(connection, upgrade)
                     if (guest == null) {
