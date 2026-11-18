@@ -13,7 +13,7 @@ Cập nhật lần cuối: 18/11/2026.
 | Hợp đồng, ngân hàng, thuế | ✅ Active (18/11/2026) |
 | Digital Services Act (EU) | ⏳ Đã khai trader, Apple đang duyệt |
 | Ba sản phẩm Consumable | ✅ Đã tạo đủ thông tin, chờ gửi duyệt cùng bản app |
-| Mua thử trên TestFlight | ⏳ Apple chưa trả sản phẩm (chờ đồng bộ sau khi hợp đồng Active) |
+| Mua thử trên TestFlight | ✅ Giá hiển thị đúng, mua Gem và được cộng Gem (18/11/2026) |
 | Gửi duyệt bản 1.0 | ⬜ Chưa làm |
 
 ## 1. Hợp đồng, thuế, ngân hàng (bắt buộc trước khi bán)
@@ -51,11 +51,10 @@ Lưu ý: In-App Purchase đầu tiên phải được gửi duyệt **cùng mộ
 Bản cài qua **TestFlight** tự động dùng môi trường Sandbox với chính Apple ID thật của tester và không trừ tiền, nên **không cần tài khoản Sandbox**. Mục "Sandbox Account" trong Cài đặt chỉ hiện trên máy đã chạy bản build trực tiếp từ Xcode; tài khoản Sandbox chỉ cần khi build bằng Xcode trên Mac.
 
 - [x] Cài bản TestFlight **1.0 (4)**, bản có StoreKit 2. Các build 2 và 3 không có StoreKit.
-- [ ] Mở Cửa hàng → Gem: giá phải là 19.000 / 49.000 / 99.000 ₫.
-  - Ngày 18/11/2026 app báo không có gói Gem, tức là StoreKit trả về danh sách rỗng.
-  - Nguyên nhân: hợp đồng vừa Active và Apple chưa đồng bộ, thường mất vài giờ đến 24 giờ.
-  - Nếu sau 24 giờ vẫn rỗng, kiểm tra lại trạng thái sản phẩm và cấu hình In-App Purchase của App ID.
-- [ ] Mua gói 80 Gem (bảng thanh toán ghi Sandbox): Gem tăng 80, và **Hồ sơ → Hoạt động → Lịch sử tài sản** có đúng một dòng mua Gem.
+- [x] Mở Cửa hàng → Gem: giá hiển thị đúng giá App Store.
+  - Ngay sau khi hợp đồng chuyển Active, StoreKit trả về danh sách rỗng và app báo không có gói Gem.
+  - Vài giờ sau Apple đồng bộ xong và giá hiện ra. Lần sau gặp lại tình trạng này thì chờ, không cần sửa gì.
+- [x] Mua Gem trên TestFlight (bảng thanh toán ghi Sandbox): Gem được cộng. Đã xác nhận ngày 18/11/2026.
 - [ ] Thử thêm:
   - Hủy giữa chừng: không được cộng Gem.
   - Tắt mạng ngay sau khi trả tiền rồi mở lại app: Gem được cộng khi có mạng, và không cộng hai lần.
