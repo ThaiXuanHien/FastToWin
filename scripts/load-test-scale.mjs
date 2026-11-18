@@ -273,7 +273,7 @@ try {
   const jvmFlags = ['-Xms64m', '-Xmx512m', '-XX:MaxMetaspaceSize=192m', '-XX:+ExitOnOutOfMemoryError',
     `-Djdk.net.unixdomain.tmpdir=${socketTemp}`,
     ...(options.serverCpus ? [`-XX:ActiveProcessorCount=${options.serverCpus}`] : []),
-    ...(options.jfr ? [`-XX:StartFlightRecording=filename=${join(output, 'server.jfr')},settings=profile,dumponexit=true`] : [])];
+    ...(options.jfr ? [`-XX:StartFlightRecording=settings=profile`] : [])];
   child = spawn(java, [...jvmFlags, '-cp', join(distribution, 'lib', '*'), 'com.hienthai.fastowin.server.MainKt'],
     { cwd: serverCwd, env, windowsHide: true, stdio: ['ignore', 'pipe', 'pipe'] });
   child.stdout.pipe(logs, { end: false }); child.stderr.pipe(logs, { end: false });
@@ -389,6 +389,12 @@ try {
       resources: resourceSummary('storm') };
   }
   phase = 'stop';
+  if (options.jfr) {
+    // Windows stops the child without a JVM shutdown hook, so dump the recording explicitly first.
+    const jcmd = join(dirname(java), platform() === 'win32' ? 'jcmd.exe' : 'jcmd');
+    try { await runFile(jcmd, [String(child.pid), 'JFR.dump', `filename=${join(output, 'server.jfr')}`], { windowsHide: true, timeout: 60000, env: safeEnvironment }); }
+    catch { report.jfrDumpFailed = true; }
+  }
   report.final = mergeWindow(await askAll({ type: 'stop' }, 60000), 1);
   if (db) {
     report.persistedMatches = Number(await sql(`SELECT count(*) FROM ${schema}.matches;`));
