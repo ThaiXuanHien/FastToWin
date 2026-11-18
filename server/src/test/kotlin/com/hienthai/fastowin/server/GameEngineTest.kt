@@ -1242,6 +1242,20 @@ class GameEngineTest {
     }
 
     @Test
+    fun `only a host of a listed waiting room changes the lobby by reconnecting`() = runTest {
+        val engine = GameEngine()
+        val host = engine.connectOnlineTestPlayer("Host")
+        val guest = engine.connectOnlineTestPlayer("Guest")
+        assertFalse(engine.hostsListedRoom(host.playerId))
+        val created = engine.handle(host.playerId, ClientMessage.CreateRoom("Listed", "", ProtocolGameMode.ORDER))
+            .map(Delivery::message).filterIsInstance<ServerMessage.RoomCreated>().single().game
+        assertTrue(engine.hostsListedRoom(host.playerId))
+        assertFalse(engine.hostsListedRoom(guest.playerId))
+        engine.handle(guest.playerId, ClientMessage.JoinRoom(created.roomId, "", false))
+        assertFalse(engine.hostsListedRoom(host.playerId))
+    }
+
+    @Test
     fun `room snapshot keeps only recent replays while the abuse cap still counts every request`() = runTest {
         val identityRepository = InMemoryGuestIdentityRepository()
         val activeRoomRepository = InMemoryActiveRoomRepository()

@@ -256,6 +256,37 @@ class GameWebSocketTest {
     }
 
     @Test
+    fun `a connect sends the room list to that socket only while lobby changes are still broadcast`() = testApplication {
+        val authService = AuthenticationService(repository = InMemoryAuthRepository(), passwordHasher = PasswordHasher(iterations = 1_000))
+        val hostAccount = authService.registerVerified(email = "lobby-host@example.com", password = "strong-password-123", displayName = "Lobby host")
+        application { gameModule(authService = authService) }
+        val client = createClient { install(WebSockets) }
+        suspend fun nextFrame(socket: DefaultClientWebSocketSession): ServerMessage {
+            while (true) {
+                val frame = socket.incoming.receive() as? Frame.Text ?: continue
+                return ProtocolJson.decodeFromString<ServerMessage>(frame.readText())
+            }
+        }
+        val watcher = client.webSocketSession("/game")
+        val host = client.webSocketSession("/game")
+        try {
+            watcher.sendMessage(ClientMessage.ConnectGuest("Watcher"))
+            watcher.receiveMessage<ServerMessage.SessionReady>(); watcher.receiveMessage<ServerMessage.RoomList>()
+            host.sendMessage(ClientMessage.ConnectAccount(hostAccount.accessToken))
+            host.receiveMessage<ServerMessage.SessionReady>(); host.receiveMessage<ServerMessage.RoomList>()
+            // The host's plain connect is not broadcast: the watcher's next frame answers its own request.
+            watcher.sendMessage(ClientMessage.ListRooms)
+            assertEquals(emptyList(), assertIs<ServerMessage.RoomList>(nextFrame(watcher)).rooms)
+            host.sendMessage(ClientMessage.CreateRoom("Open lobby", "", ProtocolGameMode.ORDER))
+            host.receiveMessage<ServerMessage.RoomCreated>()
+            // Lobby changes are still broadcast to every socket.
+            assertEquals(listOf("Open lobby"), watcher.receiveMessage<ServerMessage.RoomList>().rooms.map { it.name })
+        } finally {
+            watcher.close(); host.close()
+        }
+    }
+
+    @Test
     fun `socket token recheck interval bounds how long a revoked session keeps working`() = testApplication {
         val authService = AuthenticationService(
             repository = InMemoryAuthRepository(),

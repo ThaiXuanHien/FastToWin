@@ -4216,6 +4216,11 @@ class GameEngine(
         selectionEvents = selectionEvents.toMutableList()
     )
 
+    /** Whether [playerId] hosts a room that the public lobby lists while that host is connected. */
+    suspend fun hostsListedRoom(playerId: String): Boolean = mutex.withLock {
+        rooms.values.any { it.hostId == playerId && it.phase == RoomPhase.WAITING && it.guestId == null }
+    }
+
     private fun publicRooms(): List<RoomSummary> = rooms.values
         .asSequence()
         .filter {
