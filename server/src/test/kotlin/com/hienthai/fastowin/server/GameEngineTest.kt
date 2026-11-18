@@ -3986,6 +3986,31 @@ class GameEngineTest {
     }
 
     @Test
+    fun `leaving after a disconnect forfeit closed the room is silent for both players`() = runTest {
+        var now = 1_000L
+        val engine = GameEngine(nowMillis = { now })
+        val host = engine.connectOnlineTestPlayer("Host")
+        val guest = engine.connectOnlineTestPlayer("Guest")
+        val room = engine.handle(host.playerId, ClientMessage.CreateRoom("Forfeit back", PASSWORD, ProtocolGameMode.ORDER))
+            .map(Delivery::message).filterIsInstance<ServerMessage.RoomCreated>().single().game
+        startRoom(engine, host.playerId, guest.playerId, room.roomId)
+        engine.markDisconnected(host.playerId)
+        now += 30_001L
+        engine.cleanupExpiredSessions()
+
+        // The winner taps Back on the result screen: no "room unavailable" error.
+        val winnerLeave = engine.handle(guest.playerId, ClientMessage.LeaveRoom(room.roomId)).map(Delivery::message)
+        assertTrue(winnerLeave.filterIsInstance<ServerMessage.Error>().isEmpty(), winnerLeave.toString())
+        // The forfeiting player reconnects to the result and also leaves cleanly.
+        engine.connectOnlineTestPlayer("Host", host.playerId, host.resumeToken)
+        val loserLeave = engine.handle(host.playerId, ClientMessage.LeaveRoom(room.roomId)).map(Delivery::message)
+        assertTrue(loserLeave.filterIsInstance<ServerMessage.Error>().isEmpty(), loserLeave.toString())
+        // Unknown rooms are equally harmless to leave.
+        assertTrue(engine.handle(guest.playerId, ClientMessage.LeaveRoom("missing-room")).map(Delivery::message)
+            .filterIsInstance<ServerMessage.Error>().isEmpty())
+    }
+
+    @Test
     fun `expired result pending snapshot is bounded by ttl`() = runTest {
         var now = 1_000L
         val engine = GameEngine(nowMillis = { now })
