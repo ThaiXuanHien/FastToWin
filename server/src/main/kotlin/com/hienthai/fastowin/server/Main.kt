@@ -136,6 +136,7 @@ fun main() {
                 environment = environment,
                 trustProxyHeaders = trustProxyHeaders,
                 connectionLimiter = WebSocketConnectionLimiter.fromEnvironment(),
+                socketAuthRecheckMillis = if (database == null) 0L else HOT_READ_CACHE_MILLIS,
                 serverDrain = ServerDrain.fromEnvironment(),
                 extraMetrics = { database?.renderPoolMetrics().orEmpty() },
                 seasonLifecycleRepository = seasonLifecycleRepository,
@@ -192,6 +193,10 @@ internal fun createModerationRuntime(
     }
     val moderationService = com.hienthai.fastowin.server.moderation.ModerationService(
         database?.moderationRepository ?: com.hienthai.fastowin.server.moderation.InMemoryModerationRepository(checkNotNull(memoryAdmins)),
-        adminService, enforcementEnabled = { contentTermsEnforced() })
+        adminService, enforcementEnabled = { contentTermsEnforced() },
+        hotReadCacheMillis = if (database == null) 0L else HOT_READ_CACHE_MILLIS)
     return adminService to moderationService
 }
+
+/** SCL-01: bound for per-message auth/moderation re-reads on game sockets (see ModerationService). */
+internal const val HOT_READ_CACHE_MILLIS = 5_000L
