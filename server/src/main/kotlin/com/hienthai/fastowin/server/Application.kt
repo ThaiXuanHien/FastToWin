@@ -289,9 +289,12 @@ fun Application.gameModule(
         deliveries.forEach { delivery ->
             val message = sanitizeContent(delivery.message, suppressions)
             val targets = delivery.recipients?.mapNotNull(connections::get) ?: connections.values.toList()
+            if (targets.isEmpty()) return@forEach
+            // SCL-01: encode once per delivery, not once per recipient (a lobby broadcast to N sockets).
+            val encoded = ProtocolJson.encodeToString<ServerMessage>(message)
             targets.forEach { connection ->
                 try {
-                    connection.send(message)
+                    connection.sendEncoded(encoded)
                 } catch (_: Exception) {
                     currentCoroutineContext().ensureActive()
                     // The connection cleanup path will remove stale sockets.
@@ -926,7 +929,10 @@ fun Application.gameModule(
                                 presenceRefreshSupported = connection.presenceId != null
                             ), engine.suppressionsForProjection())
                         )
-                        deliver(listOf(Delivery(engine.roomList())))
+                        // Everyone's lobby changes only when a returning host makes a waiting room listed
+                        // again; otherwise only this socket needs the list (was a broadcast per connect).
+                        val lobbyChanged = engine.hostsListedRoom(connected.playerId)
+                        deliver(listOf(Delivery(engine.roomList(), if (lobbyChanged) null else setOf(connected.playerId))))
                         deliver(engine.presenceUpdates(connected.playerId))
                         continue
                     }
@@ -1373,8 +1379,10 @@ private class SocketConnection(
     var lastPublishedPresence: com.hienthai.fastowin.protocol.FriendPresence? = null
     var presenceClosed = false
 
-    suspend fun send(message: ServerMessage) = sendMutex.withLock {
-        session.send(ProtocolJson.encodeToString<ServerMessage>(message))
+    suspend fun send(message: ServerMessage) = sendEncoded(ProtocolJson.encodeToString<ServerMessage>(message))
+
+    suspend fun sendEncoded(text: String) = sendMutex.withLock {
+        session.send(text)
     }
 
     suspend fun closeForReplacement() {
