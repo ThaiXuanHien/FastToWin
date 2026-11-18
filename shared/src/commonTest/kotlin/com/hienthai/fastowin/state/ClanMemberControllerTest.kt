@@ -10,7 +10,7 @@ import kotlin.test.*
 
 @OptIn(kotlinx.coroutines.ExperimentalCoroutinesApi::class)
 class ClanMemberControllerTest {
-    private val serverUnavailable = "Dịch vụ tạm thời không khả dụng. Vui lòng thử lại."
+    private val serverUnavailable = "Chưa thể hoàn tất lúc này. Bạn thử lại nhé."
 
     @Test fun `membership removal profile closes the stale clan view`() = runTest {
         val f = Fixture(this)
@@ -20,6 +20,22 @@ class ClanMemberControllerTest {
             f.server(ServerMessage.ProfileData(PlayerProfileSnapshot("owner", "Owner", "OWNER")))
             assertNull(f.controller.uiState.value.currentClan)
             assertNull(f.controller.uiState.value.profile?.clanId)
+        } finally { f.controller.close() }
+    }
+
+    @Test fun `recovery reload retries the requested clan before its first snapshot exists`() = runTest {
+        val f = Fixture(this)
+        try {
+            f.server(ServerMessage.ProfileData(PlayerProfileSnapshot("owner", "Owner", "OWNER")))
+            f.controller.openClan(); runCurrent()
+            f.controller.viewClan("requested"); runCurrent()
+            f.server(ServerMessage.Error("CLAN_PRESENCE_UNAVAILABLE", "Unavailable", requestId = "requested"))
+            assertNull(f.controller.uiState.value.currentClan)
+            assertTrue(f.controller.uiState.value.serviceRecoveryAvailable)
+            f.transport.sent.clear()
+            f.controller.retryServiceReads(); runCurrent()
+            assertTrue(ClientMessage.GetClanInfo("requested") in f.transport.sent)
+            assertTrue(f.transport.sent.none { it is ClientMessage.JoinClan || it is ClientMessage.CreateClan })
         } finally { f.controller.close() }
     }
 
@@ -50,7 +66,8 @@ class ClanMemberControllerTest {
             f.server(ServerMessage.Error("FRIENDS_PRESENCE_UNAVAILABLE", "Try again"))
             assertFalse(f.controller.uiState.value.isFriendsLoading)
             assertEquals(social, f.controller.uiState.value.social)
-            assertEquals(serverUnavailable, f.controller.uiState.value.error)
+            assertNull(f.controller.uiState.value.error)
+            assertTrue(f.controller.uiState.value.serviceRecoveryAvailable)
             f.controller.openFriends()
             runCurrent()
             assertTrue(f.controller.uiState.value.isFriendsLoading)

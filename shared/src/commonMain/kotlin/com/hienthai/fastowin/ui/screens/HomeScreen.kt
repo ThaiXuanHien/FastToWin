@@ -302,9 +302,6 @@ internal fun HomeDashboard(
                 )
             }
             Spacer(modifier = Modifier.height(8.dp))
-            if (!isGuest) {
-                DelayedConnectionNotice(state.connectionStatus)
-            }
             state.error?.let { Text(it, color = MaterialTheme.colorScheme.error) }
             if (isGuest) {
                 ArcadePanel(modifier = Modifier.fillMaxWidth(), accent = ArcadePalette.Mint600) {
@@ -691,30 +688,6 @@ private fun DailyCheckInCard(
                 } else {
                     null
                 }
-            )
-        }
-    }
-}
-
-@Composable
-private fun DelayedConnectionNotice(status: ConnectionStatus) {
-    var visibleStatus by remember { mutableStateOf<ConnectionStatus?>(null) }
-    LaunchedEffect(status) {
-        visibleStatus = null
-        if (status == ConnectionStatus.DISCONNECTED || status == ConnectionStatus.RECONNECTING) {
-            delay(2_000)
-            visibleStatus = status
-        }
-    }
-    visibleStatus?.let { stableStatus ->
-        Surface(
-            shape = RoundedCornerShape(16.dp),
-            color = MaterialTheme.colorScheme.surfaceContainer
-        ) {
-            Text(
-                localized(connectionKey(stableStatus)),
-                modifier = Modifier.fillMaxWidth().padding(14.dp),
-                color = MaterialTheme.colorScheme.onSurfaceVariant
             )
         }
     }

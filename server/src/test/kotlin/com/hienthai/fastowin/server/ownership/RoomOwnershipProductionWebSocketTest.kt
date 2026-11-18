@@ -288,6 +288,60 @@ class RoomOwnershipProductionWebSocketTest {
 
 
     @Test
+    fun `disconnect before reconnect keeps idle opponent in the running owned room`() = runBlocking {
+        fixture { f ->
+            var host = f.connect(f.aPort, f.tokens[0])
+            val guest = f.connect(f.aPort, f.tokens[1])
+            try {
+                host.sendMessage(ClientMessage.CreateRoom("Reconnect gap", "private", ProtocolGameMode.ORDER))
+                val room = host.receiveMessage<ServerMessage.RoomCreated>().game
+                guest.sendMessage(ClientMessage.JoinRoom(room.roomId, "private"))
+                guest.receiveMessage<ServerMessage.RoomUpdated>()
+                host.receiveMessage<ServerMessage.RoomUpdated>()
+                host.sendMessage(ClientMessage.SetReady(room.roomId, true))
+                host.receiveMessage<ServerMessage.RoomUpdated>()
+                guest.receiveMessage<ServerMessage.RoomUpdated>()
+                guest.sendMessage(ClientMessage.SetReady(room.roomId, true))
+                host.receiveMessage<ServerMessage.GameStarted>()
+                guest.receiveMessage<ServerMessage.GameStarted>()
+                for (number in 1..5) {
+                    guest.sendMessage(ClientMessage.SelectNumber(room.roomId, number, "gap-$number"))
+                    host.receiveMessage<ServerMessage.GameStateUpdated>()
+                    guest.receiveMessage<ServerMessage.GameStateUpdated>()
+                }
+                val webResumeToken = host.ready.resumeToken
+                host.close()
+                host = f.connect(f.aPort, f.tokens[0], webResumeToken)
+                assertEquals(room.roomId, host.ready.currentGame?.roomId)
+                assertEquals(RoomPhase.PLAYING, host.ready.currentGame?.phase)
+                assertEquals((1..5).toList(), host.ready.currentGame?.selectedNumbers)
+                guest.close()
+                withTimeout(5_000) {
+                    while (f.accounts[1].toString() !in assertNotNull(f.rooms.read(UUID.fromString(room.roomId)))
+                            .snapshot.pilotDisconnectDeadlines) delay(20)
+                }
+                delay(1_100)
+                val replacement = f.connect(f.aPort, f.tokens[1], guest.ready.resumeToken)
+                try {
+                    assertEquals(room.roomId, replacement.ready.currentGame?.roomId)
+                    assertEquals(RoomPhase.PLAYING, replacement.ready.currentGame?.phase)
+                    assertEquals((1..5).toList(), replacement.ready.currentGame?.selectedNumbers)
+                    val peerSnapshot = assertIs<ServerMessage.GameStateUpdated>(host.receiveMessage<ServerMessage> { message ->
+                        assertFalse(message is ServerMessage.RoomClosed,
+                            "An opponent's temporary disconnect must not close the Web room: $message")
+                        message is ServerMessage.GameStateUpdated
+                    }).game
+                    assertEquals(room.roomId, peerSnapshot.roomId)
+                    assertEquals(RoomPhase.PLAYING, peerSnapshot.phase)
+                    assertEquals((1..5).toList(), peerSnapshot.selectedNumbers)
+                    replacement.sendMessage(ClientMessage.SelectNumber(room.roomId, 6, "after-gap"))
+                    assertEquals((1..6).toList(), host.receiveMessage<ServerMessage.GameStateUpdated>().game.selectedNumbers)
+                } finally { replacement.close() }
+            } finally { guest.close(); host.close() }
+        }
+    }
+
+    @Test
     fun `worker owned presence reaches friend and clan viewers before heartbeat and survives reconnect`() = runBlocking {
         presenceFixture { f, observer, _ ->
             val viewer = f.connect(f.aPort, f.tokens[2])

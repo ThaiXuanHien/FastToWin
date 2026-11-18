@@ -346,6 +346,45 @@ class GameController private constructor(
         socket.retryNow()
     }
 
+    fun dismissServiceRecovery() {
+        _uiState.update { it.copy(serviceRecoveryAvailable = false) }
+    }
+
+    /** Refresh visible reads only; never replay a purchase, claim, join or unpublished edit. */
+    fun retryServiceReads() {
+        val state = _uiState.value
+        if (state.connectionStatus != ConnectionStatus.CONNECTED || !state.isSessionRestored || playerId == null) {
+            retryConnection()
+            return
+        }
+        dismissServiceRecovery()
+        _uiState.update { it.copy(isLeaderboardLoading = state.isLeaderboardOpen) }
+        scope.launch {
+            sendMessage(ClientMessage.ListRooms)
+            if (accountDisplayName != null) {
+                requestProfileRefresh()
+                sendMessage(ClientMessage.GetPlayQuota)
+                if (state.isFriendsOpen || state.isClanOpen) sendMessage(ClientMessage.GetFriends)
+                if (state.isLeaderboardOpen) sendMessage(ClientMessage.GetLeaderboard)
+                if (state.isNotificationsOpen) sendMessage(ClientMessage.GetNotifications)
+                if (state.isTournamentOpen) {
+                    sendMessage(ClientMessage.GetTournamentHub)
+                    sendMessage(ClientMessage.GetPublicTournaments(state.publicTournamentFilters.toQuery()))
+                }
+                if (state.isClanOpen) {
+                    sendMessage(ClientMessage.GetClanList())
+                    (requestedClanId ?: state.currentClan?.id)?.let { sendMessage(ClientMessage.GetClanInfo(it)) }
+                }
+                if (state.isShopOpen) {
+                    sendMessage(ClientMessage.GetGemStoreCatalog)
+                    sendMessage(ClientMessage.GetWalletHistory)
+                }
+                state.viewedFriendUserId?.let { sendMessage(ClientMessage.GetFriendProfile(it)) }
+                state.matchDetail?.summary?.matchId?.let { sendMessage(ClientMessage.GetMatchDetail(it)) }
+            }
+        }
+    }
+
     fun openProfile() {
         _uiState.update {
             it.copy(
@@ -1924,7 +1963,7 @@ class GameController private constructor(
             "FRIENDS_PRESENCE_UNAVAILABLE" -> {
                 _uiState.update { state ->
                     if ((state.isFriendsOpen || state.isClanOpen) && state.isFriendsLoading) {
-                        state.copy(isFriendsLoading = false, error = localizedError)
+                        state.copy(isFriendsLoading = false, error = null, serviceRecoveryAvailable = true)
                     } else state
                 }
                 return
@@ -1933,7 +1972,7 @@ class GameController private constructor(
                 _uiState.update { state ->
                     val clanId = requestedClanId ?: state.currentClan?.id
                     if (state.isClanOpen && clanId != null && error.requestId == clanId) {
-                        state.copy(clanLoadError = localizedError)
+                        state.copy(clanLoadError = localizedError, serviceRecoveryAvailable = true)
                     } else state
                 }
                 return
@@ -1957,7 +1996,7 @@ class GameController private constructor(
             return
         }
         if (error.code in setOf("NOTIFICATIONS_UNAVAILABLE", "NOT_NOTIFICATIONS_UNAVAILABLE")) {
-            _uiState.update { it.copy(isNotificationsLoading = false, notificationsError = localizedError) }
+            _uiState.update { it.copy(isNotificationsLoading = false, notificationsError = localizedError, serviceRecoveryAvailable = true) }
             return
         }
         if (error.code in setOf("CONNECTION_NOT_READY", "CONNECTION_FAILED", "SEND_FAILED") && _uiState.value.isNotificationsLoading) {
@@ -1969,7 +2008,7 @@ class GameController private constructor(
             "ACCOUNT_REQUIRED", "SESSION_NOT_FOUND", "CONNECTION_NOT_READY", "CONNECTION_FAILED", "SEND_FAILED"
         )
         if (profileError && editorProfileSave != null) {
-            editorProfileSaveFailure = localizedError
+            editorProfileSaveFailure = if (error.usesServiceRecovery()) messageMapper.text(TextKey.RecoveryDraftNotSaved) else localizedError
             editorProfileSave = null
             profileRefreshAfterSave = false
         }
@@ -1998,7 +2037,8 @@ class GameController private constructor(
         } else {
             _uiState.update {
                 val wasMatchmaking = it.lobbyStage == LobbyStage.MATCHMAKING
-                val shouldPresentRejection = wasMatchmaking || error.code in PLAY_FLOW_CONFLICT_ERROR_CODES
+                val shouldPresentRejection = !error.usesServiceRecovery() &&
+                    (wasMatchmaking || error.code in PLAY_FLOW_CONFLICT_ERROR_CODES)
                 val updated = it.withRematchError(error, localizedError).let { state ->
                     if (shouldPresentRejection) {
                         state.withPlayFlowRejection(error.code, localizedError)
@@ -2022,6 +2062,7 @@ class GameController private constructor(
                         isFriendProfileLoading = false,
                         isMatchDetailLoading = false,
                         isFriendsLoading = false,
+                        isLeaderboardLoading = it.isLeaderboardLoading && error.code != "LEADERBOARD_UNAVAILABLE",
                         isPublicTournamentsLoading = it.isPublicTournamentsLoading &&
                             error.code !in PUBLIC_TOURNAMENT_TRANSPORT_ERROR_CODES,
                         sendingRoomInviteFriendIds = if (error.code in ROOM_INVITATION_ERROR_CODES) {
@@ -2052,6 +2093,8 @@ class GameController private constructor(
                         },
                         isDailyCheckInClaiming = false,
                         claimingMissionCode = null,
+                        serviceRecoveryAvailable = it.serviceRecoveryAvailable ||
+                            (error.usesServiceRecovery() && error.code !in setOf("CONNECTION_NOT_READY", "CONNECTION_FAILED", "SEND_FAILED")),
                         hasOpponent = if (opponentIsUnavailable) false else it.hasOpponent,
                         error = if (shouldPresentRejection) null else globalErrorMessage(error, localizedError)
                     )
@@ -2172,7 +2215,9 @@ class GameController private constructor(
         latencyJob?.cancel()
         latencyJob = scope.launch {
             while (true) {
-                sendMessage(ClientMessage.MeasureLatency(epochMillis()))
+                if (socket.connectionState.value == SocketConnectionState.CONNECTED && _uiState.value.isSessionRestored) {
+                    sendMessage(ClientMessage.MeasureLatency(epochMillis()))
+                }
                 delay(5_000)
             }
         }

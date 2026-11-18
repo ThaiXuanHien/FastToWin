@@ -104,7 +104,7 @@ internal class OwnedRoomEngine(
                 if (expiry == null && attached == room && !fullyRecovered) RoomMutation.Replay(reply)
                 else RoomMutation.Change(
                     attached,
-                    events = expiry?.events?.takeIf { it.isNotEmpty() } ?: listOf(event(reply, setOf(actor))),
+                    events = expiry?.events?.takeIf { it.isNotEmpty() } ?: listOf(event(reply, attached.activePlayers())),
                     clearRecoveryDeadline = fullyRecovered || expiry?.clearRecoveryDeadline == true,
                     reply = reply
                 )

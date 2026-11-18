@@ -98,6 +98,28 @@ class OwnedRoomEngineTest {
     }
 
     @Test
+    fun `reconnecting player restores the running snapshot for the idle opponent`() = runBlocking {
+        fixture { f ->
+            val id = f.createPlaying()
+            f.a.handle(f.guest, ClientMessage.SelectNumber(id.toString(), 1, "before-reconnect")).applied()
+            f.a.disconnect(f.guest)
+            val before = f.state(id)
+            val replacement = f.repoB.bindSocket(f.guest.playerId)
+
+            f.a.reconnect(replacement).applied()
+
+            val batch = assertIs<RoomEventBatch.Contiguous>(f.repo.readEvents(id, before.revision, 32))
+            val restored = batch.revisions.flatMap { it.events }
+                .single { it.message is ServerMessage.GameStateUpdated }
+            assertEquals(setOf(f.host.playerId.toString(), f.guest.playerId.toString()), restored.recipientIds)
+            val game = assertIs<ServerMessage.GameStateUpdated>(restored.message).game
+            assertEquals(RoomPhase.PLAYING, game.phase)
+            assertEquals(listOf(1), game.selectedNumbers)
+            assertEquals(before.snapshot.sequence, game.sequence)
+        }
+    }
+
+    @Test
     fun `takeover restores a committed move and discards the replaced socket`() = runBlocking {
         fixture { f ->
             val id = f.createPlaying()
