@@ -193,6 +193,11 @@ Ngưỡng **khỏe** (p95 ≤ 250 ms) đi từ **dưới 165 người** (`master
 heap lên 467/512 MiB. Bão kết nối lại sau bậc 3.000 (jitter 3 giây): **2.790 socket kết nối lại trong
 7,4 giây, 0 lỗi**, p95 4,4 giây, Redis đỉnh 4.665 ops/giây.
 
+Đã thử thêm và **bỏ**: gộp các lần ghi snapshot phòng thành một transaction (group commit, vẫn chỉ trả
+lời sau khi DB ghi xong). Một luồng flush duy nhất làm mất khả năng ghi song song trên 4 kết nối mà E
+vừa mở ra. Ở 2.000 người, lượt chọn giảm từ 218 xuống 163/giây; ở 3.000 người, các trận đứng hẳn và bão
+kết nối lại có 6,4% lỗi. Không mở PR cho hướng này.
+
 Thử pool DB = 10 với A..F (SCL-04): bậc 2.000 đạt 266 lượt chọn/giây so với 218, p95 835 ms so với
 1.059 ms. Tăng pool có ích nhưng không phải đòn bẩy chính.
 
