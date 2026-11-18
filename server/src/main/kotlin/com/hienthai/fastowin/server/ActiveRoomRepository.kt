@@ -51,6 +51,8 @@ data class StoredActiveRoom(
     val rematchRequestedPlayerIds: Set<String> = emptySet(),
     val rematchExpiresAtEpochMillis: Long? = null,
     val processedRequests: Map<String, ServerMessage> = emptyMap(),
+    /** Requests processed this match; older snapshots without it fall back to processedRequests.size. */
+    val processedRequestCount: Int = 0,
     val selectionEvents: List<MatchSelectionEvent> = emptyList(),
     val targetOrder: List<Int> = emptyList(),
     val selectedNumbersByPlayer: Map<String, List<Int>> = emptyMap(),

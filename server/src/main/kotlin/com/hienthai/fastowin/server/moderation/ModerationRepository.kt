@@ -14,6 +14,8 @@ interface ModerationReadTransaction {
     fun suppression(type: UgcTargetType, targetId: String, revision: String?): Boolean
     fun suppressions(): List<ContentSuppression>
     fun restriction(userId: String): ModerationRestrictionView
+    /** The subset of [userIds] whose accounts are blocked, as [restriction] would report each one. */
+    fun blockedUserIds(userIds: Collection<String>): Set<String> = userIds.filterTo(mutableSetOf()) { restriction(it).blocked }
 }
 interface ModerationTransaction : ModerationReadTransaction {
     val admin: AdminTransaction

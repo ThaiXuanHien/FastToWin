@@ -152,6 +152,14 @@ class JdbcModerationTransaction(private val connection:Connection):ModerationTra
     override fun restriction(userId:String):ModerationRestrictionView=rows("SELECT version,blocked FROM ugc_account_restrictions WHERE user_id=?",uuid(userId)) {
         ModerationRestrictionView(userId,it.getInt(1),it.getBoolean(2))
     }.singleOrNull() ?: ModerationRestrictionView(userId,blocked=rows("SELECT status FROM users WHERE id=?",uuid(userId)){it.getString(1)=="BLOCKED"}.singleOrNull()==true)
+    override fun blockedUserIds(userIds:Collection<String>):Set<String> {
+        val ids=userIds.mapNotNull {runCatching {uuid(it)}.getOrNull()}.distinct()
+        if(ids.isEmpty()) return emptySet()
+        // Same rule as restriction(): an explicit restriction row wins, otherwise the account status.
+        return rows("""SELECT u.id FROM users u LEFT JOIN ugc_account_restrictions r ON r.user_id=u.id
+            WHERE u.id=ANY(?) AND COALESCE(r.blocked,u.status='BLOCKED')""",
+            connection.createArrayOf("uuid",ids.toTypedArray())) {it.getObject(1,UUID::class.java).toString()}.toSet()
+    }
     override fun putRestriction(value:ModerationRestrictionView,nowMillis:Long) {
         // Parent user row is locked before sessions in every auth mutation.
         if(rows("SELECT id FROM users WHERE id=? AND status<>'DELETED' FOR UPDATE",uuid(value.userId)){it.getString(1)}.isEmpty()) missing()
