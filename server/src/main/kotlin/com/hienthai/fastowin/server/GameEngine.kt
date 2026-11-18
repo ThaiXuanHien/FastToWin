@@ -145,6 +145,8 @@ class GameEngine(
     private val pendingReconnectResultsByPlayerId = mutableMapOf<String, PendingReconnectResult>()
     private val pendingAccountTokensByPlayerId = mutableMapOf<String, PendingAccountToken>()
     private val roomInvitations = mutableMapOf<String, RoomInvitationRecord>()
+    /** Invitations closed because another invitee took the seat; answers a late tap with ROOM_FULL, not "expired". */
+    private val filledRoomInvitations = mutableMapOf<String, RoomInvitationRecord>()
     private val matchmakingEntries = mutableMapOf<String, MatchmakingEntry>()
     private val tournaments = mutableMapOf<String, Tournament>()
     private val tournamentInvitations = mutableMapOf<String, TournamentInvitationRecord>()
@@ -2015,9 +2017,14 @@ class GameEngine(
         val otherRemovedInvitations = mutableListOf<RoomInvitationRecord>()
         val result = mutex.withLock {
             if (maintenancePolicy.blocksNewIntent) return@withLock listOf(maintenanceError(playerId))
+            filledRoomInvitations.values.removeAll { it.expiresAtMillis <= nowMillis() }
             val invitation = roomInvitations.remove(command.invitationId)
                 ?.takeIf { it.inviteeId == playerId && it.expiresAtMillis > nowMillis() }
-                ?: return@withLock listOf(error(playerId, "INVITATION_EXPIRED", legacyFallback("Lời mời vào phòng đã hết hạn.")))
+                ?: return@withLock if (command.accept && filledRoomInvitations.remove(command.invitationId)?.inviteeId == playerId) {
+                    listOf(roomTakenError(playerId))
+                } else {
+                    listOf(error(playerId, "INVITATION_EXPIRED", legacyFallback("Lời mời vào phòng đã hết hạn.")))
+                }
             invitationConsumed = true
             if (!command.accept) {
                 return@withLock listOf(
@@ -2038,16 +2045,21 @@ class GameEngine(
             if (roomFor(playerId) != null) {
                 return@withLock listOf(error(playerId, "ALREADY_IN_ROOM", legacyFallback("Bạn đang ở trong một phòng khác.")))
             }
-            val room = rooms[invitation.roomId]
-                ?.takeIf { it.hostId == invitation.inviterId && it.phase == RoomPhase.WAITING && it.guestId == null }
+            val invitedRoom = rooms[invitation.roomId]?.takeIf { it.hostId == invitation.inviterId }
                 ?: return@withLock listOf(error(playerId, "ROOM_NOT_FOUND", legacyFallback("Phòng được mời không còn sẵn sàng.")))
+            // Accepts are serialized by the engine mutex: the first invitee takes the seat, everyone else is told it is taken.
+            val room = invitedRoom.takeIf { it.phase == RoomPhase.WAITING && it.guestId == null }
+                ?: return@withLock listOf(roomTakenError(playerId))
             room.guestId = player.playerId
             room.sequence++
             room.scores[player.playerId] = 0
             room.readyPlayerIds.clear()
             roomInvitations.entries.removeAll { entry ->
                 (entry.value.roomId == room.id).also { removed ->
-                    if (removed) otherRemovedInvitations += entry.value
+                    if (removed) {
+                        otherRemovedInvitations += entry.value
+                        filledRoomInvitations[entry.key] = entry.value
+                    }
                 }
             }
             listOf(
@@ -2083,10 +2095,15 @@ class GameEngine(
             ?.roomId
             ?.let { persistRoom(it) }
         val affectedPlayers = (result.flatMap { it.recipients.orEmpty() } + playerId).toSet()
+        // Other invitees of a now-full room drop the stale invitation from their screen immediately.
+        val otherInvitees = otherRemovedInvitations.map(RoomInvitationRecord::inviteeId).toSet() - affectedPlayers
         return result + affectedPlayers.flatMap { presenceUpdates(it) } +
-            refreshRoomInvitationsFor(affectedPlayers) +
-            refreshNotificationsFor(setOf(playerId))
+            refreshRoomInvitationsFor(affectedPlayers + otherInvitees) +
+            refreshNotificationsFor(setOf(playerId) + otherInvitees)
     }
+
+    private fun roomTakenError(playerId: String) =
+        error(playerId, "ROOM_FULL", legacyFallback("Phòng đã có người tham gia trước bạn."))
 
     internal var enqueuePresenceUpdate: ((String) -> Unit)? = null
 
@@ -5202,6 +5219,10 @@ class GameEngine(
         }
     }
 
+    // Catalog missions use MissionAction*/Mission* keys (see PostgresMissionRepository.legacyDefinitions).
+    private fun isMissionTitleKey(name: String): Boolean =
+        name.startsWith("Mission") && TextKey.entries.any { it.name == name }
+
     private fun NotificationSnapshot.hasAllowedSyncTemplate(): Boolean {
         if (titleKey == null && messageKey == null) {
             return titleArgs.isEmpty() && messageArgs.isEmpty()
@@ -5224,14 +5245,9 @@ class GameEngine(
                     listOf("rewardGold", "rewardXp", "rewardGems").all { argument ->
                         messageArgs.getValue(argument).toIntOrNull()?.let { it >= 0 } == true
                     } &&
-                    messageArgs["titleKey"]?.let { titleKeyName ->
-                        titleKeyName in setOf(
-                            TextKey.MissionPlayThree.name,
-                            TextKey.MissionWinOne.name,
-                            TextKey.MissionCorrectHundred.name,
-                            TextKey.MissionPerfectWin.name
-                        )
-                    } != false
+                    // Profiles carry every catalog mission's own titleKey (daily, weekly, clan, check-in…);
+                    // accept any real mission title key instead of a stale hard-coded subset.
+                    messageArgs["titleKey"]?.let(::isMissionTitleKey) != false
             }
             NotificationKind.ACHIEVEMENT -> {
                 val required = setOf("code", "title", "description")
