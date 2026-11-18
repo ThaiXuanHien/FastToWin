@@ -4,6 +4,7 @@ import ch.qos.logback.classic.Level
 import ch.qos.logback.classic.Logger
 import com.hienthai.fastowin.protocol.FriendPresence
 import com.hienthai.fastowin.server.RateLimitPolicy
+import com.hienthai.fastowin.server.RateLimitUnavailableException
 import com.hienthai.fastowin.server.presence.PresenceConfiguration
 import com.hienthai.fastowin.server.presence.RedisPresenceStore
 import kotlinx.coroutines.CoroutineScope
