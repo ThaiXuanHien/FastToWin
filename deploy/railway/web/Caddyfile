@@ -69,6 +69,9 @@
 
 	@runtime path / /index.html /config.js /service-worker.js
 	header @runtime Cache-Control "no-store"
+	# Webpack names wasm by content hash, so a URL never changes meaning: cache for a year.
+	@hashedWasm path_regexp hashedWasm ^/[0-9a-f]{20}\.wasm$
+	header @hashedWasm Cache-Control "public, max-age=31536000, immutable"
 	# SEC-07: Cloudflare Turnstile loads its script and challenge iframe from challenges.cloudflare.com.
 	@gameCsp {
 		not path /admin /admin/*

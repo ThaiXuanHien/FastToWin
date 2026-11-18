@@ -2197,7 +2197,17 @@ class GameController private constructor(
         }
     }
     fun sendFcmToken(token: String) {
-        val normalizedToken = token.trim().takeIf(String::isNotEmpty) ?: return
+        val normalizedToken = token.trim()
+        if (normalizedToken.isEmpty()) {
+            // Disabling push deletes the device token (iOS). Tell the server once so it stops targeting a
+            // dead token; an empty token before any real token was sent is just "not registered yet".
+            if (lastFcmToken == null) return
+            lastFcmToken = null
+            scope.launch {
+                sendMessage(ClientMessage.UpdateFcmToken(token = "", languageTag = localization.language.languageTag))
+            }
+            return
+        }
         lastFcmToken = normalizedToken
         scope.launch {
             sendMessage(
