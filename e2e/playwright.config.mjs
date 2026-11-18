@@ -55,7 +55,7 @@ export default defineConfig({
       ['landscape', { width: 932, height: 430 }],
     ].map(([name, viewport]) => ({
       name: `chromium-connection-${name}`,
-      testMatch: /connection-feedback\.spec\.mjs/,
+      testMatch: /connection-(feedback|states)\.spec\.mjs/,
       use: { browserName: 'chromium', viewport, hasTouch: name !== 'desktop', reducedMotion: 'reduce' },
     })),
     ...['chromium', 'webkit'].map(browserName => ({

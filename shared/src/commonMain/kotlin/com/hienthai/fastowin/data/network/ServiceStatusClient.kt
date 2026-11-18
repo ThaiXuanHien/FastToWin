@@ -30,7 +30,9 @@ class ServiceStatusClient(serverUrl: String, private val client: HttpClient = Ht
         val response = client.get(statusUrl)
         if (response.status.isSuccess()) response.body<ServiceStatusResponse>() else null
     } catch (cancelled: CancellationException) { throw cancelled }
-      catch (_: Exception) { null }
+      // Ktor's browser engine reports a network failure as kotlin.Error("Fail to fetch"), not an
+      // Exception. Catching only Exception let one offline poll end the status loop for good.
+      catch (_: Throwable) { null }
 
     fun close() = client.close()
 

@@ -38,6 +38,7 @@ class ConnectionRecoveryUiTest {
         val available = mutableStateOf(true)
         var reloads = 0
         var retries = 0
+        var practices = 0
         compose.setContent {
             ProvideLocalization(AppLanguage.VIETNAMESE) {
                 FastToWinTheme {
@@ -51,8 +52,9 @@ class ConnectionRecoveryUiTest {
                                 onOpenLeaderboard = {}, onOpenProfile = {}, onOpenNotifications = {}, onOpenGifts = {},
                                 onOpenClan = {}, onOpenPractice = {}, onOpenTournament = {}, onOpenShop = {},
                                 onClaimDailyCheckIn = {}, onUpgradeGuest = {}, onLogout = {}, modifier = Modifier.padding(16.dp))
-                            ConnectionRecoveryNotice(status.value, available.value,
+                            ConnectionRecoveryNotice(status.value, available.value, serviceReachable = true,
                                 onReconnect = { retries++ }, onReload = { reloads++ }, onDismiss = { available.value = false },
+                                onPractice = { practices++ },
                                 modifier = Modifier.align(Alignment.BottomCenter).padding(horizontal = 16.dp, vertical = 24.dp))
                         }
                     }
@@ -70,7 +72,15 @@ class ConnectionRecoveryUiTest {
         compose.onNodeWithText("Đang kết nối lại…").assertIsDisplayed()
         screenshot("reconnecting-large-text")
         compose.onNodeWithTag("connection_recovery_action").performClick()
-        compose.runOnIdle { assertEquals(1, reloads); assertEquals(1, retries); status.value = ConnectionStatus.CONNECTED }
+        compose.runOnIdle { assertEquals(1, reloads); assertEquals(1, retries) }
+        compose.mainClock.advanceTimeBy(8_100)
+        compose.onNodeWithText("Bạn đang ngoại tuyến").assertIsDisplayed()
+        screenshot("offline-large-text")
+        compose.onNodeWithTag("connection_recovery_practice").performClick()
+        compose.runOnIdle { assertEquals(1, practices); status.value = ConnectionStatus.CONNECTED }
+        compose.onNodeWithText("Đã kết nối lại").assertIsDisplayed()
+        screenshot("restored-large-text")
+        compose.mainClock.advanceTimeBy(2_100)
         compose.onNodeWithTag("connection_recovery_notice").assertDoesNotExist()
     }
 

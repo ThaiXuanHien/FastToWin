@@ -22,6 +22,7 @@ ClanRaceTitle, ClanRacePrizes, ClanRacePerMember, ClanRaceEligibility, ClanRaceW
     MissionPeriodRange, MissionContributionPoints, MissionRequestError, MissionRefresh, MissionOngoingClan,
     Back, Cancel, Confirm, Retry, Close, Save, Delete, Loading, UnknownError, WelcomePlayer,
     RecoveryConnecting, RecoveryUnavailable, RecoveryReload, RecoveryDraftNotSaved,
+    RecoveryOffline, RecoveryOfflineHint, RecoveryRestored, RecoveryPractice,
     SettingsTitle, LanguageTitle, ChooseLanguageTitle, SystemLanguage, ResolvedSystemLanguage,
     AppearanceTitle, AppearanceSubtitle,
     SettingsInstallTitle, SettingsInstallSubtitle, SettingsInstallRetry, SettingsInstallAction,

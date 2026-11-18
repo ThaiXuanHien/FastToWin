@@ -4,12 +4,32 @@ import com.hienthai.fastowin.protocol.ServiceStatusResponse
 import com.hienthai.fastowin.protocol.MaintenanceState
 import com.hienthai.fastowin.localization.AppLanguage
 
-/** Latest reachability and last policy are deliberately distinct. */
-data class ServiceStatusState(val status: ServiceStatusResponse? = null, val reachable: Boolean? = null) {
-    fun received(value: ServiceStatusResponse?) = ServiceStatusState(value ?: status, value != null)
-    val pollSeconds: Int get() = if (reachable == false) 5 else status?.pollAfterSeconds?.coerceIn(5, 300) ?: 10
+/**
+ * Latest reachability and last policy are deliberately distinct. One failed poll is not "offline":
+ * a request in flight while the phone suspended the app, or the first one after it resumes, often
+ * fails. The state turns unreachable only after [OFFLINE_AFTER_FAILURES] failures in a row, and a
+ * first failure is re-checked quickly.
+ */
+data class ServiceStatusState(
+    val status: ServiceStatusResponse? = null,
+    val reachable: Boolean? = null,
+    val consecutiveFailures: Int = 0
+) {
+    fun received(value: ServiceStatusResponse?): ServiceStatusState = if (value != null) {
+        ServiceStatusState(value, true, 0)
+    } else {
+        val failures = consecutiveFailures + 1
+        ServiceStatusState(status, if (failures >= OFFLINE_AFTER_FAILURES) false else reachable, failures)
+    }
+    val pollSeconds: Int get() = when {
+        consecutiveFailures in 1 until OFFLINE_AFTER_FAILURES -> RECHECK_AFTER_FAILURE_SECONDS
+        reachable == false -> 5
+        else -> status?.pollAfterSeconds?.coerceIn(5, 300) ?: 10
+    }
     val fullyClosed: Boolean get() = status?.state == MaintenanceState.MAINTENANCE || status?.maintenance == true
-    val newIntentAllowed: Boolean get() = reachable == true && !fullyClosed &&
+    // New online intents stay fail-closed on the first failed check (maintenance cannot be confirmed),
+    // even though the offline notice waits for a second failure.
+    val newIntentAllowed: Boolean get() = reachable == true && consecutiveFailures == 0 && !fullyClosed &&
         status?.state in setOf(MaintenanceState.ACTIVE, MaintenanceState.ANNOUNCING)
     val showBanner: Boolean get() = status?.state in setOf(MaintenanceState.ANNOUNCING, MaintenanceState.DRAINING)
 }
@@ -24,3 +44,6 @@ fun maintenanceCountdownSeconds(transitionAt: Long?, now: Long): Long? =
 
 fun maintenanceBangkokTime(epochMillis: Long): String =
     kotlin.time.Instant.fromEpochMilliseconds(epochMillis + 7 * 3600000L).toString().take(16).replace('T', ' ')
+
+internal const val OFFLINE_AFTER_FAILURES = 2
+internal const val RECHECK_AFTER_FAILURE_SECONDS = 2
