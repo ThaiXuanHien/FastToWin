@@ -121,7 +121,7 @@ class PostgresActivityRepositoryTest {
     } }
     @Test fun deletedStatusAndGuestsCannotRestoreSubjectsOrBecomeRecipients() = runTest { database {
         val a = account(); val b = account(); var now = 1000L
-        val tracker = ActivityTracker(repository, { now }); tracker.connected(UUID.randomUUID(), a)
+        val tracker = ActivityTracker(repository, { now }); tracker.connected(UUID.randomUUID(), a); tracker.checkpoint()
         sql("UPDATE users SET status='DELETED' WHERE id IN ('$a','$b')")
         sql("DELETE FROM analytics_subject_links WHERE user_id='$b'")
         tracker.connected(UUID.randomUUID(), b)
@@ -134,7 +134,7 @@ class PostgresActivityRepositoryTest {
     } }
     @Test fun failedUpdateRollsBackPriorCoverageAndRecoveryStartsNewWindow() = runTest { database {
         val a = account(); var now = 1000L
-        val tracker = ActivityTracker(repository, { now }); tracker.connected(UUID.randomUUID(), a)
+        val tracker = ActivityTracker(repository, { now }); tracker.connected(UUID.randomUUID(), a); tracker.checkpoint()
         sql("CREATE FUNCTION reject_update() RETURNS trigger LANGUAGE plpgsql AS ${'$'}${'$'} BEGIN RAISE EXCEPTION 'rejected'; END ${'$'}${'$'}")
         sql("CREATE CONSTRAINT TRIGGER reject_update AFTER UPDATE ON activity_coverage_windows DEFERRABLE INITIALLY DEFERRED FOR EACH ROW EXECUTE FUNCTION reject_update()")
         now = 31_000; tracker.checkpoint() // safe failure isolation; the accepted game connection survives

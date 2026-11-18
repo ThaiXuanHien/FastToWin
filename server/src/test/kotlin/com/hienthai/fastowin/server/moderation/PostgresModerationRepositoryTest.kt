@@ -67,6 +67,20 @@ class PostgresModerationRepositoryTest {
             }
         }
     }
+    @Test fun `batched block read matches per-account restriction rule`()=runTest {
+        fixture {ds,reporter,target ->
+            val repo=PostgresModerationRepository(ds)
+            val unknown=UUID.randomUUID().toString()
+            assertEquals(emptySet(),repo.read {blockedUserIds(listOf(reporter,target,unknown,"not-a-uuid"))})
+            ds.connection.use {it.createStatement().use {s -> s.executeUpdate("UPDATE users SET status='BLOCKED' WHERE id='$target'")}}
+            assertEquals(setOf(target),repo.read {blockedUserIds(listOf(reporter,target,unknown))})
+            repo.transaction {putRestriction(ModerationRestrictionView(reporter,1,true),100)}
+            // An explicit unblock row wins over a stale account status, exactly like restriction().
+            ds.connection.use {it.createStatement().use {s -> s.executeUpdate("INSERT INTO ugc_account_restrictions(user_id,version,blocked,updated_at) VALUES ('$target',1,false,1)")}}
+            assertEquals(setOf(reporter),repo.read {blockedUserIds(listOf(reporter,target))})
+            listOf(reporter,target).forEach {id -> assertEquals(id==reporter,repo.read {restriction(id).blocked})}
+        }
+    }
     @Test fun `closed report cleanup cascades replay while quota survives until rolling day expires`()=runTest {
         fixture {ds,reporter,target ->
             val repo=PostgresModerationRepository(ds);var now=1_800_000_000_000L

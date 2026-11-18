@@ -179,7 +179,7 @@ class AuthenticationService(
         val now = nowMillis()
         val userId = UUID.randomUUID()
         val issued = issueTokens(userId, safeName, now, emailVerified = false)
-        val passwordHash = withContext(Dispatchers.Default) { passwordHasher.hash(password) }
+        val passwordHash = withContext(PasswordHashing) { passwordHasher.hash(password) }
         val created = repository.createAccount(
             NewAccount(
                 userId = userId,
@@ -204,7 +204,7 @@ class AuthenticationService(
             ?: return invalidCredentials()
         val account = repository.findActiveAccount(normalizedEmail)
             ?: return invalidCredentials()
-        val passwordMatches = withContext(Dispatchers.Default) {
+        val passwordMatches = withContext(PasswordHashing) {
             passwordHasher.verify(password, account.passwordHash)
         }
         if (!passwordMatches) return invalidCredentials()
@@ -247,7 +247,7 @@ class AuthenticationService(
         val now = nowMillis()
         val placeholderUserId = UUID.randomUUID()
         val issued = issueTokens(placeholderUserId, "", now, emailVerified = false)
-        val passwordHash = withContext(Dispatchers.Default) { passwordHasher.hash(password) }
+        val passwordHash = withContext(PasswordHashing) { passwordHasher.hash(password) }
         return when (val result = repository.upgradeGuest(
             GuestUpgrade(
                 resumeTokenHash = hashToken(resumeToken),
@@ -371,7 +371,7 @@ class AuthenticationService(
             ?: return invalidAccountSession()
         val account = repository.findActiveAccountById(authenticated.userId)
             ?: return invalidAccountSession()
-        val matches = withContext(Dispatchers.Default) {
+        val matches = withContext(PasswordHashing) {
             passwordHasher.verify(currentPassword, account.passwordHash)
         }
         if (!matches) return AccountActionResult.Failure(
@@ -384,7 +384,7 @@ class AuthenticationService(
             "PASSWORD_UNCHANGED",
             legacyFallback("Mật khẩu mới phải khác mật khẩu hiện tại.")
         )
-        val passwordHash = withContext(Dispatchers.Default) { passwordHasher.hash(newPassword) }
+        val passwordHash = withContext(PasswordHashing) { passwordHasher.hash(newPassword) }
         return if (repository.updatePasswordAndRevokeSessions(authenticated.userId, passwordHash, nowMillis())) {
             AccountActionResult.Success(legacyFallback("Đã đổi mật khẩu. Vui lòng đăng nhập lại."), messageKey = TextKey.PasswordChanged.name)
         } else invalidAccountSession()
@@ -421,7 +421,7 @@ class AuthenticationService(
         if (!isValidTokenShape(resetToken)) return invalidPasswordReset()
         val passwordError = validatePassword(newPassword)
         if (passwordError != null) return AccountActionResult.Failure("INVALID_PASSWORD", passwordError)
-        val passwordHash = withContext(Dispatchers.Default) { passwordHasher.hash(newPassword) }
+        val passwordHash = withContext(PasswordHashing) { passwordHasher.hash(newPassword) }
         return if (repository.consumePasswordReset(
                 normalizedEmail,
                 hashToken(resetToken),
@@ -487,7 +487,7 @@ class AuthenticationService(
             ?: return invalidAccountSession()
         val account = repository.findActiveAccountById(authenticated.userId)
             ?: return invalidAccountSession()
-        val matches = withContext(Dispatchers.Default) {
+        val matches = withContext(PasswordHashing) {
             passwordHasher.verify(password, account.passwordHash)
         }
         if (!matches) return AccountActionResult.Failure(
@@ -603,6 +603,16 @@ class AuthenticationService(
         private val EMAIL_VERIFICATION_CODE_PATTERN = Regex("^[0-9]{6}$")
     }
 }
+
+/**
+ * SCL-01: PBKDF2 (210,000 iterations) used every Default thread during a login burst, starving game
+ * coroutines and the maintenance observer until admission failed closed as MAINTENANCE. Hashing
+ * now uses at most half of the cores; extra logins queue instead of stalling the game.
+ */
+internal val passwordHashingParallelism: Int = maxOf(1, Runtime.getRuntime().availableProcessors() / 2)
+@OptIn(kotlinx.coroutines.ExperimentalCoroutinesApi::class)
+internal val PasswordHashing: kotlinx.coroutines.CoroutineDispatcher =
+    Dispatchers.Default.limitedParallelism(passwordHashingParallelism)
 
 class PasswordHasher(
     private val iterations: Int = DEFAULT_ITERATIONS,
