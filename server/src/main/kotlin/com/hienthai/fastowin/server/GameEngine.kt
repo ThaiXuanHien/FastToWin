@@ -138,7 +138,7 @@ class GameEngine(
 
     private val mutex = Mutex()
     private val restorationMutex = Mutex()
-    private val persistenceMutex = Mutex()
+    private val persistenceMutex = PersistenceLock()
     private val matchmakingSweepMutex = Mutex()
     private val sessionsByPlayerId = mutableMapOf<String, GuestSession>()
     private val rooms = mutableMapOf<String, Room>()
@@ -458,9 +458,9 @@ class GameEngine(
     }
 
     private suspend fun persistRoom(roomId: String) {
-        persistenceMutex.withLock {
+        persistenceMutex.withRoom(roomId) persist@{
             // The lobby is deliberately still visible in memory while this exact candidate awaits durable retry.
-            if (mutex.withLock { preparedStarts[roomId]?.let { it.candidate != null || it.fromMatchmaking } == true }) return@withLock
+            if (mutex.withLock { preparedStarts[roomId]?.let { it.candidate != null || it.fromMatchmaking } == true }) return@persist
             val removedInvitations = mutableListOf<RoomInvitationRecord>()
             val snapshot = mutex.withLock {
                 rooms[roomId]?.toStoredRoom().also { stored ->
