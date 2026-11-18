@@ -13,8 +13,20 @@ class ModerationService(
     val repository: ModerationRepository,
     private val admins: AdminService? = null,
     private val enforcementEnabled: () -> Boolean = { false },
-    private val nowMillis: () -> Long = System::currentTimeMillis
+    private val nowMillis: () -> Long = System::currentTimeMillis,
+    /**
+     * SCL-01: game sockets read suppressions and block state on every message and delivery. With a
+     * positive value those hot reads are cached this long; local admin changes invalidate at once,
+     * so the value only bounds staleness for changes made elsewhere (direct SQL, another backend).
+     */
+    val hotReadCacheMillis: Long = 0
 ) {
+    private class Cached<T>(val atMillis: Long, val value: T)
+    @Volatile private var cachedSuppressions: Cached<List<ContentSuppression>>? = null
+    private val cachedBlocks = java.util.concurrent.ConcurrentHashMap<String, Cached<Boolean>>()
+    private fun fresh(cached: Cached<*>?) = cached != null && hotReadCacheMillis > 0 &&
+        nowMillis() - cached.atMillis in 0 until hotReadCacheMillis
+    fun invalidateHotReads() { cachedSuppressions = null; cachedBlocks.clear() }
     /** Memory notification delivery runs after commit and uses reportId as a stable deduplication key. */
     var onContentRemoved: suspend (ownerId: String, reportId: String) -> Unit = { _, _ -> }
     var onSuppressionChanged: suspend (type: UgcTargetType, targetId: String) -> Unit = { _, _ -> }
@@ -73,10 +85,31 @@ class ModerationService(
         putReplay(ModerationReplay(playerId,request.requestId,fingerprint,"REPORT",Json.encodeToString(receipt),receipt.reportId,now+91L*86_400_000))
         receipt
     }
-    suspend fun isBlocked(playerId: String): Boolean = repository.read { restriction(playerId).blocked }
+    suspend fun isBlocked(playerId: String): Boolean {
+        cachedBlocks[playerId]?.takeIf(::fresh)?.let { return it.value }
+        val loadedAt = nowMillis()
+        return repository.read { restriction(playerId).blocked }.also { remember(playerId, it, loadedAt) }
+    }
+    /** Block state for many sockets in one read; refreshes the hot cache for each of them. */
+    suspend fun blockedAmong(playerIds: Collection<String>): Set<String> {
+        if (playerIds.isEmpty()) return emptySet()
+        val loadedAt = nowMillis()
+        val blocked = repository.read { blockedUserIds(playerIds) }
+        playerIds.forEach { remember(it, it in blocked, loadedAt) }
+        return blocked
+    }
+    private fun remember(playerId: String, blocked: Boolean, loadedAt: Long) {
+        if (hotReadCacheMillis <= 0) return
+        if (cachedBlocks.size >= MAX_CACHED_BLOCKS) cachedBlocks.clear()
+        cachedBlocks[playerId] = Cached(loadedAt, blocked)
+    }
     suspend fun isSuppressed(type: UgcTargetType, targetId: String, revision: String? = null) = repository.read { suppression(type,targetId,revision) }
-    suspend fun suppressions() = repository.read { suppressions() }
-    suspend fun erasePlayer(playerId: String) = repository.transaction { erasePlayer(playerId) }
+    suspend fun suppressions(): List<ContentSuppression> {
+        cachedSuppressions?.takeIf(::fresh)?.let { return it.value }
+        val loadedAt = nowMillis()
+        return repository.read { suppressions() }.also { if (hotReadCacheMillis > 0) cachedSuppressions = Cached(loadedAt, it) }
+    }
+    suspend fun erasePlayer(playerId: String) = try { repository.transaction { erasePlayer(playerId) } } finally { invalidateHotReads() }
     suspend fun cleanup(): Int = repository.transaction { cleanup(nowMillis()-90L*86_400_000,nowMillis()) }
 
     private fun requireAdmins() = admins ?: missing()
@@ -131,6 +164,7 @@ class ModerationService(
             putReplay(ModerationReplay(actor.id,request.requestId,fingerprint,"ADMIN_REPORT","",id,nowMillis()+91L*86_400_000))
             view(next)
         }
+        invalidateHotReads()
         if(request.removeContent && repository is InMemoryModerationRepository) result.targetOwnerId?.let {
             try { onContentRemoved(it,id) }
             catch(cancelled:CancellationException) { throw cancelled }
@@ -149,7 +183,9 @@ class ModerationService(
         if(!playerExists(userId)) missing()
         restriction(userId)
     }
-    suspend fun restrict(context: ModerationAdminContext,userId: String,request: ModerationRestrictionRequest): ModerationRestrictionView = repository.transaction {
+    suspend fun restrict(context: ModerationAdminContext,userId: String,request: ModerationRestrictionRequest): ModerationRestrictionView =
+        try { restrictCommitted(context,userId,request) } finally { invalidateHotReads() }
+    private suspend fun restrictCommitted(context: ModerationAdminContext,userId: String,request: ModerationRestrictionRequest): ModerationRestrictionView = repository.transaction {
         val service=requireAdmins();service.requireOrigin(context.origin)
         val actor=service.authorize(admin,context.token,context.csrfToken,mutation=true)
         if(actor.role==AdminRole.SUPPORT) forbidden()
@@ -171,4 +207,5 @@ class ModerationService(
         putReplay(ModerationReplay(actor.id,request.requestId,fingerprint,"RESTRICTION",Json.encodeToString(next),null,nowMillis()+86_400_000))
         next
     }
+    private companion object { const val MAX_CACHED_BLOCKS = 100_000 }
 }

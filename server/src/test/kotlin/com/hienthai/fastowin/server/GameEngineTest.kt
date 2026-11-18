@@ -1256,6 +1256,39 @@ class GameEngineTest {
     }
 
     @Test
+    fun `room snapshot keeps only recent replays while the abuse cap still counts every request`() = runTest {
+        val identityRepository = InMemoryGuestIdentityRepository()
+        val activeRoomRepository = InMemoryActiveRoomRepository()
+        val engine = GameEngine(identityRepository = identityRepository, activeRoomRepository = activeRoomRepository)
+        val host = engine.connectOnlineTestPlayer("Host")
+        val guest = engine.connectOnlineTestPlayer("Guest")
+        val created = engine.handle(host.playerId, ClientMessage.CreateRoom("Replay room", PASSWORD, ProtocolGameMode.ORDER))
+            .map(Delivery::message).filterIsInstance<ServerMessage.RoomCreated>().single().game
+        startRoom(engine, host.playerId, guest.playerId, created.roomId)
+        var last: List<ServerMessage> = emptyList()
+        for (number in 1..40) {
+            val actor = if (number % 2 == 1) host.playerId else guest.playerId
+            last = engine.handle(actor, ClientMessage.SelectNumber(created.roomId, number, "request-$number")).map(Delivery::message)
+        }
+        val stored = activeRoomRepository.loadAll().single()
+        assertEquals(40, stored.processedRequestCount)
+        assertEquals(setOf("${guest.playerId}:request-40", "${guest.playerId}:request-38", "${guest.playerId}:request-36",
+            "${guest.playerId}:request-34", "${host.playerId}:request-39", "${host.playerId}:request-37",
+            "${host.playerId}:request-35", "${host.playerId}:request-33"), stored.processedRequests.keys)
+        assertTrue(com.hienthai.fastowin.protocol.ProtocolJson.encodeToString(StoredActiveRoom.serializer(), stored).length < 40_000,
+            "stored room must not grow with every replay")
+
+        val restarted = GameEngine(identityRepository = identityRepository, activeRoomRepository = activeRoomRepository)
+        restarted.connectOnlineTestPlayer("Host", host.playerId)
+        restarted.connectOnlineTestPlayer("Guest", guest.playerId)
+        val replayed = restarted.handle(guest.playerId, ClientMessage.SelectNumber(created.roomId, 40, "request-40")).map(Delivery::message)
+        assertEquals(last.filterIsInstance<ServerMessage.GameStateUpdated>().single(),
+            replayed.filterIsInstance<ServerMessage.GameStateUpdated>().single())
+        restarted.handle(host.playerId, ClientMessage.SelectNumber(created.roomId, 41, "request-41"))
+        assertEquals(41, activeRoomRepository.loadAll().single().processedRequestCount)
+    }
+
+    @Test
     fun `profile request returns safe empty statistics without database`() = runTest {
         val engine = GameEngine()
         val guest = engine.connectGuest("Hiền", null)

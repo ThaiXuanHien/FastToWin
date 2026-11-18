@@ -127,6 +127,12 @@ fun Application.gameModule(
     maintenanceRuntime: MaintenanceRuntime = MaintenanceRuntime(engine, maintenanceService, serviceStatusProvider),
     adMobService: com.hienthai.fastowin.server.ads.AdMobService? = null,
     activityTracker: com.hienthai.fastowin.server.activity.ActivityTracker = com.hienthai.fastowin.server.activity.ActivityTracker(),
+    /**
+     * SCL-01: an account socket re-validates its access token at most this often instead of on every
+     * message (0 = every message). Revocation still closes the socket within this bound, and the
+     * presence heartbeat and block sweep keep checking independently.
+     */
+    socketAuthRecheckMillis: Long = 0L,
     financialSyncService: com.hienthai.fastowin.server.analytics.FinancialSyncService? = null,
     analyticsService: com.hienthai.fastowin.server.analytics.AnalyticsService? = adminService?.let {
         com.hienthai.fastowin.server.analytics.AnalyticsService(com.hienthai.fastowin.server.analytics.UnavailableAnalyticsRepository, it)
@@ -354,14 +360,15 @@ fun Application.gameModule(
     launch {
         while (isActive) {
             delay(SESSION_CLEANUP_INTERVAL_MILLIS)
-            connections.entries.toList().forEach { (id, connection) ->
-                try {
-                    if (engine.moderationService.isBlocked(id)) {
-                        connection.session.close(CloseReason(CloseReason.Codes.VIOLATED_POLICY, "Account restricted"))
-                    }
-                } catch (cancelled: CancellationException) { throw cancelled }
-                catch (_: Exception) { this@gameModule.environment.log.warn("Could not check restricted game sessions") }
-            }
+            try {
+                // One read for every connected player instead of one transaction per socket.
+                val snapshot = connections.entries.toList()
+                val blocked = engine.moderationService.blockedAmong(snapshot.map { it.key })
+                snapshot.filter { it.key in blocked }.forEach { (_, connection) ->
+                    connection.session.close(CloseReason(CloseReason.Codes.VIOLATED_POLICY, "Account restricted"))
+                }
+            } catch (cancelled: CancellationException) { throw cancelled }
+            catch (_: Exception) { this@gameModule.environment.log.warn("Could not check restricted game sessions") }
             try { authService.cleanupRefreshRecoveries() }
             catch (cancelled: CancellationException) { throw cancelled }
             catch (_: Exception) { this@gameModule.environment.log.warn("Refresh recovery cleanup failed") }
@@ -782,6 +789,7 @@ fun Application.gameModule(
             var registeredConnection: SocketConnection? = null
             var presenceHeartbeat: kotlinx.coroutines.Job? = null
             var lastPresenceRequestAt: Long? = null
+            var accountCheckedAt: Long? = null
             try {
                 for (frame in incoming) {
                     val ipMessageLimit = rateLimiter.consume(
@@ -981,9 +989,13 @@ fun Application.gameModule(
                     }
 
                     val currentAccountToken = accountAccessToken
-                    if (currentAccountToken != null &&
-                        authService.authenticateAccessToken(currentAccountToken) == null
-                    ) {
+                    val checkNow = System.nanoTime()
+                    val accountCheckDue = accountCheckedAt?.let { checkNow - it >= socketAuthRecheckMillis * 1_000_000L } ?: true
+                    if (currentAccountToken != null && accountCheckDue) {
+                        if (authService.authenticateAccessToken(currentAccountToken) != null) accountCheckedAt = checkNow
+                        else accountCheckedAt = null
+                    }
+                    if (currentAccountToken != null && accountCheckedAt == null) {
                         send(ProtocolJson.encodeToString<ServerMessage>(
                             structuredServerError(
                                 "INVALID_ACCESS_TOKEN",
