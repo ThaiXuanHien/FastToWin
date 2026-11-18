@@ -170,7 +170,10 @@ function startWorkers() {
       if (message.type === 'status') workerStatus.set(i, message);
       else pendingReplies.get(i)?.(message);
     });
-    worker.on('error', () => { report.workerFailures = (report.workerFailures || 0) + 1; });
+    worker.on('error', error => {
+      report.workerFailures = (report.workerFailures || 0) + 1;
+      (report.workerErrors ??= []).push(String(error?.stack || error).slice(0, 400).replace(/[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+/g, '<redacted>'));
+    });
     workers.push(worker);
   }
 }

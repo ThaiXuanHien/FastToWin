@@ -45,7 +45,10 @@ class Player {
     if (stopping && !resume) throw new Error(STOPPED);
     const ws = new WebSocket(wsUrl, { headers: { 'X-Forwarded-For': this.ip } });
     this.ws = ws;
-    ws.addEventListener('message', event => this.onFrame(event.data));
+    ws.addEventListener('message', event => {
+      try { this.onFrame(event.data); }
+      catch (error) { record('client.frame_handling', 0, false, error?.name === 'SyntaxError' ? 'INVALID_FRAME' : 'FRAME_HANDLER_ERROR'); }
+    });
     ws.addEventListener('close', () => this.failAll(stopping ? STOPPED : 'SOCKET_CLOSED'));
     await new Promise((done, reject) => {
       const timer = setTimeout(() => { ws.close(); reject(new Error('SOCKET_OPEN_TIMEOUT')); }, 15000);
@@ -77,7 +80,9 @@ class Player {
       const waiter = this.waiters[i];
       if (!waiter.types.includes(type)) continue;
       message ??= JSON.parse(data);
-      if (!waiter.predicate(message)) continue;
+      let matched = false;
+      try { matched = waiter.predicate(message); } catch { matched = false; }
+      if (!matched) continue;
       this.waiters.splice(i, 1); clearTimeout(waiter.timer); waiter.resolve(message); return;
     }
   }
