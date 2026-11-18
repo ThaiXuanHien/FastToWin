@@ -45,6 +45,7 @@ import com.hienthai.fastowin.protocol.RewardedAdProvider
 import com.hienthai.fastowin.protocol.SeasonRewardReceiptSnapshot
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.launch
@@ -459,6 +460,29 @@ class GameEngineTest {
 
         assertTrue(response.map(Delivery::message).any { it is ServerMessage.NotificationsData })
         assertEquals(notification.messageArgs, notifications.loadNotifications(playerId).single().messageArgs)
+    }
+
+    @Test fun `account notification sync accepts current catalog mission title keys`() = runTest {
+        val playerId = UUID.randomUUID().toString()
+        val notifications = InMemoryNotificationRepository()
+        val engine = GameEngine(notificationRepository = notifications)
+        engine.connectAccount(AuthenticatedAccount(UUID.fromString(playerId), "Player"))
+        fun mission(code: String, titleKey: String) = NotificationSnapshot(
+            id = "mission:weekly:$code", kind = NotificationKind.MISSION, title = "Done", message = "Mission done",
+            createdAtEpochMillis = 1L, destination = NotificationDestination.PROFILE,
+            titleKey = TextKey.MissionCompleted.name, messageKey = TextKey.NotificationMissionMessage.name,
+            messageArgs = mapOf("code" to code, "title" to "Mission", "titleKey" to titleKey,
+                "rewardGold" to "100", "rewardXp" to "10", "rewardGems" to "0")
+        )
+        val accepted = listOf(TextKey.MissionWeeklyWinFive, TextKey.MissionActionPLAY, TextKey.MissionCasualTwo,
+            TextKey.MissionDailyCheckIn).map { mission(it.name, it.name) }
+        val response = engine.handle(playerId, ClientMessage.SyncNotifications(accepted))
+        assertTrue(response.map(Delivery::message).none { it is ServerMessage.Error })
+        assertEquals(accepted.size, notifications.loadNotifications(playerId).size)
+        for (bad in listOf("NotAKey", TextKey.AchievementsTitle.name, "MissionDoesNotExist")) {
+            val rejected = engine.handle(playerId, ClientMessage.SyncNotifications(listOf(mission("X_$bad", bad))))
+            assertEquals("INVALID_NOTIFICATIONS", rejected.map(Delivery::message).filterIsInstance<ServerMessage.Error>().single().code)
+        }
     }
 
     @Test fun `account notification sync rejects forged announcement context and reserved id`() = runTest {
@@ -1482,6 +1506,57 @@ class GameEngineTest {
             acceptResponse.filterIsInstance<ServerMessage.RoomInvitationsData>()
                 .all { it.outgoingFriendUserIds.isEmpty() }
         )
+    }
+
+    @Test
+    fun `when several invitees accept the same room only the first gets the seat`() = runTest {
+        val hostId = UUID.randomUUID().toString()
+        val firstId = UUID.randomUUID().toString()
+        val secondId = UUID.randomUUID().toString()
+        val friends = object : FriendRepository {
+            override suspend fun load(userId: String) = StoredFriends()
+            override suspend fun sendRequest(userId: String, playerCode: String, nowMillis: Long) = FriendRequestResult.PlayerNotFound
+            override suspend fun respond(userId: String, requestId: String, accept: Boolean, nowMillis: Long) = FriendResponseResult.NotFound
+            override suspend fun cancelRequest(userId: String, requestId: String) = FriendCancellationResult.NotFound
+            override suspend fun removeFriend(userId: String, friendUserId: String) = SocialMutationResult.NotFound
+            override suspend fun blockPlayer(userId: String, playerUserId: String, nowMillis: Long) = SocialMutationResult.NotFound
+            override suspend fun unblockPlayer(userId: String, playerUserId: String) = SocialMutationResult.NotFound
+            override suspend fun areFriends(firstUserId: String, secondUserId: String) = hostId in setOf(firstUserId, secondUserId)
+            override suspend fun isBlockedEitherWay(firstUserId: String, secondUserId: String) = false
+        }
+        val engine = GameEngine(friendRepository = friends)
+        for ((id, name) in listOf(hostId to "Host", firstId to "First", secondId to "Second")) {
+            engine.connectAccount(AuthenticatedAccount(UUID.fromString(id), name))
+        }
+        val room = engine.handle(hostId, ClientMessage.CreateRoom("Invite race", PASSWORD, ProtocolGameMode.ORDER))
+            .map(Delivery::message).filterIsInstance<ServerMessage.RoomCreated>().single().game
+        suspend fun invite(id: String) = engine.handle(hostId, ClientMessage.InviteFriend(id, room.roomId))
+            .map(Delivery::message).filterIsInstance<ServerMessage.RoomInvitation>().single()
+        val firstInvitation = invite(firstId)
+        val secondInvitation = invite(secondId)
+
+        val results = coroutineScope {
+            listOf(firstId to firstInvitation, secondId to secondInvitation).map { (id, invitation) ->
+                async { id to engine.handle(id, ClientMessage.RespondRoomInvitation(invitation.invitationId, accept = true)) }
+            }.awaitAll()
+        }
+        val winners = results.filter { (_, deliveries) -> deliveries.any { it.message is ServerMessage.RoomUpdated } }
+        assertEquals(1, winners.size)
+        val (loserId, loserDeliveries) = results.single { it !in winners }
+        assertEquals("ROOM_FULL", loserDeliveries.map(Delivery::message).filterIsInstance<ServerMessage.Error>().single().code)
+        // The winner's accept tells the other invitee to drop the stale invitation.
+        val winnerDeliveries = winners.single().second
+        assertTrue(winnerDeliveries.any { delivery ->
+            val message = delivery.message
+            message is ServerMessage.RoomInvitationsData && loserId in delivery.recipients.orEmpty() &&
+                message.invitations.isEmpty()
+        })
+        val seated = winnerDeliveries.map(Delivery::message).filterIsInstance<ServerMessage.RoomUpdated>().single().game
+        assertEquals(setOf(hostId, winners.single().first), seated.players.map { it.id }.toSet())
+        // The late tap was answered once; the closed invitation is then gone and never grants a second seat.
+        val retry = engine.handle(loserId, ClientMessage.RespondRoomInvitation(
+            (if (loserId == firstId) firstInvitation else secondInvitation).invitationId, accept = true))
+        assertEquals("INVITATION_EXPIRED", retry.map(Delivery::message).filterIsInstance<ServerMessage.Error>().single().code)
     }
 
     @Test
