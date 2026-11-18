@@ -3409,10 +3409,11 @@ class GameEngine(
     }
 
     private fun leaveRoom(player: GuestSession, command: ClientMessage.LeaveRoom): HandleResult {
-        val room = rooms[command.roomId]
-            ?: return HandleResult(listOf(error(player.playerId, "ROOM_NOT_FOUND", legacyFallback("Phòng không còn tồn tại."))))
+        // Leaving is idempotent: a finished room may already be closed (e.g. after a disconnect forfeit the
+        // winner is still on the result screen). Nothing is left to leave, so do not surface an error.
+        val room = rooms[command.roomId] ?: return HandleResult(emptyList())
         if (player.playerId !in room.activePlayerIds() && player.playerId !in room.spectatorIds) {
-            return HandleResult(listOf(error(player.playerId, "NOT_IN_ROOM", legacyFallback("Bạn không ở trong phòng này."))))
+            return HandleResult(emptyList())
         }
         if (player.playerId in room.spectatorIds) {
             room.spectatorIds.remove(player.playerId)
