@@ -28,6 +28,31 @@ class ModerationServiceTest {
         suspend fun report() = service.report(reporter, request())
     }
 
+    @Test fun `hot block and suppression reads are cached briefly and admin changes invalidate them`() = runTest {
+        val f=Fixture();f.setup()
+        val service=ModerationService(f.repo,f.adminService,{true},{f.now},hotReadCacheMillis=5_000)
+        assertFalse(service.isBlocked(f.reporter)); assertEquals(emptyList(),service.suppressions())
+        // A change made outside this service (another backend, SQL) is visible after the bound.
+        f.repo.transaction { putRestriction(ModerationRestrictionView(f.reporter,1,true),f.now) }
+        assertFalse(service.isBlocked(f.reporter))
+        f.now+=5_000; assertTrue(service.isBlocked(f.reporter))
+        f.repo.transaction { putRestriction(ModerationRestrictionView(f.reporter,2,false),f.now) }
+        assertEquals(emptySet(),service.blockedAmong(listOf(f.reporter)))
+        assertFalse(service.isBlocked(f.reporter))
+        // A local admin block takes effect immediately.
+        service.restrict(f.context,f.reporter,ModerationRestrictionRequest(2,UUID.randomUUID().toString(),"abuse",true))
+        assertTrue(service.isBlocked(f.reporter))
+        val id=service.report(UUID.randomUUID().toString().also { other ->
+            f.admins.seedUser(UserDetail(other,"Other",null,"GUEST","ACTIVE",f.now,1,0,17,0,1000,null,null,null)) }, f.request()).reportId
+        service.resolve(f.context,id,ModerationResolveRequest(1,UUID.randomUUID().toString(),"remove",ModerationStatus.RESOLVED,removeContent=true))
+        assertEquals(listOf(f.targetId),service.suppressions().map { it.targetId })
+    }
+    @Test fun `cache disabled by default reads every time`() = runTest {
+        val f=Fixture();f.setup()
+        assertFalse(f.service.isBlocked(f.reporter))
+        f.repo.transaction { putRestriction(ModerationRestrictionView(f.reporter,1,true),f.now) }
+        assertTrue(f.service.isBlocked(f.reporter))
+    }
     @Test fun `disabled rollout accepts missing version but rejects explicit unsupported consent`() = runTest {
         val f=Fixture();f.setup()
         val service=ModerationService(f.repo,f.adminService,{false},{f.now})
