@@ -2198,6 +2198,18 @@ private fun GameContent(
                             )
                         }
                     }
+                    if (serviceReachable != false && !state.isMatchStarted) {
+                        com.hienthai.fastowin.ui.components.ConnectionRecoveryNotice(
+                            connectionStatus = state.connectionStatus,
+                            serviceRecoveryAvailable = state.serviceRecoveryAvailable,
+                            onReconnect = controller::retryConnection,
+                            onReload = controller::retryServiceReads,
+                            onDismiss = controller::dismissServiceRecovery,
+                            modifier = Modifier.align(Alignment.BottomCenter)
+                                .windowInsetsPadding(WindowInsets.safeDrawing.only(WindowInsetsSides.Bottom))
+                                .padding(horizontal = 16.dp, vertical = 88.dp)
+                        )
+                    }
                     if (state.connectionStatus == com.hienthai.fastowin.state.ConnectionStatus.RECONNECTING &&
                         state.isMatchStarted
                     ) {

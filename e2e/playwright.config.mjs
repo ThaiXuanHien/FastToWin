@@ -49,6 +49,15 @@ export default defineConfig({
       use: { browserName: 'chromium', viewport: { width: 390, height: 844 } },
     },
   ] : [
+    ...[
+      ['desktop', { width: 1280, height: 900 }],
+      ['phone', { width: 375, height: 812 }],
+      ['landscape', { width: 932, height: 430 }],
+    ].map(([name, viewport]) => ({
+      name: `chromium-connection-${name}`,
+      testMatch: /connection-feedback\.spec\.mjs/,
+      use: { browserName: 'chromium', viewport, hasTouch: name !== 'desktop', reducedMotion: 'reduce' },
+    })),
     ...['chromium', 'webkit'].map(browserName => ({
       name: `${browserName}-guest-upgrade`,
       testMatch: /guest-upgrade-back\.spec\.mjs/,

@@ -21,6 +21,7 @@ ClanRaceTitle, ClanRacePrizes, ClanRacePerMember, ClanRaceEligibility, ClanRaceW
     LegalTitle, LegalSubtitle, LegalPrivacy, LegalTerms, LegalDeleteAccount,
     MissionPeriodRange, MissionContributionPoints, MissionRequestError, MissionRefresh, MissionOngoingClan,
     Back, Cancel, Confirm, Retry, Close, Save, Delete, Loading, UnknownError, WelcomePlayer,
+    RecoveryConnecting, RecoveryUnavailable, RecoveryReload, RecoveryDraftNotSaved,
     SettingsTitle, LanguageTitle, ChooseLanguageTitle, SystemLanguage, ResolvedSystemLanguage,
     AppearanceTitle, AppearanceSubtitle,
     SettingsInstallTitle, SettingsInstallSubtitle, SettingsInstallRetry, SettingsInstallAction,

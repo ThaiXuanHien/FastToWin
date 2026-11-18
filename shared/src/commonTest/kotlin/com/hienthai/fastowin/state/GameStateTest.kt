@@ -405,12 +405,12 @@ class GameStateTest {
             runCurrent()
             fixture.session.server(ServerMessage.Error("PROFILE_UPDATE_UNAVAILABLE", "Profile failed"))
             runCurrent()
-            val error = fixture.controller.uiState.value.error
+            val error = fixture.controller.uiState.value.profileSaveError
             fixture.session.server(ServerMessage.ProfileData(profile, isBackgroundRefresh = true))
             fixture.session.server(ServerMessage.ProfileData(profile))
             runCurrent()
             assertTrue(!error.isNullOrBlank())
-            assertEquals(error, fixture.controller.uiState.value.error)
+            assertEquals(error, fixture.controller.uiState.value.profileSaveError)
             assertFalse(fixture.controller.uiState.value.isProfileSaving)
             assertNull(fixture.controller.uiState.value.profileNotice)
         } finally { fixture.controller.close() }
@@ -1703,16 +1703,120 @@ class GameStateTest {
     }
 
     @Test
-    fun `transport failures remain visible until an authenticated session recovers`() {
+    fun `temporary connection and service failures use recovery feedback instead of global red text`() {
         for (code in listOf("CONNECTION_NOT_READY", "CONNECTION_FAILED", "SEND_FAILED")) {
             val failed = GameState(error = globalErrorMessage(ServerMessage.Error(code, "Connection failed"), "Unavailable"))
-            assertEquals("Unavailable", failed.error)
+            assertNull(failed.error)
             assertNull(failed.withReadySession("me").error)
         }
+        assertNull(globalErrorMessage(ServerMessage.Error("LEADERBOARD_UNAVAILABLE", "Unavailable"), "Unavailable"))
         assertEquals(
             "Wrong password",
             globalErrorMessage(ServerMessage.Error("WRONG_PASSWORD", "Wrong password"), "Wrong password")
         )
+    }
+
+    @Test
+    fun `background transport failure does not put unavailable text on the playing screen`() = runTest {
+        val fixture = publicTournamentFixture()
+        val game = GameSnapshot(
+            roomId = "room-1", roomName = "My room", hostId = "player-1",
+            gameMode = ProtocolGameMode.ORDER, phase = RoomPhase.PLAYING,
+            players = listOf(PlayerSnapshot("player-1", "Tester", 50), PlayerSnapshot("peer", "Peer", 0)),
+            selectedNumbers = listOf(1, 2, 3, 4, 5), sequence = 8
+        )
+        try {
+            fixture.session.server(ServerMessage.SessionReady("player-1", currentGame = game))
+            runCurrent()
+            fixture.session.server(ServerMessage.Error("CONNECTION_NOT_READY", "Unavailable"))
+            runCurrent()
+            val state = fixture.controller.uiState.value
+            assertNull(state.error)
+            assertEquals("room-1", state.currentRoomId)
+            assertTrue(state.isMatchStarted)
+            assertEquals(50, state.score)
+        } finally { fixture.controller.close() }
+    }
+
+    @Test
+    fun `service recovery reloads reads without resubmitting a failed action`() = runTest {
+        val fixture = publicTournamentFixture()
+        try {
+            fixture.session.server(ServerMessage.SessionReady("player-1"))
+            fixture.session.server(ServerMessage.ProfileData(PlayerProfileSnapshot("player-1", "Tester", "CODE")))
+            runCurrent()
+            fixture.session.server(ServerMessage.Error("PROFILE_UPDATE_UNAVAILABLE", "Unavailable"))
+            runCurrent()
+            assertNull(fixture.controller.uiState.value.error)
+            assertTrue(fixture.controller.uiState.value.serviceRecoveryAvailable)
+            val before = fixture.session.sent.size
+
+            fixture.controller.retryServiceReads()
+            runCurrent()
+
+            val retried = fixture.session.sent.drop(before)
+            assertTrue(ClientMessage.ListRooms in retried)
+            assertTrue(ClientMessage.GetProfile in retried)
+            assertTrue(retried.all { it == ClientMessage.ListRooms || it == ClientMessage.GetProfile || it == ClientMessage.GetPlayQuota })
+            assertFalse(fixture.controller.uiState.value.serviceRecoveryAvailable)
+        } finally { fixture.controller.close() }
+    }
+
+    @Test
+    fun `an unsaved profile does not replace a later unrelated action error`() = runTest {
+        val fixture = publicTournamentFixture()
+        try {
+            fixture.session.server(ServerMessage.SessionReady("player-1"))
+            runCurrent()
+            fixture.controller.saveProfile("New name", null)
+            runCurrent()
+            fixture.session.server(ServerMessage.Error("PROFILE_UPDATE_UNAVAILABLE", "Unavailable"))
+            runCurrent()
+            assertTrue(!fixture.controller.uiState.value.profileSaveError.isNullOrBlank())
+            fixture.controller.closeProfile()
+            fixture.session.server(ServerMessage.Error("INVALID_PLAYER_CODE", "Invalid code"))
+            runCurrent()
+            assertEquals("Thông tin đã nhập không hợp lệ.", fixture.controller.uiState.value.error)
+            assertTrue(!fixture.controller.uiState.value.profileSaveError.isNullOrBlank())
+        } finally { fixture.controller.close() }
+    }
+
+    @Test
+    fun `unavailable leaderboard stops loading while reload keeps the screen retryable`() = runTest {
+        val fixture = publicTournamentFixture()
+        try {
+            fixture.session.server(ServerMessage.SessionReady("player-1"))
+            fixture.session.server(ServerMessage.ProfileData(PlayerProfileSnapshot("player-1", "Tester", "CODE")))
+            runCurrent()
+            fixture.controller.openLeaderboard()
+            runCurrent()
+            assertTrue(fixture.controller.uiState.value.isLeaderboardLoading)
+            fixture.session.server(ServerMessage.Error("LEADERBOARD_UNAVAILABLE", "Unavailable"))
+            runCurrent()
+            assertFalse(fixture.controller.uiState.value.isLeaderboardLoading)
+            assertTrue(fixture.controller.uiState.value.isLeaderboardOpen)
+            assertTrue(fixture.controller.uiState.value.serviceRecoveryAvailable)
+            fixture.controller.retryServiceReads()
+            runCurrent()
+            assertTrue(fixture.controller.uiState.value.isLeaderboardLoading)
+        } finally { fixture.controller.close() }
+    }
+
+    @Test
+    fun `latency monitoring waits for session restoration after disconnect`() = runTest {
+        val fixture = publicTournamentFixture()
+        try {
+            fixture.session.server(ServerMessage.SessionReady("player-1"))
+            runCurrent()
+            fixture.session.close()
+            runCurrent()
+            advanceTimeBy(10_000)
+            runCurrent()
+            val attempts = fixture.transport.sessions.drop(1)
+            assertTrue(attempts.isNotEmpty())
+            assertTrue(attempts.flatMap { it.sent }.none { it is ClientMessage.MeasureLatency })
+            assertNull(fixture.controller.uiState.value.error)
+        } finally { fixture.controller.close() }
     }
 
     @Test
