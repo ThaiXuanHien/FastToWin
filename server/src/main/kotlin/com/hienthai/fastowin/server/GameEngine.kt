@@ -3652,7 +3652,7 @@ class GameEngine(
         room.processedRequests[requestKey]?.let { previous ->
             return HandleResult(listOf(Delivery(previous, setOf(player.playerId))))
         }
-        if (room.processedRequests.size >= MAX_REQUESTS_PER_MATCH) {
+        if (room.requestCount >= MAX_REQUESTS_PER_MATCH) {
             return HandleResult(listOf(error(player.playerId, "TOO_MANY_REQUESTS", legacyFallback("Trận đấu có quá nhiều lượt gửi."))))
         }
         val timedOut = room.finishIfTimedOut()
@@ -3684,7 +3684,7 @@ class GameEngine(
         room.activationPending = false
         if (command.number != expectedNumber) {
             val rejected = error(player.playerId, "WRONG_NUMBER", legacyFallback("Chưa đúng số, thử lại nhé!"), command.requestId)
-            room.processedRequests[requestKey] = rejected.message
+            room.rememberRequest(requestKey, player.playerId, rejected.message)
             room.recordSelection(player.playerId, command, expectedNumber, SelectionResult.REJECTED)
             room.combos[player.playerId] = 0
             when (room.gameMode) {
@@ -3762,7 +3762,7 @@ class GameEngine(
             acceptedNumber = command.number,
             selectedByPlayerId = player.playerId
         )
-        room.processedRequests[requestKey] = event
+        room.rememberRequest(requestKey, player.playerId, event)
         return HandleResult(
             deliveries = listOf(Delivery(event, room.participantIds())),
             completedMatch = room.takeCompletedMatch(),
@@ -4124,7 +4124,8 @@ class GameEngine(
             readyPlayerIds = readyPlayerIds.toSet(),
             rematchRequestedPlayerIds = rematchRequestedPlayerIds.toSet(),
             rematchExpiresAtEpochMillis = rematchExpiresAtEpochMillis,
-            processedRequests = processedRequests.toMap(),
+            processedRequests = latestRequests(PERSISTED_REPLAYS_PER_PLAYER),
+            processedRequestCount = requestCount,
             selectionEvents = selectionEvents.toList(),
             targetOrder = targetOrder.toList(),
             selectedNumbersByPlayer = selectedNumbersByPlayer.mapValues { it.value.toList() },
@@ -4211,6 +4212,7 @@ class GameEngine(
         rematchRequestedPlayerIds = rematchRequestedPlayerIds.toMutableSet(),
         rematchExpiresAtEpochMillis = rematchExpiresAtEpochMillis,
         processedRequests = processedRequests.toMutableMap(),
+        requestCount = maxOf(processedRequestCount, processedRequests.size),
         selectionEvents = selectionEvents.toMutableList()
     )
 
@@ -4577,8 +4579,32 @@ class GameEngine(
         val rematchRequestedPlayerIds: MutableSet<String> = mutableSetOf(),
         var rematchExpiresAtEpochMillis: Long? = null,
         val processedRequests: MutableMap<String, ServerMessage> = mutableMapOf(),
+        /** Every processed request this match, for the abuse cap; the replay map itself is bounded. */
+        var requestCount: Int = 0,
         val selectionEvents: MutableList<MatchSelectionEvent> = mutableListOf()
     ) {
+        /**
+         * SCL-01: each replay entry holds a full game snapshot, and the room snapshot was rewritten
+         * on every selection, so the stored JSON grew quadratically (151 KB by the 50th number).
+         * Clients retry only their unacknowledged request, so the newest responses per player suffice.
+         */
+        fun rememberRequest(key: String, playerId: String, message: ServerMessage) {
+            processedRequests.remove(key)
+            processedRequests[key] = message
+            requestCount++
+            val prefix = "$playerId:"
+            val own = processedRequests.keys.filter { it.startsWith(prefix) }
+            if (own.size > MEMORY_REPLAYS_PER_PLAYER) own.take(own.size - MEMORY_REPLAYS_PER_PLAYER).forEach(processedRequests::remove)
+        }
+
+        fun latestRequests(perPlayer: Int): Map<String, ServerMessage> {
+            val kept = LinkedHashMap<String, ServerMessage>()
+            processedRequests.entries.groupBy { it.key.substringBefore(':') }.values.forEach { entries ->
+                entries.takeLast(perPlayer).forEach { kept[it.key] = it.value }
+            }
+            return processedRequests.filterKeys(kept::containsKey)
+        }
+
         fun playerIds(): Set<String> = setOfNotNull(hostId, guestId) + extraGuestIds
         fun activePlayerIds(): Set<String> = playerIds() - departedPlayerIds
         fun participantIds(): Set<String> = activePlayerIds() + spectatorIds
@@ -4629,6 +4655,7 @@ class GameEngine(
             rematchRequestedPlayerIds.clear()
             rematchExpiresAtEpochMillis = null
             processedRequests.clear()
+            requestCount = 0
             selectionEvents.clear()
         }
     }
@@ -5177,6 +5204,8 @@ class GameEngine(
         const val MAX_REWARDED_AD_TRANSACTION_ID_LENGTH = 256
         const val MAX_REWARDED_AD_PROOF_LENGTH = 2_048
         const val MAX_REQUESTS_PER_MATCH = 2_000
+        const val MEMORY_REPLAYS_PER_PLAYER = 32
+        const val PERSISTED_REPLAYS_PER_PLAYER = 4
         const val MAX_NOTIFICATION_SYNC_BATCH = 20
         const val LEADERBOARD_SIZE = 30
         const val DEFAULT_TOURNAMENT_PLAYER_COUNT = 4
