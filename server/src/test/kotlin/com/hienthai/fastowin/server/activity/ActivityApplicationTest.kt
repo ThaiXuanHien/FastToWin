@@ -48,15 +48,18 @@ class ActivityApplicationTest {
         guest.send(Frame.Text(ProtocolJson.encodeToString<ClientMessage>(ClientMessage.ConnectGuest("Guest"))))
         withTimeout(5000) { while (ProtocolJson.decodeFromString<ServerMessage>((guest.incoming.receive() as Frame.Text).readText()) !is ServerMessage.SessionReady) {} }
         guest.close()
+        tracker.checkpoint()
         assertTrue(observations.isEmpty())
         val accepted = sockets.webSocketSession("/game")
         accepted.send(Frame.Text(ProtocolJson.encodeToString<ClientMessage>(ClientMessage.ConnectAccount(registered.accessToken))))
         withTimeout(5000) { while (ProtocolJson.decodeFromString<ServerMessage>((accepted.incoming.receive() as Frame.Text).readText()) !is ServerMessage.SessionReady) {} }
+        tracker.checkpoint()
         assertEquals(setOf(registered.userId), observations.map { it.userId }.toSet())
         val initial = observations.last(); delay(5)
         val replacement = sockets.webSocketSession("/game")
         replacement.send(Frame.Text(ProtocolJson.encodeToString<ClientMessage>(ClientMessage.ConnectAccount(registered.accessToken))))
         withTimeout(5000) { while (ProtocolJson.decodeFromString<ServerMessage>((replacement.incoming.receive() as Frame.Text).readText()) !is ServerMessage.SessionReady) {} }
+        tracker.checkpoint()
         val second = observations.last { it.connectionId != initial.connectionId }
         withTimeout(5000) { accepted.closeReason.await() }
         withTimeout(5000) {
@@ -72,7 +75,7 @@ class ActivityApplicationTest {
         val next = observations.drop(afterOldClose)
         assertEquals(setOf(second.connectionId), next.map { it.connectionId }.toSet())
         delay(5); replacement.close()
-        withTimeout(5000) { while (observations.none { it.connectionId == second.connectionId && it.until > next.last().until }) delay(10) }
+        withTimeout(5000) { while (observations.none { it.connectionId == second.connectionId && it.until > next.last().until }) { tracker.checkpoint(); delay(10) } }
         assertEquals(2, observations.map { it.connectionId }.distinct().size)
     }
 }
