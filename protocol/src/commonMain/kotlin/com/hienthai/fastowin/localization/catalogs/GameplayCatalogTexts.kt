@@ -3,6 +3,14 @@ package com.hienthai.fastowin.localization.catalogs
 import com.hienthai.fastowin.localization.TextKey
 
 internal val englishGameplayTexts = mapOf(
+    TextKey.RecoveryConnecting to "Reconnecting…",
+    TextKey.RecoveryUnavailable to "We couldn’t complete that just now.",
+    TextKey.RecoveryReload to "Reload",
+    TextKey.RecoveryDraftNotSaved to "Your changes haven’t been saved. Save again when connected.",
+    TextKey.RecoveryOffline to "You’re offline",
+    TextKey.RecoveryOfflineHint to "Check your Wi-Fi or mobile data",
+    TextKey.RecoveryRestored to "Back online",
+    TextKey.RecoveryPractice to "Practice offline",
     TextKey.ModeClassicTitle to "Classic", TextKey.ModeClassicDescription to "Find the numbers from 1 to 50",
     TextKey.ModeRandomTitle to "Random", TextKey.ModeRandomDescription to "Targets appear in an unexpected order",
     TextKey.ModeTimeBonusTitle to "Time Bonus", TextKey.ModeTimeBonusDescription to "Correct +2 seconds, wrong -3 seconds",
@@ -37,6 +45,14 @@ internal val englishGameplayTexts = mapOf(
 ) + englishCorePlayTexts
 
 internal val vietnameseGameplayTexts = mapOf(
+    TextKey.RecoveryConnecting to "Đang kết nối lại…",
+    TextKey.RecoveryUnavailable to "Chưa thể hoàn tất lúc này",
+    TextKey.RecoveryReload to "Tải lại",
+    TextKey.RecoveryDraftNotSaved to "Thay đổi chưa được lưu. Hãy lưu lại khi đã kết nối.",
+    TextKey.RecoveryOffline to "Bạn đang ngoại tuyến",
+    TextKey.RecoveryOfflineHint to "Kiểm tra Wi-Fi hoặc dữ liệu di động",
+    TextKey.RecoveryRestored to "Đã kết nối lại",
+    TextKey.RecoveryPractice to "Luyện tập offline",
     TextKey.ModeClassicTitle to "Cổ điển", TextKey.ModeClassicDescription to "Tìm các số từ 1 đến 50",
     TextKey.ModeRandomTitle to "Ngẫu nhiên", TextKey.ModeRandomDescription to "Mục tiêu xuất hiện theo thứ tự bất ngờ",
     TextKey.ModeTimeBonusTitle to "Thưởng thời gian", TextKey.ModeTimeBonusDescription to "Đúng +2 giây, sai -3 giây",

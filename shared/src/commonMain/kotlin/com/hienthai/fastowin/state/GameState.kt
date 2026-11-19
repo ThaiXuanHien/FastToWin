@@ -133,6 +133,7 @@ data class GameState(
     val matchmakingRatingRange: Int = 100,
     val playFlowRejection: PlayFlowRejection? = null,
     val connectionStatus: ConnectionStatus = ConnectionStatus.DISCONNECTED,
+    val serviceRecoveryAvailable: Boolean = false,
     internal val isSessionRestored: Boolean = false,
     val availableRooms: List<AvailableRoom> = emptyList(),
     val roomListVersion: Long = 0,
@@ -416,6 +417,7 @@ internal fun GameState.withReadySession(playerId: String): GameState {
         player = player.copy(id = playerId),
         isSearching = false,
         error = null,
+        serviceRecoveryAvailable = false,
         rematchNotice = if (clearRematchError) null else rematchNotice,
         rematchNoticeErrorCode = if (clearRematchError) null else rematchNoticeErrorCode
     )
@@ -505,8 +507,12 @@ private val REMATCH_CONNECTION_ERROR_CODES = setOf(
     "CONNECTION_NOT_READY", "CONNECTION_FAILED", "SEND_FAILED"
 )
 
-internal fun globalErrorMessage(error: ServerMessage.Error, localizedMessage: String): String =
-    localizedMessage
+internal fun ServerMessage.Error.usesServiceRecovery(): Boolean =
+    messageKey == com.hienthai.fastowin.localization.TextKey.ServerUnavailable.name ||
+        com.hienthai.fastowin.localization.protocolTextKeyForCode(code) == com.hienthai.fastowin.localization.TextKey.ServerUnavailable
+
+internal fun globalErrorMessage(error: ServerMessage.Error, localizedMessage: String): String? =
+    localizedMessage.takeUnless { error.code in REMATCH_CONNECTION_ERROR_CODES || error.usesServiceRecovery() }
 
 private val REMATCH_ACTION_ERROR_CODES = REMATCH_CONNECTION_ERROR_CODES + setOf(
     "RATE_LIMITED", "NOT_IN_ROOM", "OPPONENT_LEFT", "TOURNAMENT_REMATCH_DISABLED",

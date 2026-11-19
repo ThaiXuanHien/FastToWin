@@ -308,6 +308,51 @@ class GameSocketClientTest {
         assertEquals(0L, testScheduler.currentTime)
     }
 
+    @Test fun `a browser handshake failure still backs off and a manual retry reconnects`() = runTest {
+        val f = Fixture(this)
+        f.start()
+        f.transport.failingHandshakes = 2
+        f.transport.sessions[0].remoteClose()
+        runCurrent()
+        f.sleeper.release.send(Unit)
+        runCurrent()
+        // The failed handshake is reported and scheduled for another backoff instead of hanging.
+        assertEquals(2, f.transport.handshakeAttempts)
+        assertEquals(listOf(1_000L, 2_000L), f.sleeper.delays)
+        assertEquals(SocketConnectionState.RECONNECTING, f.client.connectionState.value)
+        f.client.retryNow()
+        runCurrent()
+        assertEquals(3, f.transport.handshakeAttempts)
+        f.client.retryNow()
+        runCurrent()
+        assertEquals(2, f.transport.sessions.size)
+    }
+
+    @Test fun `a handshake that never opens times out into a normal backoff`() = runTest {
+        val f = Fixture(this)
+        f.transport.hangingHandshakes = 1
+        f.start()
+        assertEquals(1, f.transport.handshakeAttempts)
+        assertEquals(0, f.transport.sessions.size)
+        advanceTimeBy(10_001)
+        runCurrent()
+        assertEquals(listOf(1_000L), f.sleeper.delays)
+        f.sleeper.release.send(Unit)
+        runCurrent()
+        assertEquals(1, f.transport.sessions.size)
+    }
+
+    @Test fun `retry tap abandons a hanging handshake at once`() = runTest {
+        val f = Fixture(this)
+        f.transport.hangingHandshakes = 1
+        f.start()
+        f.client.retryNow()
+        runCurrent()
+        assertEquals(2, f.transport.handshakeAttempts)
+        assertEquals(1, f.transport.sessions.size)
+        assertEquals(0L, testScheduler.currentTime)
+    }
+
     @Test fun `repeated retry taps are conflated without parallel attempts`() = runTest {
         val f = Fixture(this)
         f.start()
@@ -672,8 +717,16 @@ private class ScriptedTransport : SocketTransport {
     val sessions = mutableListOf<ScriptedSession>()
     val staleSends = mutableListOf<Int>()
     var maxConcurrentLiveSessions = 0
+    /** Handshakes that fail the way the browser engine does: kotlin.Error, not an Exception. */
+    var failingHandshakes = 0
+    var handshakeAttempts = 0
+    /** Handshakes that never open or fail, like packets lost on a dying network. */
+    var hangingHandshakes = 0
     override suspend fun webSocket(url: String, block: suspend (SocketSession) -> Unit) {
         assertEquals("ws://test", url)
+        handshakeAttempts++
+        if (failingHandshakes > 0) { failingHandshakes--; throw Error("Fail to fetch") }
+        if (hangingHandshakes > 0) { hangingHandshakes--; kotlinx.coroutines.awaitCancellation() }
         val session = ScriptedSession(sessions.size + 1) { staleSends += it }
         sessions += session
         maxConcurrentLiveSessions = maxOf(maxConcurrentLiveSessions, sessions.count { !it.closed })

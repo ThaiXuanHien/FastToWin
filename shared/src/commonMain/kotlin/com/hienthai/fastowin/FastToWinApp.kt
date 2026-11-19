@@ -740,6 +740,28 @@ private fun GameContent(
         if (serviceReachable != false) continueOffline = false
     }
 
+    // A reconnected socket proves the server is reachable again: re-check status right away so
+    // online actions unlock together with the "back online" notice, not one poll later.
+    var socketWasDown by remember { mutableStateOf(false) }
+    LaunchedEffect(state.connectionStatus) {
+        if (state.connectionStatus != com.hienthai.fastowin.state.ConnectionStatus.CONNECTED) socketWasDown = true
+        else if (socketWasDown) { socketWasDown = false; onRetryService() }
+    }
+
+    // After any outage, refresh what failed while offline instead of leaving stale error copy.
+    var refreshAfterReconnect by remember { mutableStateOf(false) }
+    val sessionUsable = state.connectionStatus == com.hienthai.fastowin.state.ConnectionStatus.CONNECTED &&
+        state.isSessionRestored && serviceReachable != false
+    LaunchedEffect(sessionUsable) {
+        if (!sessionUsable) { refreshAfterReconnect = true; return@LaunchedEffect }
+        if (!refreshAfterReconnect) return@LaunchedEffect
+        refreshAfterReconnect = false
+        if (controller.uiState.value.serviceRecoveryAvailable) controller.retryServiceReads()
+        if (rewardEventController.state.value.load == com.hienthai.fastowin.state.RewardEventLoad.ERROR) {
+            rewardEventScope.launch { rewardEventController.refresh() }
+        }
+    }
+
     LaunchedEffect(launchOfflinePractice) {
         if (!launchOfflinePractice) return@LaunchedEffect
         continueOffline = true
@@ -1704,24 +1726,6 @@ private fun GameContent(
                 Box(modifier = Modifier.fillMaxSize()) {
                     ArcadeBackdrop(modifier = Modifier.fillMaxSize()) {
                         when {
-                serviceReachable == false &&
-                    !continueOffline &&
-                    state.currentRoomId == null &&
-                    !state.isMatchmaking &&
-                    !state.isMatchStarted &&
-                    !state.isGameOver -> OfflineScreen(
-                    onRetry = onRetryService,
-                    onPractice = {
-                        continueOffline = true
-                        closeLocalScreens()
-                        controller.backToModeSelection()
-                        controller.openHome()
-                        navigateToAppRoute("/practice") {
-                            showPracticeLauncher = true
-                        }
-                    }
-                )
-
                 showRewardEvents && !state.isMatchStarted && !state.isGameOver -> com.hienthai.fastowin.ui.screens.RewardEventDetailsScreen(
                     state = rewardEventState,
                     onBack = { navigateBack { showRewardEvents = false; selectedRewardEventId = null; rewardEventController.reset() } },
@@ -2197,6 +2201,28 @@ private fun GameContent(
                     onPlayQuotaExhausted = controller::showPlayQuotaDialog
                             )
                         }
+                    }
+                    // One non-modal notice for connectivity everywhere outside a match (the match keeps
+                    // its blocking reconnect overlay). It replaced the full-screen offline takeover.
+                    if (!state.isMatchStarted && !state.isGameOver && !showPracticeLauncher) {
+                        com.hienthai.fastowin.ui.components.ConnectionRecoveryNotice(
+                            connectionStatus = state.connectionStatus,
+                            serviceRecoveryAvailable = state.serviceRecoveryAvailable,
+                            serviceReachable = serviceReachable,
+                            onReconnect = { controller.retryConnection(); onRetryService() },
+                            onReload = controller::retryServiceReads,
+                            onDismiss = controller::dismissServiceRecovery,
+                            onPractice = {
+                                continueOffline = true
+                                closeLocalScreens()
+                                controller.backToModeSelection()
+                                controller.openHome()
+                                navigateToAppRoute("/practice") { showPracticeLauncher = true }
+                            },
+                            modifier = Modifier.align(Alignment.BottomCenter)
+                                .windowInsetsPadding(WindowInsets.safeDrawing.only(WindowInsetsSides.Bottom))
+                                .padding(horizontal = 16.dp, vertical = 88.dp)
+                        )
                     }
                     if (state.connectionStatus == com.hienthai.fastowin.state.ConnectionStatus.RECONNECTING &&
                         state.isMatchStarted

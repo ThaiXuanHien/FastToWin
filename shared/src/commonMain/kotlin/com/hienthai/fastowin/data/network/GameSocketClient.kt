@@ -29,6 +29,7 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.receiveAsFlow
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.selects.onTimeout
 import kotlinx.coroutines.selects.select
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
@@ -222,14 +223,17 @@ internal class GameSocketClient(
         client.close()
     }
 
+    @OptIn(kotlinx.coroutines.ExperimentalCoroutinesApi::class)
     private suspend fun runAttempt(displayName: String, run: ConnectRun): AttemptResult {
         val mailbox = AttemptMailbox()
         val completed = CompletableDeferred<AttemptResult>()
         val sessionBlockCompleted = CompletableDeferred<AttemptResult>()
+        val opened = CompletableDeferred<Unit>()
         val transportJob = run.transportScope.launch {
             var result = AttemptResult.Retry
             try {
                 transport.webSocket(serverUrl) { attempt ->
+                    opened.complete(Unit)
                     if (!attachMailbox(run, mailbox)) {
                         closeDetachedAttempt(run, attempt)
                         return@webSocket
@@ -263,24 +267,49 @@ internal class GameSocketClient(
                 completed.complete(result)
             } catch (_: CancellationException) {
                 completed.complete(AttemptResult.Stop)
-            } catch (error: Exception) {
+            } catch (error: Throwable) {
+                // The browser engine reports a failed handshake as kotlin.Error, not an Exception.
+                // Uncaught, it left this attempt (and every later retry, manual or not) waiting forever.
                 if (isAttemptCurrent(run, mailbox)) {
                     _messages.send(socketClientError("CONNECTION_FAILED", "Could not connect to $serverUrl: ${error.message}. Retrying…"))
                 }
                 completed.complete(AttemptResult.Retry)
             }
         }
+        // A handshake that never opens (lossy or half-dead network) must not pin the client: give up
+        // after HANDSHAKE_TIMEOUT_MILLIS, or at once when the player taps retry. Once the socket is
+        // open, runSocketAttempt owns retry requests and this guard steps aside.
+        var handshakeAbandoned = false
         var result: AttemptResult? = null
         try {
-            result = select {
-                completed.onAwait { it }
-                sessionBlockCompleted.onAwait { it }
-                run.stopSignal.onAwait { AttemptResult.Stop }
+            result = coroutineScope {
+                val guard = async {
+                    select<AttemptResult?> {
+                        opened.onAwait { null }
+                        run.retryRequests.onReceive { AttemptResult.ManualRetry }
+                        onTimeout(HANDSHAKE_TIMEOUT_MILLIS) { AttemptResult.Retry }
+                    }
+                }
+                try {
+                    var decided: AttemptResult? = null
+                    while (decided == null) {
+                        decided = select {
+                            completed.onAwait { it }
+                            sessionBlockCompleted.onAwait { it }
+                            run.stopSignal.onAwait { AttemptResult.Stop }
+                            if (guard.isActive) guard.onAwait { abandoned -> abandoned?.also { handshakeAbandoned = true } }
+                        }
+                    }
+                    decided
+                } finally { guard.cancel() }
             }
         } finally {
             withContext(NonCancellable) {
                 detachMailbox(mailbox)
-                if (result == null || run.isStopping) {
+                if (handshakeAbandoned && !opened.isCompleted) {
+                    // Nothing was opened, so there is no session to close politely.
+                    awaitTransportTerminal(transportJob, cancelImmediately = true)
+                } else if (result == null || run.isStopping) {
                     run.abandonTransport()
                     awaitTransportTerminal(transportJob, cancelImmediately = result == null)
                 } else if (!transportJob.isCompleted) {
@@ -612,6 +641,7 @@ internal class GameSocketClient(
         const val CONNECT_TIMEOUT_MILLIS = 7_000L
         // resetGame must not make the UI wait for a broken TCP/WebSocket close.
         const val SHUTDOWN_TIMEOUT_MILLIS = 1_000L
+        const val HANDSHAKE_TIMEOUT_MILLIS = 10_000L
     }
 }
 

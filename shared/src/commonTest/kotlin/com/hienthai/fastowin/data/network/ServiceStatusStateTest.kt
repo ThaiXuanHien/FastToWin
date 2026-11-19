@@ -28,7 +28,7 @@ class ServiceStatusStateTest {
     }
     @Test fun `failed recheck retains explicit closure until explicit reopening`() {
         val closed = ServiceStatusResponse(true, pollAfterSeconds = 5)
-        val failed = ServiceStatusState().received(closed).received(null)
+        val failed = ServiceStatusState().received(closed).received(null).received(null)
         assertEquals(closed, failed.status)
         assertEquals(false, failed.reachable)
         assertEquals(MaintenanceState.ACTIVE, failed.received(ServiceStatusResponse(false)).status?.state)
@@ -39,5 +39,22 @@ class ServiceStatusStateTest {
         assertEquals(30, ServiceStatusState().received(ServiceStatusResponse(false, pollAfterSeconds = 30)).pollSeconds)
         assertEquals(5, ServiceStatusState().received(ServiceStatusResponse(true, pollAfterSeconds = 0)).pollSeconds)
         assertEquals(300, ServiceStatusState().received(ServiceStatusResponse(false, pollAfterSeconds = 999)).pollSeconds)
+    }
+    @Test fun `one failed poll after resume is not offline but still blocks new online intents`() {
+        val online = ServiceStatusState().received(ServiceStatusResponse(false))
+        val blip = online.received(null)
+        assertEquals(true, blip.reachable)
+        assertFalse(blip.newIntentAllowed)
+        assertEquals(RECHECK_AFTER_FAILURE_SECONDS, blip.pollSeconds)
+        val recovered = blip.received(ServiceStatusResponse(false))
+        assertTrue(recovered.newIntentAllowed)
+        assertEquals(0, recovered.consecutiveFailures)
+    }
+    @Test fun `two failed polls in a row are offline and cold start stays unknown until then`() {
+        val offline = ServiceStatusState().received(ServiceStatusResponse(false)).received(null).received(null)
+        assertEquals(false, offline.reachable)
+        assertEquals(5, offline.pollSeconds)
+        assertNull(ServiceStatusState().received(null).reachable)
+        assertEquals(false, ServiceStatusState().received(null).received(null).reachable)
     }
 }

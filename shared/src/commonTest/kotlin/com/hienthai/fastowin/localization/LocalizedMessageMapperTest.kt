@@ -196,7 +196,7 @@ class LocalizedMessageMapperTest {
             )
         )
         assertEquals(
-            "The service is temporarily unavailable. Please try again.",
+            "We couldn’t complete that just now. Please try again.",
             englishMapper.message(ServerMessage.Error("DATABASE_REQUIRED", "Cần cơ sở dữ liệu."))
         )
         assertEquals(
