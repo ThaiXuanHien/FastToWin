@@ -57,7 +57,9 @@ test('connection feedback offers safe reload and reconnect actions without a red
   // notice then leaves by itself. Both paths must end connected; the manual retry itself is
   // covered in connection-states.spec.mjs.
   const retry = tag(actor.page, 'connection_recovery_action');
-  if (await retry.isVisible()) await retry.click({ timeout: 5_000 }).catch(() => {});
+  // Compose draws on a canvas, so the tap must go through the canvas-aware helper; it may
+  // lose the race against that self-recovery, which the assertions below still check.
+  if (await retry.count()) await click(actor.page, retry).catch(() => {});
   await expect(notice).not.toBeAttached({ timeout: 20_000 });
   await expect(tag(actor.page, 'leaderboard_screen')).toBeAttached();
 });
