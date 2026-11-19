@@ -53,7 +53,11 @@ test('connection feedback offers safe reload and reconnect actions without a red
   await expect(actor.page.getByText(/Dịch vụ tạm thời không khả dụng/)).not.toBeAttached();
   await actor.page.screenshot({ path: testInfo.outputPath('reconnecting.png') });
   offline = false;
-  await click(actor.page, tag(actor.page, 'connection_recovery_action'));
+  // Once traffic flows again the client's own retry can finish before the tap lands, and the
+  // notice then leaves by itself. Both paths must end connected; the manual retry itself is
+  // covered in connection-states.spec.mjs.
+  const retry = tag(actor.page, 'connection_recovery_action');
+  if (await retry.isVisible()) await retry.click({ timeout: 5_000 }).catch(() => {});
   await expect(notice).not.toBeAttached({ timeout: 20_000 });
   await expect(tag(actor.page, 'leaderboard_screen')).toBeAttached();
 });
