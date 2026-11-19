@@ -98,7 +98,7 @@ fun ConnectionRecoveryNotice(
                         Icon(icon, contentDescription = null, tint = accent, modifier = Modifier.size(20.dp))
                     }
                     Spacer(Modifier.width(12.dp))
-                    Column(Modifier.weight(1f)) {
+                    Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
                         Text(localized(when (shown) {
                             RecoveryNoticeKind.CONNECTING -> TextKey.RecoveryConnecting
                             RecoveryNoticeKind.OFFLINE -> TextKey.RecoveryOffline

@@ -2221,7 +2221,9 @@ private fun GameContent(
                             },
                             modifier = Modifier.align(Alignment.BottomCenter)
                                 .windowInsetsPadding(WindowInsets.safeDrawing.only(WindowInsetsSides.Bottom))
-                                .padding(horizontal = 16.dp, vertical = 88.dp)
+                                // Sit just above the 56 dp bottom bar (taller with large fonts), 8 dp clear of it.
+                                .padding(start = 16.dp, end = 16.dp, bottom = 64.dp +
+                                    40.dp * (androidx.compose.ui.platform.LocalDensity.current.fontScale - 1f).coerceAtLeast(0f))
                         )
                     }
                     if (state.connectionStatus == com.hienthai.fastowin.state.ConnectionStatus.RECONNECTING &&
