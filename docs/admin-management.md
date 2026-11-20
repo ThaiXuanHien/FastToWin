@@ -28,14 +28,14 @@ Production bắt buộc mọi vai trò (Owner, Operator, Support) dùng ứng d�
 
 ## Cảnh báo hoạt động admin (ADM-11)
 
-Đặt `FASTTOWIN_ADMIN_ALERT_EMAILS` là danh sách email nhận cảnh báo, phân cách bằng dấu phẩy. Tính năng này cần `FASTTOWIN_EMAIL_PROVIDER=brevo`; nếu thiếu, server ghi cảnh báo vào log và không gửi thư. Hệ thống gửi email khi:
+Đặt `FASTTOWIN_ADMIN_ALERT_EMAILS` là danh sách email nhận cảnh báo, phân cách bằng dấu phẩy. Tính năng này dùng `FASTTOWIN_EMAIL_PROVIDER=brevo` hoặc `resend`. Hệ thống gửi email khi:
 
 - Có admin đăng nhập thành công (kèm cách xác thực và IP).
 - Một tài khoản đăng nhập sai mật khẩu hoặc mã 2 lớp 5 lần trong 15 phút.
 - Owner cấp tài khoản quản trị mới, đổi quyền hoặc đặt lại 2 lớp.
 - Có yêu cầu duyệt, hoặc vừa duyệt, một lần công bố quà, mã quà hoặc bồi thường vượt trần.
 
-Thư không chứa mật khẩu, token hay mã xác thực. Cảnh báo được gửi sau khi thao tác đã lưu xong. Nếu gửi lỗi, thao tác admin không bị ảnh hưởng; lỗi chỉ được ghi vào log. Thư cảnh báo không trừ vào trần email hằng ngày của người chơi, nhưng vẫn tính vào quota của Brevo.
+Thư không chứa mật khẩu, token hay mã xác thực. Cảnh báo được gửi sau khi thao tác đã lưu xong. Server ghi lỗi gửi vào log và để thao tác admin tiếp tục. Thư cảnh báo dùng hạn mức của nhà cung cấp email ngoài trần email hằng ngày của người chơi.
 
 ## Trần giá trị quà và duyệt bởi Owner thứ hai (ADM-12)
 

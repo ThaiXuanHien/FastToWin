@@ -146,6 +146,30 @@ này. Không đưa service-account JSON vào Docker image hoặc Git. Chưa có
 credential thì chưa coi kiểm thử push là hoàn tất. Quảng cáo
 thưởng và mua Gem production giữ chế độ an toàn mặc định, không giả lập receipt.
 
+### Chuyển email sang Resend
+
+Xác minh tên miền gửi trong [Resend](https://resend.com/domains) bằng các bản ghi
+DNS do Resend cung cấp. Tạo API key quyền **Sending access** cho tên miền đó.
+Nhập khóa trực tiếp vào Railway Variables của service `server`.
+
+| Biến | Giá trị khi dùng Resend Free |
+| --- | --- |
+| `FASTTOWIN_EMAIL_PROVIDER` | `resend` |
+| `FASTTOWIN_RESEND_API_KEY` | API key của Resend, lưu như secret |
+| `FASTTOWIN_EMAIL_FROM_EMAIL` | Địa chỉ thuộc tên miền đã xác minh trong Resend |
+| `FASTTOWIN_EMAIL_FROM_NAME` | `Fast To Win` |
+| `FASTTOWIN_EMAIL_DAILY_LIMIT` | `100` hoặc thấp hơn nếu cần dành lượt gửi cho nguồn khác |
+| `FASTTOWIN_EMAIL_DAILY_LIMIT_ZONE` | `UTC`, cùng mốc đặt lại hạn mức ngày với Resend |
+
+Áp dụng các biến khi deploy bản server hỗ trợ Resend. Sau khi deployment healthy,
+xác nhận một lượt gửi mã đăng ký và một lượt đặt lại mật khẩu bằng hộp thư test.
+Resend Free giới hạn 100 email/ngày và 3.000 email/tháng. Cảnh báo admin và
+email khác gửi qua cùng tài khoản Resend cũng dùng hạn mức nhà cung cấp.
+Khi nâng gói, cập nhật giới hạn backend theo nhu cầu gửi mới.
+
+Giữ biến khóa Brevo trong thời gian chuyển đổi. Nếu cần quay lại, khôi phục
+`FASTTOWIN_EMAIL_PROVIDER=brevo`, địa chỉ gửi và giới hạn ngày trước đó.
+
 ## 4. Upload artifact qua CLI
 
 Cài CLI từ [nguồn chính thức](https://docs.railway.com/cli), đăng nhập và link

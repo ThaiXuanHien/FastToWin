@@ -193,13 +193,14 @@ class SmtpAuthEmailSender(private val settings: SmtpEmailSettings) : AuthEmailSe
     }
 }
 
-internal enum class AuthEmailProvider { SMTP, BREVO }
+internal enum class AuthEmailProvider { SMTP, BREVO, RESEND }
 
 internal fun configuredAuthEmailProvider(values: Map<String, String> = System.getenv()): AuthEmailProvider =
     when (values["FASTTOWIN_EMAIL_PROVIDER"]?.trim()?.lowercase().orEmpty()) {
         "", "smtp" -> AuthEmailProvider.SMTP
         "brevo" -> AuthEmailProvider.BREVO
-        else -> throw IllegalArgumentException("FASTTOWIN_EMAIL_PROVIDER must be 'smtp' or 'brevo'.")
+        "resend" -> AuthEmailProvider.RESEND
+        else -> throw IllegalArgumentException("FASTTOWIN_EMAIL_PROVIDER must be 'smtp', 'brevo' or 'resend'.")
     }
 
 internal fun configuredAuthEmailSender(
@@ -209,4 +210,5 @@ internal fun configuredAuthEmailSender(
     AuthEmailProvider.SMTP -> SmtpEmailSettings.fromEnvironment(values, fileReader)
         ?.let(::SmtpAuthEmailSender) ?: DisabledAuthEmailSender
     AuthEmailProvider.BREVO -> BrevoAuthEmailSender(BrevoEmailSettings.fromEnvironment(values, fileReader))
+    AuthEmailProvider.RESEND -> ResendAuthEmailSender(ResendEmailSettings.fromEnvironment(values, fileReader))
 }

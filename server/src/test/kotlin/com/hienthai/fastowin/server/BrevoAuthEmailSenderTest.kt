@@ -120,19 +120,20 @@ class BrevoAuthEmailSenderTest {
         "FASTTOWIN_EMAIL_FROM_EMAIL" to "sender@example.com"
     )
 
-    private fun bodyText(request: HttpRequest): String {
-        val bytes = ByteArrayOutputStream()
-        val completed = CompletableFuture<String>()
-        request.bodyPublisher().orElseThrow().subscribe(object : Flow.Subscriber<ByteBuffer> {
-            override fun onSubscribe(subscription: Flow.Subscription) = subscription.request(Long.MAX_VALUE)
-            override fun onNext(buffer: ByteBuffer) {
-                val chunk = ByteArray(buffer.remaining())
-                buffer.get(chunk)
-                bytes.write(chunk)
-            }
-            override fun onError(error: Throwable) { completed.completeExceptionally(error) }
-            override fun onComplete() { completed.complete(bytes.toString(Charsets.UTF_8)) }
-        })
-        return completed.get(1, TimeUnit.SECONDS)
-    }
+}
+
+internal fun bodyText(request: HttpRequest): String {
+    val bytes = ByteArrayOutputStream()
+    val completed = CompletableFuture<String>()
+    request.bodyPublisher().orElseThrow().subscribe(object : Flow.Subscriber<ByteBuffer> {
+        override fun onSubscribe(subscription: Flow.Subscription) = subscription.request(Long.MAX_VALUE)
+        override fun onNext(buffer: ByteBuffer) {
+            val chunk = ByteArray(buffer.remaining())
+            buffer.get(chunk)
+            bytes.write(chunk)
+        }
+        override fun onError(error: Throwable) { completed.completeExceptionally(error) }
+        override fun onComplete() { completed.complete(bytes.toString(Charsets.UTF_8)) }
+    })
+    return completed.get(1, TimeUnit.SECONDS)
 }

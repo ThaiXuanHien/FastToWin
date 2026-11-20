@@ -307,16 +307,20 @@ $env:FASTTOWIN_EMAIL_FROM_EMAIL="dia-chi-da-xac-minh@example.com"
 $env:FASTTOWIN_EMAIL_FROM_NAME="Fast To Win"
 ```
 
+Với Resend, đặt `FASTTOWIN_EMAIL_PROVIDER=resend` và dùng
+`FASTTOWIN_RESEND_API_KEY` cùng địa chỉ thuộc tên miền đã xác minh trong Resend.
+Xem [cấu hình Resend trên Railway](railway-deployment.md#chuyển-email-sang-resend).
+
 Các biến bắt buộc ở production được backend kiểm tra lúc khởi động: origin HTTPS
 thật trong `FASTTOWIN_PUBLIC_URL` và `FASTTOWIN_WEB_ORIGINS`, PostgreSQL cùng mật
-khẩu ít nhất 12 ký tự, và cấu hình đầy đủ cho SMTP hoặc Brevo. Với SMTP phải bật
+khẩu ít nhất 12 ký tự, và cấu hình đầy đủ cho SMTP, Brevo hoặc Resend. Với SMTP phải bật
 đúng một chế độ STARTTLS hoặc SSL. Cấu hình
 Docker đầy đủ, gồm push notification, bảo trì và secret mount từ file, nằm tại
 [`deploy/.env.production.example`](../deploy/.env.production.example) và
 [`compose.production.yaml`](../compose.production.yaml). Không dùng giá trị mẫu trong
 khối lệnh trên để triển khai thật.
 
-Backend cũng hỗ trợ `DATABASE_PASSWORD_FILE`, `FASTTOWIN_SMTP_PASSWORD_FILE` và `FASTTOWIN_BREVO_API_KEY_FILE` để
+Backend cũng hỗ trợ `DATABASE_PASSWORD_FILE`, `FASTTOWIN_SMTP_PASSWORD_FILE`, `FASTTOWIN_BREVO_API_KEY_FILE` và `FASTTOWIN_RESEND_API_KEY_FILE` để
 đọc secret được mount từ file. Không đặt đồng thời biến trực tiếp và biến `_FILE`.
 Nếu bật `FASTTOWIN_TRUST_PROXY_HEADERS=true`, phải bảo đảm backend chỉ nhận traffic
 từ reverse proxy đáng tin cậy; cấu hình Compose production đã bảo đảm điều này bằng

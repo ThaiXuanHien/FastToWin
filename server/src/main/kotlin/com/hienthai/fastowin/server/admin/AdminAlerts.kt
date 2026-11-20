@@ -1,9 +1,12 @@
 package com.hienthai.fastowin.server.admin
 
-import com.hienthai.fastowin.server.legacyFallback
+import com.hienthai.fastowin.server.AuthEmailContent
 import com.hienthai.fastowin.server.BrevoEmailSettings
 import com.hienthai.fastowin.server.EmailHttpTransport
 import com.hienthai.fastowin.server.JdkEmailHttpTransport
+import com.hienthai.fastowin.server.ResendAuthEmailSender
+import com.hienthai.fastowin.server.ResendEmailSettings
+import com.hienthai.fastowin.server.legacyFallback
 import jakarta.mail.internet.InternetAddress
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -31,18 +34,23 @@ fun interface AdminAlertSink {
         val NONE = AdminAlertSink { }
 
         /**
-         * Brevo delivery to FASTTOWIN_ADMIN_ALERT_EMAILS (comma separated). Alerts are disabled
-         * when no recipient is set or the email provider is not Brevo.
+         * HTTPS delivery to FASTTOWIN_ADMIN_ALERT_EMAILS (comma separated) via Brevo or Resend.
          */
         fun fromEnvironment(values: Map<String, String> = System.getenv()): AdminAlertSink {
             val recipients = values["FASTTOWIN_ADMIN_ALERT_EMAILS"].orEmpty().split(',').map(String::trim).filter(String::isNotEmpty)
             if (recipients.isEmpty()) return NONE
             recipients.forEach { require(runCatching { InternetAddress(it, true).validate() }.isSuccess) { "FASTTOWIN_ADMIN_ALERT_EMAILS contains an invalid address." } }
-            if (values["FASTTOWIN_EMAIL_PROVIDER"]?.trim()?.lowercase() != "brevo") {
-                System.err.println("Admin alerts disabled: FASTTOWIN_ADMIN_ALERT_EMAILS requires FASTTOWIN_EMAIL_PROVIDER=brevo")
-                return NONE
+            return when (values["FASTTOWIN_EMAIL_PROVIDER"]?.trim()?.lowercase()) {
+                "brevo" -> BrevoAdminAlertSink(BrevoEmailSettings.fromEnvironment(values), recipients)
+                "resend" -> {
+                    val sender = ResendAuthEmailSender(ResendEmailSettings.fromEnvironment(values))
+                    EmailAdminAlertSink { content -> sender.send(recipients, content) }
+                }
+                else -> {
+                    System.err.println("Admin alerts disabled: FASTTOWIN_ADMIN_ALERT_EMAILS requires Brevo or Resend")
+                    NONE
+                }
             }
-            return BrevoAdminAlertSink(BrevoEmailSettings.fromEnvironment(values), recipients)
         }
     }
 }
@@ -51,34 +59,23 @@ internal class BrevoAdminAlertSink(
     private val settings: BrevoEmailSettings,
     private val recipients: List<String>,
     private val transport: EmailHttpTransport = JdkEmailHttpTransport,
-    private val scope: CoroutineScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+    scope: CoroutineScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
 ) : AdminAlertSink {
-    val failures = AtomicLong()
-
-    override fun alert(alert: AdminAlert) {
-        scope.launch {
-            runCatching {
-                val status = transport.send(request(alert))
-                check(status in 200..299) { "Brevo returned HTTP $status" }
-            }.onFailure {
-                failures.incrementAndGet()
-                System.err.println("Admin alert delivery failed: ${it.message}")
-            }
-        }
+    private val delegate = EmailAdminAlertSink(scope) { content ->
+        val status = transport.send(request(content))
+        check(status in 200..299) { "Brevo returned HTTP $status" }
     }
 
-    internal fun request(alert: AdminAlert): HttpRequest {
-        val time = DateTimeFormatter.ofPattern("dd/MM/yyyy HH:mm:ss").withZone(ZoneId.of("Asia/Bangkok"))
-            .format(Instant.ofEpochMilli(alert.atEpochMillis))
-        val rows = (listOf(legacyFallback("Thời điểm") to legacyFallback("$time (giờ Việt Nam)")) + alert.details).joinToString("") { (label, value) ->
-            "<tr><th align=\"left\" style=\"padding:4px 12px 4px 0\">${escape(label)}</th><td style=\"padding:4px 0\">${escape(value)}</td></tr>"
-        }
+    val failures get() = delegate.failures
+
+    override fun alert(alert: AdminAlert) = delegate.alert(alert)
+
+    private fun request(content: AuthEmailContent): HttpRequest {
         val payload = buildJsonObject {
             put("sender", buildJsonObject { put("email", settings.fromEmail); put("name", settings.fromName) })
             put("to", buildJsonArray { recipients.forEach { add(buildJsonObject { put("email", it) }) } })
-            put("subject", "[FastToWin Admin] ${alert.title}")
-            put("htmlContent", "<p><strong>${escape(alert.title)}</strong></p><table>$rows</table>" +
-                legacyFallback("<p>Nếu đây không phải thao tác của nhóm, hãy kiểm tra Nhật ký kiểm toán và làm theo mục Khôi phục khẩn cấp trong docs/admin-management.md.</p>"))
+            put("subject", content.subject)
+            put("htmlContent", content.html)
         }
         return HttpRequest.newBuilder(URI.create("https://api.brevo.com/v3/smtp/email"))
             .header("api-key", settings.apiKey)
@@ -88,9 +85,38 @@ internal class BrevoAdminAlertSink(
             .POST(HttpRequest.BodyPublishers.ofString(payload.toString()))
             .build()
     }
-
-    private fun escape(value: String) = value.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;").replace("\"", "&quot;")
 }
+
+private class EmailAdminAlertSink(
+    private val scope: CoroutineScope = CoroutineScope(SupervisorJob() + Dispatchers.IO),
+    private val send: suspend (AuthEmailContent) -> Unit
+) : AdminAlertSink {
+    val failures = AtomicLong()
+
+    override fun alert(alert: AdminAlert) {
+        scope.launch {
+            runCatching { send(adminAlertContent(alert)) }.onFailure {
+                failures.incrementAndGet()
+                System.err.println("Admin alert delivery failed: ${it.message}")
+            }
+        }
+    }
+}
+
+private fun adminAlertContent(alert: AdminAlert): AuthEmailContent {
+    val time = DateTimeFormatter.ofPattern("dd/MM/yyyy HH:mm:ss").withZone(ZoneId.of("Asia/Bangkok"))
+        .format(Instant.ofEpochMilli(alert.atEpochMillis))
+    val rows = (listOf(legacyFallback("Thời điểm") to legacyFallback("$time (giờ Việt Nam)")) + alert.details).joinToString("") { (label, value) ->
+        "<tr><th align=\"left\" style=\"padding:4px 12px 4px 0\">${escape(label)}</th><td style=\"padding:4px 0\">${escape(value)}</td></tr>"
+    }
+    return AuthEmailContent(
+        subject = "[FastToWin Admin] ${alert.title}",
+        html = "<p><strong>${escape(alert.title)}</strong></p><table>$rows</table>" +
+            legacyFallback("<p>Nếu đây không phải thao tác của nhóm, hãy kiểm tra Nhật ký kiểm toán và làm theo mục Khôi phục khẩn cấp trong docs/admin-management.md.</p>")
+    )
+}
+
+private fun escape(value: String) = value.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;").replace("\"", "&quot;")
 
 /** Counts failed sign-ins per email and alerts on every fifth within fifteen minutes. */
 internal class FailedLoginTracker(private val nowMillis: () -> Long) {

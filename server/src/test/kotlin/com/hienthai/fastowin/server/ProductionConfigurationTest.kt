@@ -144,6 +144,35 @@ class ProductionConfigurationTest {
         kotlin.test.assertContains(error.message.orEmpty(), "FASTTOWIN_BREVO_API_KEY")
     }
 
+    @Test
+    fun `production Resend starts with a mounted key and no SMTP configuration`() {
+        val values = brevoValues() + mapOf(
+            "FASTTOWIN_EMAIL_PROVIDER" to "resend",
+            "FASTTOWIN_RESEND_API_KEY_FILE" to "/run/secrets/resend_key"
+        )
+        val readSecret: (String) -> String = { path ->
+            when (path) {
+                "/run/secrets/database_password" -> "database-password-123"
+                "/run/secrets/resend_key" -> "re_test_credential\r\n"
+                else -> error("Unexpected secret path: $path")
+            }
+        }
+
+        validateProductionEnvironment(values, readSecret)
+        kotlin.test.assertTrue(configuredAuthEmailSender(values, readSecret).isConfigured)
+    }
+
+    @Test
+    fun `production Resend requires its own key even if Brevo is configured`() {
+        val error = assertFailsWith<IllegalArgumentException> {
+            validateProductionEnvironment(
+                values = brevoValues() + ("FASTTOWIN_EMAIL_PROVIDER" to "resend"),
+                fileReader = { "database-password-123" }
+            )
+        }
+        kotlin.test.assertContains(error.message.orEmpty(), "FASTTOWIN_RESEND_API_KEY")
+    }
+
     private fun brevoValues() = productionValues().filterKeys { !it.startsWith("FASTTOWIN_SMTP_") } + mapOf(
         "FASTTOWIN_EMAIL_PROVIDER" to "brevo",
         "FASTTOWIN_BREVO_API_KEY" to "test-brevo-key-not-a-real-credential",
