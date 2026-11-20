@@ -228,7 +228,6 @@ internal fun HomeDashboard(
                 com.hienthai.fastowin.ui.components.AnnouncementBanner(announcement, announcementState.pending,
                     { onOpenAnnouncement(announcement.announcement.id) }, { onHideAnnouncement(announcement.announcement.id) })
             }
-            if (announcementState?.error != null) Text(localized(TextKey.AnnouncementError), style = MaterialTheme.typography.bodySmall)
             rewardEventState?.let { events ->
                 com.hienthai.fastowin.ui.components.RewardEventBanner(events, onOpenRewardEvents, onRefreshRewardEvents)
             }
