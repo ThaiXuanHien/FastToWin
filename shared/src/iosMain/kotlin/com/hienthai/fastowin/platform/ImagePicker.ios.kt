@@ -23,6 +23,7 @@ import platform.UIKit.UIApplication
 import platform.UIKit.UIImage
 import platform.UIKit.UIImageJPEGRepresentation
 import platform.UIKit.UIGraphicsImageRenderer
+import platform.UIKit.UIGraphicsImageRendererFormat
 import platform.UIKit.UIViewController
 import platform.darwin.NSObject
 import platform.darwin.dispatch_async
@@ -121,7 +122,7 @@ private class IosImagePickerCoordinator(
     }
 }
 
-private fun prepareAvatar(data: NSData): ByteArray? {
+internal fun prepareAvatar(data: NSData): ByteArray? {
     val source = UIImage(data = data) ?: return null
     var maxEdge = AVATAR_MAX_EDGE
     var quality = 0.82
@@ -152,7 +153,11 @@ private fun resizeImage(image: UIImage, maxEdge: Double): UIImage {
     val targetWidth = maxOf(1.0, width * ratio)
     val targetHeight = maxOf(1.0, height * ratio)
     return UIGraphicsImageRenderer(
-        size = CGSizeMake(targetWidth, targetHeight)
+        size = CGSizeMake(targetWidth, targetHeight),
+        format = UIGraphicsImageRendererFormat.defaultFormat().apply {
+            // The upload limit is in pixels, independent of the screen's scale.
+            scale = 1.0
+        }
     ).imageWithActions { _ ->
         image.drawInRect(CGRectMake(0.0, 0.0, targetWidth, targetHeight))
     }
