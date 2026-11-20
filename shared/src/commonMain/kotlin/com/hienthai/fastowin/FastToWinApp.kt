@@ -73,6 +73,7 @@ import com.hienthai.fastowin.data.network.ResumeTokenStore
 import com.hienthai.fastowin.data.network.ServiceStatusClient
 import com.hienthai.fastowin.data.network.localizedMaintenanceMessage
 import com.hienthai.fastowin.data.network.GiftApiClient
+import com.hienthai.fastowin.data.network.toHttpBaseUrl
 import com.hienthai.fastowin.data.preferences.AppPreferences
 import com.hienthai.fastowin.data.preferences.AppPreferencesStore
 import com.hienthai.fastowin.platform.GameFeedbackEffect
@@ -87,6 +88,11 @@ import com.hienthai.fastowin.state.PushOptInPolicy
 import com.hienthai.fastowin.ui.components.PushOptInDialog
 import com.hienthai.fastowin.platform.NoOpAppPushBridge
 import com.hienthai.fastowin.platform.ChallengeDeepLinkRouter
+import com.hienthai.fastowin.platform.ReferralDeepLinkRouter
+import com.hienthai.fastowin.platform.parseReferralWebPath
+import com.hienthai.fastowin.platform.referralNativeLink
+import com.hienthai.fastowin.platform.referralWebPath
+import com.hienthai.fastowin.protocol.ReferralSummary
 import com.hienthai.fastowin.platform.playFeedbackSound
 import com.hienthai.fastowin.ui.screens.AuthScreen
 import com.hienthai.fastowin.ui.screens.GameScreen
@@ -248,6 +254,33 @@ fun FastToWinApp(
     }
     val pendingRoomLink by RoomDeepLinkRouter.pendingLink.collectAsState()
     val pendingChallenge by ChallengeDeepLinkRouter.pendingChallenge.collectAsState()
+    val nativeReferralCode by ReferralDeepLinkRouter.pendingCode.collectAsState()
+    var webReferralCode by remember(navigationBridge) {
+        mutableStateOf(navigationBridge.currentRoute?.let(::parseReferralWebPath))
+    }
+    DisposableEffect(navigationBridge) {
+        val unsubscribe = navigationBridge.observe { webReferralCode = parseReferralWebPath(it) }
+        onDispose(unsubscribe)
+    }
+    val pendingReferralCode = nativeReferralCode ?: webReferralCode
+    LaunchedEffect(authState.stage, authState.session?.userId) {
+        when (authState.stage) {
+            AuthStage.REGISTER, AuthStage.UPGRADE_GUEST -> authController.loadSignupTerms()
+            AuthStage.VERIFY_EMAIL -> authController.refreshPendingEmailVerification()
+            else -> Unit
+        }
+    }
+    LaunchedEffect(nativeReferralCode, webReferralCode, authState.session?.userId) {
+        if (authState.session != null) {
+            nativeReferralCode?.let(ReferralDeepLinkRouter::consume)
+            if (webReferralCode != null && navigationBridge.currentRoute?.let(::parseReferralWebPath) != null) {
+                navigationBridge.replace("/")
+            }
+            webReferralCode = null
+        } else if (pendingReferralCode != null) {
+            if (authState.isGuest) authController.openGuestUpgrade() else authController.openRegister()
+        }
+    }
     var appPreferences by remember(preferencesStore) {
         mutableStateOf(preferencesStore.load())
     }
@@ -318,13 +351,6 @@ fun FastToWinApp(
                     )
                 }
             } else if (authState.stage != AuthStage.PLAYING) {
-                val entryState by authController.contentEntryConsent.state.collectAsState()
-                val entryScope = rememberCoroutineScope()
-                if (entryState.showTerms) com.hienthai.fastowin.ui.components.ContentTermsDialog(entryState,
-                    authController.contentEntryConsent::check,
-                    { entryScope.launch { authController.contentEntryConsent.accept() } },
-                    { entryScope.launch { authController.contentEntryConsent.retry() } },
-                    authController.contentEntryConsent::dismiss, dismissWhileSubmitting = false)
                 val humanVerification by authController.humanVerification.collectAsState()
                 humanVerification?.let { request ->
                     com.hienthai.fastowin.ui.components.HumanVerificationDialog(
@@ -351,7 +377,13 @@ fun FastToWinApp(
                     onConfirmEmailVerification = authController::confirmEmailVerification,
                     onBack = authController::backToWelcome,
                     onCancelUpgrade = { cancelGuestUpgradeNavigation(navigationBridge, authController::cancelGuestUpgrade) },
-                    onCancelEmailVerification = authController::logout
+                    onCancelEmailVerification = authController::logout,
+                    onChangePendingEmail = authController::changePendingEmail,
+                    onClearVerificationFeedback = authController::clearFeedback,
+                    onAcceptSignupTerms = authController::acceptSignupTerms,
+                    onRetrySignupTerms = authController::loadSignupTerms,
+                    referralCode = pendingReferralCode,
+                    referralAppLink = webReferralCode?.let(::referralNativeLink)
                 )
             } else {
                 GameContent(
@@ -381,6 +413,9 @@ fun FastToWinApp(
                     onDeleteAccount = authController::deleteAccount,
                     onClearAccountFeedback = authController::clearFeedback,
                     onLoadSessions = authController::loadSessions,
+                    loadReferralSummary = authState.session?.takeIf { it.emailVerified }?.let { session ->
+                        { authController.loadReferralSummary(session.userId) }
+                    },
                     onRevokeSession = authController::revokeSession,
                     onRevokeAllSessions = authController::revokeAllSessions,
                     authState = authState,
@@ -430,6 +465,7 @@ private fun GameContent(
     onDeleteAccount: (String) -> Unit,
     onClearAccountFeedback: () -> Unit,
     onLoadSessions: () -> Unit,
+    loadReferralSummary: (suspend () -> ReferralSummary)?,
     onRevokeSession: (String) -> Unit,
     onRevokeAllSessions: () -> Unit,
     authState: com.hienthai.fastowin.state.AuthState,
@@ -1931,6 +1967,11 @@ private fun GameContent(
                     onRespondRoomInvitation = controller::respondRoomInvitation,
                     onOpenFriendProfile = openFriendProfile,
                     onOpenNotifications = openNotifications,
+                    loadReferralSummary = loadReferralSummary,
+                    referralShareUrl = { code ->
+                        val path = referralWebPath(code)
+                        navigationBridge.publicUrl(path) ?: (serverUrl.toHttpBaseUrl() + path)
+                    },
                     showBackButton = true,
                     modifier = Modifier.fillMaxSize()
                 )

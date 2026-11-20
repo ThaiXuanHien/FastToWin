@@ -29,7 +29,8 @@ data class RegisterRequest(
     val devicePlatform: String? = null,
     val gender: PlayerGender = PlayerGender.MALE,
     val acceptedContentTermsVersion: String? = null,
-    val humanVerificationToken: String? = null
+    val humanVerificationToken: String? = null,
+    val referralCode: String? = null
 )
 
 @Serializable
@@ -46,7 +47,8 @@ data class UpgradeGuestRequest(
     val password: String,
     val devicePlatform: String? = null,
     val acceptedContentTermsVersion: String? = null,
-    val humanVerificationToken: String? = null
+    val humanVerificationToken: String? = null,
+    val referralCode: String? = null
 )
 
 @Serializable
@@ -117,6 +119,15 @@ data class EmailVerificationConfirmRequest(
     val accessToken: String,
     val verificationCode: String
 )
+
+@Serializable
+data class PendingEmailVerificationRequest(val accessToken: String)
+
+@Serializable
+data class ChangePendingEmailRequest(val accessToken: String, val email: String)
+
+@Serializable
+data class PendingEmailVerificationResponse(val email: String, val emailVerified: Boolean)
 
 @Serializable
 data class DeleteAccountRequest(

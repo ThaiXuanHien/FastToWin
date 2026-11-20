@@ -51,6 +51,7 @@ import com.hienthai.fastowin.protocol.FriendSnapshot
 import com.hienthai.fastowin.protocol.ServerMessage
 import com.hienthai.fastowin.localization.TextKey
 import com.hienthai.fastowin.localization.localized
+import com.hienthai.fastowin.protocol.ReferralSummary
 import com.hienthai.fastowin.state.GameState
 import com.hienthai.fastowin.state.LobbyStage
 import com.hienthai.fastowin.ui.components.ArcadeActionButton
@@ -87,12 +88,15 @@ fun FriendsScreen(
     onOpenFriendProfile: (String) -> Unit,
     onOpenNotifications: () -> Unit = {},
     showBackButton: Boolean = true,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    loadReferralSummary: (suspend () -> ReferralSummary)? = null,
+    referralShareUrl: (String) -> String = { "" }
 ) {
     SystemBackHandler(enabled = showBackButton, onBack = onBack)
     var playerCode by remember { mutableStateOf("") }
     var removeTarget by remember { mutableStateOf<PlayerActionTarget?>(null) }
     var blockTarget by remember { mutableStateOf<PlayerActionTarget?>(null) }
+    var showReferral by remember { mutableStateOf(false) }
     var visibleRoomInvitationCount by remember { mutableStateOf(DEFAULT_ARCADE_PAGE_SIZE) }
     var visibleIncomingRequestCount by remember { mutableStateOf(DEFAULT_ARCADE_PAGE_SIZE) }
     var visibleFriendCount by remember { mutableStateOf(DEFAULT_ARCADE_PAGE_SIZE) }
@@ -107,6 +111,10 @@ fun FriendsScreen(
         state.social.outgoingRequests.isEmpty() &&
         state.social.blockedPlayers.isEmpty() &&
         state.roomInvitations.isEmpty()
+
+    if (showReferral && loadReferralSummary != null) {
+        ReferralInviteDialog(loadReferralSummary, referralShareUrl, onDismiss = { showReferral = false })
+    }
 
     removeTarget?.let { target ->
         ArcadeDialog(
@@ -209,6 +217,16 @@ fun FriendsScreen(
                             onSubmit = { onSendRequest(playerCode); playerCode = "" },
                             enabled = playerCode.isNotBlank() && !state.isFriendsLoading
                         )
+                    }
+                    if (loadReferralSummary != null) {
+                        item {
+                            ArcadeActionButton(
+                                label = localized(TextKey.ReferralInvite),
+                                onClick = { showReferral = true },
+                                style = ArcadeActionStyle.OUTLINE,
+                                modifier = Modifier.fillMaxWidth().testTag("friends_referral_open")
+                            )
+                        }
                     }
                     state.socialNotice?.let { notice ->
                         item { NoticePanel(notice, ArcadePalette.Mint400) }

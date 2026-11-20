@@ -4,6 +4,7 @@ import com.hienthai.fastowin.server.analytics.AnalyticsFacts
 
 import com.hienthai.fastowin.protocol.DEFAULT_FEMALE_AVATAR_ID
 import com.hienthai.fastowin.protocol.DEFAULT_MALE_AVATAR_ID
+import com.hienthai.fastowin.protocol.PendingEmailVerificationResponse
 import com.hienthai.fastowin.protocol.PlayerGender
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -26,6 +27,7 @@ class PostgresAuthRepository(private val dataSource: DataSource) : AuthRepositor
                 val moderation = com.hienthai.fastowin.server.moderation.JdbcModerationTransaction(connection)
                 insertUser(connection, account)
                 insertProfile(connection, account)
+                account.referralCode?.let { JdbcPlayerReferrals(connection).attribute(account.userId, it) }
                 account.acceptedContentTermsVersion?.let { moderation.acceptTerms(account.userId.toString(), it, account.session.nowMillis) }
                 insertSession(connection, account.userId, account.devicePlatform, account.session)
                 AnalyticsFacts.recordRegistration(connection, account.userId.toString(), account.session.nowMillis)
@@ -39,6 +41,10 @@ class PostgresAuthRepository(private val dataSource: DataSource) : AuthRepositor
                 throw error
             }
         }
+    }
+
+    override suspend fun referralSummary(userId: UUID, nowMillis: Long) = withContext(Dispatchers.IO) {
+        dataSource.connection.use { JdbcPlayerReferrals(it).summary(userId, nowMillis) }
     }
 
     override suspend fun findActiveAccount(emailNormalized: String): AccountCredentials? =
@@ -428,10 +434,14 @@ class PostgresAuthRepository(private val dataSource: DataSource) : AuthRepositor
                         statement.setObject(3, guest.userId)
                         statement.executeUpdate()
                     }
+                    upgrade.referralCode?.let { JdbcPlayerReferrals(connection).attribute(guest.userId, it) }
                     insertSession(connection, guest.userId, upgrade.devicePlatform, upgrade.session)
                     AnalyticsFacts.recordRegistration(connection, guest.userId.toString(), upgrade.session.nowMillis)
                     connection.commit()
                     GuestUpgradeResult.Success(guest.userId, guest.displayName)
+                } catch (_: InvalidReferralCodeException) {
+                    connection.rollback()
+                    GuestUpgradeResult.InvalidReferralCode
                 } catch (error: SQLException) {
                     connection.rollback()
                     if (error.sqlState == UNIQUE_VIOLATION_SQL_STATE) {
@@ -590,118 +600,195 @@ class PostgresAuthRepository(private val dataSource: DataSource) : AuthRepositor
         }
     }
 
-    override suspend fun createEmailVerification(
+    override suspend fun stageEmailVerification(
         userId: UUID,
         verification: NewEmailVerification
-    ): EmailVerificationDestination? = withContext(Dispatchers.IO) {
-        dataSource.connection.use { connection ->
-            connection.autoCommit = false
-            try {
-                val destination = connection.prepareStatement(
-                    """
-                    SELECT email_normalized, email_verified_at
-                    FROM users
-                    WHERE id = ? AND account_type = 'REGISTERED' AND status = 'ACTIVE'
-                    FOR UPDATE
-                    """.trimIndent()
-                ).use { statement ->
-                    statement.setObject(1, userId)
-                    statement.executeQuery().use { result ->
-                        if (!result.next()) null else EmailVerificationDestination(
-                            emailNormalized = result.getString("email_normalized"),
-                            alreadyVerified = result.getTimestamp("email_verified_at") != null
-                        )
-                    }
-                }
-                if (destination == null) {
-                    connection.rollback()
-                    return@withContext null
-                }
-                if (!destination.alreadyVerified) {
-                    connection.prepareStatement(
-                        "DELETE FROM email_verification_tokens WHERE user_id = ? AND used_at IS NULL"
-                    ).use { statement ->
-                        statement.setObject(1, userId)
-                        statement.executeUpdate()
-                    }
-                    connection.prepareStatement(
-                        """
-                        INSERT INTO email_verification_tokens (id, user_id, code_hash, created_at, expires_at)
-                        VALUES (?, ?, ?, ?, ?)
-                        """.trimIndent()
-                    ).use { statement ->
-                        statement.setObject(1, verification.id)
-                        statement.setObject(2, userId)
-                        statement.setString(3, verification.codeHash)
-                        statement.setTimestamp(4, verification.nowMillis.toTimestamp())
-                        statement.setTimestamp(5, verification.expiresAtMillis.toTimestamp())
-                        statement.executeUpdate()
-                    }
-                }
-                connection.commit()
-                destination
-            } catch (error: Throwable) {
-                connection.rollback()
-                throw error
+    ): EmailVerificationDestination? = authTransaction { connection ->
+        val destination = lockEmailVerificationAccount(connection, userId) ?: return@authTransaction null
+        if (!destination.alreadyVerified) {
+            connection.prepareStatement(
+                """
+                INSERT INTO email_verification_tokens (id, user_id, code_hash, created_at, expires_at, delivered)
+                VALUES (?, ?, ?, ?, ?, FALSE)
+                """.trimIndent()
+            ).use { statement ->
+                statement.setObject(1, verification.id)
+                statement.setObject(2, userId)
+                statement.setString(3, verification.codeHash)
+                statement.setTimestamp(4, verification.nowMillis.toTimestamp())
+                statement.setTimestamp(5, verification.expiresAtMillis.toTimestamp())
+                statement.executeUpdate()
             }
         }
+        destination
     }
+
+    override suspend fun finishEmailVerification(userId: UUID, verificationId: UUID, delivered: Boolean): Boolean =
+        authTransaction { connection ->
+            lockEmailVerificationAccount(connection, userId) ?: return@authTransaction false
+            if (!delivered) {
+                connection.prepareStatement(
+                    "DELETE FROM email_verification_tokens WHERE user_id = ? AND id = ? AND NOT delivered"
+                ).use { statement ->
+                    statement.setObject(1, userId)
+                    statement.setObject(2, verificationId)
+                    statement.executeUpdate()
+                }
+                return@authTransaction false
+            }
+            val sequence = connection.prepareStatement(
+                """
+                UPDATE email_verification_tokens SET delivered = TRUE
+                WHERE user_id = ? AND id = ? AND used_at IS NULL
+                RETURNING send_sequence
+                """.trimIndent()
+            ).use { statement ->
+                statement.setObject(1, userId)
+                statement.setObject(2, verificationId)
+                statement.executeQuery().use { if (it.next()) it.getLong("send_sequence") else null }
+            } ?: return@authTransaction false
+            // Another request may still be delivering a code staged after this one.
+            connection.prepareStatement(
+                "DELETE FROM email_verification_tokens WHERE user_id = ? AND used_at IS NULL AND send_sequence < ?"
+            ).use { statement ->
+                statement.setObject(1, userId)
+                statement.setLong(2, sequence)
+                statement.executeUpdate()
+            }
+            true
+        }
 
     override suspend fun consumeEmailVerification(
         userId: UUID,
         codeHash: String,
         nowMillis: Long
-    ): Boolean = withContext(Dispatchers.IO) {
+    ): Boolean = authTransaction { connection ->
+        val destination = lockEmailVerificationAccount(connection, userId) ?: return@authTransaction false
+        if (destination.alreadyVerified) return@authTransaction false
+        val tokenId = connection.prepareStatement(
+            """
+            SELECT id FROM email_verification_tokens
+            WHERE user_id = ? AND code_hash = ? AND used_at IS NULL AND expires_at > ? AND delivered
+            """.trimIndent()
+        ).use { statement ->
+            statement.setObject(1, userId)
+            statement.setString(2, codeHash)
+            statement.setTimestamp(3, nowMillis.toTimestamp())
+            statement.executeQuery().use { if (it.next()) it.getObject("id", UUID::class.java) else null }
+        } ?: return@authTransaction false
+        connection.prepareStatement("UPDATE users SET email_verified_at = ?, updated_at = ? WHERE id = ?")
+            .use { statement ->
+                statement.setTimestamp(1, nowMillis.toTimestamp())
+                statement.setTimestamp(2, nowMillis.toTimestamp())
+                statement.setObject(3, userId)
+                statement.executeUpdate()
+            }
+        connection.prepareStatement("UPDATE email_verification_tokens SET used_at = ? WHERE id = ?")
+            .use { statement ->
+                statement.setTimestamp(1, nowMillis.toTimestamp())
+                statement.setObject(2, tokenId)
+                statement.executeUpdate()
+            }
+        deletePendingEmailVerifications(connection, userId)
+        true
+    }
+
+    override suspend fun findEmailVerificationStatus(
+        accessTokenHash: String,
+        nowMillis: Long
+    ): PendingEmailVerificationResponse? = withContext(Dispatchers.IO) {
         dataSource.connection.use { connection ->
-            connection.autoCommit = false
-            try {
-                val tokenId = connection.prepareStatement(
-                    """
-                    SELECT id FROM email_verification_tokens
-                    WHERE user_id = ? AND code_hash = ? AND used_at IS NULL AND expires_at > ?
-                    FOR UPDATE
-                    """.trimIndent()
-                ).use { statement ->
-                    statement.setObject(1, userId)
-                    statement.setString(2, codeHash)
-                    statement.setTimestamp(3, nowMillis.toTimestamp())
-                    statement.executeQuery().use { result ->
-                        if (result.next()) result.getObject("id", UUID::class.java) else null
-                    }
+            connection.prepareStatement(
+                """
+                SELECT u.email_normalized, u.email_verified_at
+                FROM sessions s JOIN users u ON u.id = s.user_id
+                WHERE s.access_token_hash = ? AND s.access_expires_at > ? AND s.revoked_at IS NULL
+                  AND u.account_type = 'REGISTERED' AND u.status = 'ACTIVE'
+                """.trimIndent()
+            ).use { statement ->
+                statement.setString(1, accessTokenHash)
+                statement.setTimestamp(2, nowMillis.toTimestamp())
+                statement.executeQuery().use { result ->
+                    if (!result.next()) null else PendingEmailVerificationResponse(
+                        email = result.getString("email_normalized"),
+                        emailVerified = result.getTimestamp("email_verified_at") != null
+                    )
                 }
-                if (tokenId == null) {
-                    connection.rollback()
-                    return@withContext false
-                }
-                val verified = connection.prepareStatement(
-                    """
-                    UPDATE users SET email_verified_at = ?, updated_at = ?
-                    WHERE id = ? AND account_type = 'REGISTERED' AND status = 'ACTIVE'
-                    """.trimIndent()
-                ).use { statement ->
-                    statement.setTimestamp(1, nowMillis.toTimestamp())
-                    statement.setTimestamp(2, nowMillis.toTimestamp())
-                    statement.setObject(3, userId)
-                    statement.executeUpdate() == 1
-                }
-                if (!verified) {
-                    connection.rollback()
-                    return@withContext false
-                }
-                connection.prepareStatement(
-                    "UPDATE email_verification_tokens SET used_at = ? WHERE id = ?"
-                ).use { statement ->
-                    statement.setTimestamp(1, nowMillis.toTimestamp())
-                    statement.setObject(2, tokenId)
-                    statement.executeUpdate()
-                }
-                connection.commit()
-                true
-            } catch (error: Throwable) {
-                connection.rollback()
-                throw error
             }
         }
+    }
+
+    override suspend fun changePendingEmail(
+        userId: UUID,
+        accessTokenHash: String,
+        emailNormalized: String,
+        nowMillis: Long
+    ): PendingEmailVerificationResult = try {
+        authTransaction { connection ->
+            val destination = lockEmailVerificationAccount(connection, userId)
+                ?: return@authTransaction PendingEmailVerificationResult.InvalidAccessToken
+            val sessionActive = connection.prepareStatement(
+                """
+                SELECT 1 FROM sessions
+                WHERE user_id = ? AND access_token_hash = ? AND access_expires_at > ? AND revoked_at IS NULL
+                FOR UPDATE
+                """.trimIndent()
+            ).use { statement ->
+                statement.setObject(1, userId)
+                statement.setString(2, accessTokenHash)
+                statement.setTimestamp(3, nowMillis.toTimestamp())
+                statement.executeQuery().use { it.next() }
+            }
+            if (!sessionActive) return@authTransaction PendingEmailVerificationResult.InvalidAccessToken
+            if (destination.alreadyVerified || destination.supportEmailVerificationExempt) {
+                return@authTransaction PendingEmailVerificationResult.EmailAlreadyVerified
+            }
+            if (destination.emailNormalized != emailNormalized) {
+                connection.prepareStatement("UPDATE users SET email_normalized = ?, updated_at = ? WHERE id = ?")
+                    .use { statement ->
+                        statement.setString(1, emailNormalized)
+                        statement.setTimestamp(2, nowMillis.toTimestamp())
+                        statement.setObject(3, userId)
+                        statement.executeUpdate()
+                    }
+                deletePendingEmailVerifications(connection, userId)
+                connection.prepareStatement("DELETE FROM password_reset_tokens WHERE user_id = ? AND used_at IS NULL")
+                    .use { statement ->
+                        statement.setObject(1, userId)
+                        statement.executeUpdate()
+                    }
+            }
+            PendingEmailVerificationResult.Current(PendingEmailVerificationResponse(emailNormalized, emailVerified = false))
+        }
+    } catch (error: SQLException) {
+        if (error.sqlState == UNIQUE_VIOLATION_SQL_STATE) PendingEmailVerificationResult.EmailAlreadyExists else throw error
+    }
+
+    private fun lockEmailVerificationAccount(connection: Connection, userId: UUID): EmailVerificationDestination? =
+        connection.prepareStatement(
+            """
+            SELECT email_normalized, email_verified_at, support_email_verification_exempt
+            FROM users
+            WHERE id = ? AND account_type = 'REGISTERED' AND status = 'ACTIVE'
+            FOR UPDATE
+            """.trimIndent()
+        ).use { statement ->
+            statement.setObject(1, userId)
+            statement.executeQuery().use { result ->
+                if (!result.next()) null else EmailVerificationDestination(
+                    emailNormalized = result.getString("email_normalized"),
+                    alreadyVerified = result.getTimestamp("email_verified_at") != null,
+                    supportEmailVerificationExempt = result.getBoolean("support_email_verification_exempt")
+                )
+            }
+        }
+
+    private fun deletePendingEmailVerifications(connection: Connection, userId: UUID) {
+        connection.prepareStatement("DELETE FROM email_verification_tokens WHERE user_id = ? AND used_at IS NULL")
+            .use { statement ->
+                statement.setObject(1, userId)
+                statement.executeUpdate()
+            }
     }
 
     override suspend fun deleteAccount(userId: UUID): Boolean = withContext(Dispatchers.IO) {

@@ -16,12 +16,16 @@ import kotlin.math.pow
 class PostgresMatchResultRepository(
     private val dataSource: DataSource
 ) : MatchResultRepository {
-    override suspend fun save(match: CompletedMatch): Unit = withContext(Dispatchers.IO) {
+    override suspend fun save(match: CompletedMatch) {
+        saveAndGetReferralRecipients(match)
+    }
+
+    override suspend fun saveAndGetReferralRecipients(match: CompletedMatch): Set<String> = withContext(Dispatchers.IO) {
         dataSource.connection.use { connection ->
             connection.autoCommit = false
             JdbcMissionStore(connection).lock()
             try {
-                if (insertMatch(connection, match)) {
+                val referralRecipients = if (insertMatch(connection, match)) {
                     insertPlayers(connection, match)
                     insertEvents(connection, match)
                     if (match.matchType == MatchType.RANKED) updateEloRatings(connection, match)
@@ -29,8 +33,10 @@ class PostgresMatchResultRepository(
                     unlockAchievements(connection, match)
                     updateMissions(connection, match)
                     if (match.matchType == MatchType.RANKED) updateClanTrophies(connection, match)
-                }
+                    JdbcPlayerReferrals(connection).completeForMatch(match)
+                } else emptySet()
                 connection.commit()
+                referralRecipients
             } catch (error: Throwable) {
                 connection.rollback()
                 throw error

@@ -41,6 +41,7 @@ private val sharedBuckets = setOf(
     "login-ip", "login-account", "register-ip", "register-account", "password-reset-ip", "password-reset-account",
     "password-reset-confirm-ip", "password-reset-confirm-account", "email-verification-request-ip",
     "email-verification-request-account", "email-verification-confirm-ip", "email-verification-confirm-account",
+    RateLimitBuckets.EMAIL_VERIFICATION_CHANGE_IP, RateLimitBuckets.EMAIL_VERIFICATION_CHANGE_ACCOUNT,
     "email-verification-unchallenged",
     "websocket-connect-ip", "create-room-player", "create-room-ip", "join-room-player", "join-room-ip",
     "join-room-ip-room", "admin-login-ip", "admin-login-account", "gift-code-player", "play-credit-exchange-player"

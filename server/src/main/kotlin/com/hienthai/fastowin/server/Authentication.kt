@@ -4,8 +4,13 @@ import com.hienthai.fastowin.server.moderation.*
 import com.hienthai.fastowin.protocol.AuthSessionResponse
 import com.hienthai.fastowin.protocol.AccountSessionSnapshot
 import com.hienthai.fastowin.localization.TextKey
+import com.hienthai.fastowin.protocol.PendingEmailVerificationResponse
 import com.hienthai.fastowin.protocol.PlayerGender
+import com.hienthai.fastowin.protocol.ReferralSummary
+import com.hienthai.fastowin.protocol.normalizeReferralCode
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.withContext
 import java.security.MessageDigest
 import java.security.SecureRandom
@@ -23,7 +28,8 @@ data class NewAccount(
     val devicePlatform: String?,
     val session: NewAuthSession,
     val gender: PlayerGender = PlayerGender.MALE,
-    val acceptedContentTermsVersion: String? = null
+    val acceptedContentTermsVersion: String? = null,
+    val referralCode: String? = null
 )
 
 data class NewAuthSession(
@@ -70,7 +76,8 @@ data class NewEmailVerification(
 )
 data class EmailVerificationDestination(
     val emailNormalized: String,
-    val alreadyVerified: Boolean
+    val alreadyVerified: Boolean,
+    val supportEmailVerificationExempt: Boolean = false
 )
 data class GuestUpgrade(
     val resumeTokenHash: String,
@@ -78,18 +85,21 @@ data class GuestUpgrade(
     val passwordHash: String,
     val devicePlatform: String?,
     val session: NewAuthSession,
-    val acceptedContentTermsVersion: String? = null
+    val acceptedContentTermsVersion: String? = null,
+    val referralCode: String? = null
 )
 
 sealed interface GuestUpgradeResult {
     data class Success(val userId: UUID, val displayName: String) : GuestUpgradeResult
     data object InvalidGuestSession : GuestUpgradeResult
+    data object InvalidReferralCode : GuestUpgradeResult
     data object EmailAlreadyExists : GuestUpgradeResult
     data object Unsupported : GuestUpgradeResult
 }
 
 interface AuthRepository {
     suspend fun createAccount(account: NewAccount): Boolean
+    suspend fun referralSummary(userId: UUID, nowMillis: Long): ReferralSummary? = null
     suspend fun findActiveAccount(emailNormalized: String): AccountCredentials?
     suspend fun findActiveAccountById(userId: UUID): AccountCredentials?
     suspend fun replaceSessions(userId: UUID, devicePlatform: String?, session: NewAuthSession)
@@ -113,11 +123,19 @@ interface AuthRepository {
         passwordHash: String,
         nowMillis: Long
     ): Boolean
-    suspend fun createEmailVerification(
+    suspend fun stageEmailVerification(
         userId: UUID,
         verification: NewEmailVerification
     ): EmailVerificationDestination?
+    suspend fun finishEmailVerification(userId: UUID, verificationId: UUID, delivered: Boolean): Boolean
     suspend fun consumeEmailVerification(userId: UUID, codeHash: String, nowMillis: Long): Boolean
+    suspend fun findEmailVerificationStatus(accessTokenHash: String, nowMillis: Long): PendingEmailVerificationResponse?
+    suspend fun changePendingEmail(
+        userId: UUID,
+        accessTokenHash: String,
+        emailNormalized: String,
+        nowMillis: Long
+    ): PendingEmailVerificationResult
     suspend fun deleteAccount(userId: UUID): Boolean
 }
 
@@ -131,13 +149,22 @@ sealed interface AccountActionResult {
         val message: String,
         val resetToken: String? = null,
         val emailVerificationCode: String? = null,
-        val emailRecipient: String? = null,
         val emailVerified: Boolean? = null,
         val messageKey: String? = null,
         val messageArgs: Map<String, String> = emptyMap()
     ) : AccountActionResult
     data class Failure(val code: String, val message: String) : AccountActionResult
 }
+
+sealed interface PendingEmailVerificationResult {
+    data class Current(val status: PendingEmailVerificationResponse) : PendingEmailVerificationResult
+    data object InvalidAccessToken : PendingEmailVerificationResult
+    data object InvalidEmail : PendingEmailVerificationResult
+    data object EmailAlreadyExists : PendingEmailVerificationResult
+    data object EmailAlreadyVerified : PendingEmailVerificationResult
+}
+
+internal class EmailVerificationDeliveryFailure(cause: Exception) : RuntimeException(cause)
 
 sealed interface AccountSessionsResult {
     data class Success(val sessions: List<AccountSessionSnapshot>) : AccountSessionsResult
@@ -160,7 +187,8 @@ class AuthenticationService(
         displayName: String,
         devicePlatform: String?,
         gender: PlayerGender = PlayerGender.MALE,
-        acceptedContentTermsVersion: String? = null
+        acceptedContentTermsVersion: String? = null,
+        referralCode: String? = null
     ): AuthResult {
         try { moderationService?.validateAcceptedVersion(acceptedContentTermsVersion) }
         catch (failure: ModerationException) { return AuthResult.Failure(failure.code, publicModerationMessage(failure.code)) }
@@ -176,28 +204,42 @@ class AuthenticationService(
             )
         }
 
+        val code = referralCode?.takeUnless(String::isBlank)?.let {
+            normalizeReferralCode(it) ?: return invalidReferralCode()
+        }
         val now = nowMillis()
         val userId = UUID.randomUUID()
         val issued = issueTokens(userId, safeName, now, emailVerified = false)
         val passwordHash = withContext(PasswordHashing) { passwordHasher.hash(password) }
-        val created = repository.createAccount(
-            NewAccount(
-                userId = userId,
-                emailNormalized = normalizedEmail,
-                passwordHash = passwordHash,
-                displayName = safeName,
-                playerCode = playerCode(userId),
-                devicePlatform = normalizeDevicePlatform(devicePlatform),
-                session = issued.record,
-                gender = gender,
-                acceptedContentTermsVersion = acceptedContentTermsVersion
+        val created = try {
+            repository.createAccount(
+                NewAccount(
+                    userId = userId,
+                    emailNormalized = normalizedEmail,
+                    passwordHash = passwordHash,
+                    displayName = safeName,
+                    playerCode = playerCode(userId),
+                    devicePlatform = normalizeDevicePlatform(devicePlatform),
+                    session = issued.record,
+                    gender = gender,
+                    acceptedContentTermsVersion = acceptedContentTermsVersion,
+                    referralCode = code
+                )
             )
-        )
+        } catch (_: InvalidReferralCodeException) {
+            return invalidReferralCode()
+        }
         if (!created) return AuthResult.Failure("EMAIL_ALREADY_EXISTS", legacyFallback("Email này đã được sử dụng."))
         moderationService?.registerIdentity(userId.toString())
         acceptedContentTermsVersion?.let { moderationService?.acceptTerms(userId.toString(), it) }
         return AuthResult.Success(issued.response)
     }
+
+    private fun invalidReferralCode() = AuthResult.Failure(
+        "INVALID_REFERRAL_CODE", legacyFallback("Mã mời không hợp lệ. Bạn có thể xóa mã để đăng ký.")
+    )
+
+    suspend fun referralSummary(userId: UUID): ReferralSummary? = repository.referralSummary(userId, nowMillis())
 
     suspend fun login(email: String, password: String, devicePlatform: String?): AuthResult {
         val normalizedEmail = normalizeEmail(email)
@@ -234,7 +276,8 @@ class AuthenticationService(
         email: String,
         password: String,
         devicePlatform: String?,
-        acceptedContentTermsVersion: String? = null
+        acceptedContentTermsVersion: String? = null,
+        referralCode: String? = null
     ): AuthResult {
         try { moderationService?.validateAcceptedVersion(acceptedContentTermsVersion) }
         catch (failure: ModerationException) { return AuthResult.Failure(failure.code, publicModerationMessage(failure.code)) }
@@ -244,6 +287,9 @@ class AuthenticationService(
         val passwordError = validatePassword(password)
         if (passwordError != null) return AuthResult.Failure("INVALID_PASSWORD", passwordError)
 
+        val code = referralCode?.takeUnless(String::isBlank)?.let {
+            normalizeReferralCode(it) ?: return invalidReferralCode()
+        }
         val now = nowMillis()
         val placeholderUserId = UUID.randomUUID()
         val issued = issueTokens(placeholderUserId, "", now, emailVerified = false)
@@ -255,7 +301,8 @@ class AuthenticationService(
                 passwordHash = passwordHash,
                 devicePlatform = normalizeDevicePlatform(devicePlatform),
                 session = issued.record,
-                acceptedContentTermsVersion = acceptedContentTermsVersion
+                acceptedContentTermsVersion = acceptedContentTermsVersion,
+                referralCode = code
             )
         )) {
             is GuestUpgradeResult.Success -> AuthResult.Success(
@@ -265,6 +312,7 @@ class AuthenticationService(
                 )
             )
             GuestUpgradeResult.InvalidGuestSession -> invalidGuestSession()
+            GuestUpgradeResult.InvalidReferralCode -> invalidReferralCode()
             GuestUpgradeResult.EmailAlreadyExists -> AuthResult.Failure(
                 "EMAIL_ALREADY_EXISTS",
                 legacyFallback("Email này đã được sử dụng.")
@@ -432,19 +480,39 @@ class AuthenticationService(
         } else invalidPasswordReset()
     }
 
-    suspend fun requestEmailVerification(accessToken: String): AccountActionResult {
+    internal suspend fun emailVerificationStatus(accessToken: String): PendingEmailVerificationResult {
+        authenticateAccessToken(accessToken) ?: return PendingEmailVerificationResult.InvalidAccessToken
+        val status = repository.findEmailVerificationStatus(hashToken(accessToken), nowMillis())
+            ?: return PendingEmailVerificationResult.InvalidAccessToken
+        return PendingEmailVerificationResult.Current(status)
+    }
+
+    internal suspend fun changePendingEmail(
+        account: AuthenticatedAccount,
+        accessToken: String,
+        email: String
+    ): PendingEmailVerificationResult {
+        val normalized = normalizeEmail(email) ?: return PendingEmailVerificationResult.InvalidEmail
+        return repository.changePendingEmail(account.userId, hashToken(accessToken), normalized, nowMillis())
+    }
+
+    suspend fun requestEmailVerification(
+        accessToken: String,
+        deliver: suspend (recipient: String, code: String) -> Unit = { _, _ -> }
+    ): AccountActionResult {
         val authenticated = authenticateAccessToken(accessToken)
             ?: return invalidAccountSession()
         val now = nowMillis()
         val code = newVerificationCode()
-        val destination = repository.createEmailVerification(
+        val verification = NewEmailVerification(
+            id = UUID.randomUUID(),
+            codeHash = hashToken(code),
+            nowMillis = now,
+            expiresAtMillis = now + EMAIL_VERIFICATION_TTL_MILLIS
+        )
+        val destination = repository.stageEmailVerification(
             authenticated.userId,
-            NewEmailVerification(
-                id = UUID.randomUUID(),
-                codeHash = hashToken(code),
-                nowMillis = now,
-                expiresAtMillis = now + EMAIL_VERIFICATION_TTL_MILLIS
-            )
+            verification
         ) ?: return invalidAccountSession()
         if (destination.alreadyVerified) {
             return AccountActionResult.Success(
@@ -453,10 +521,29 @@ class AuthenticationService(
                 messageKey = TextKey.EmailVerified.name
             )
         }
+        var delivered = false
+        val activated: Boolean
+        try {
+            deliver(destination.emailNormalized, code)
+            delivered = true
+        } catch (cancelled: CancellationException) {
+            throw cancelled
+        } catch (failure: Exception) {
+            throw EmailVerificationDeliveryFailure(failure)
+        } finally {
+            activated = withContext(NonCancellable) {
+                repository.finishEmailVerification(authenticated.userId, verification.id, delivered)
+            }
+        }
+        if (!activated) {
+            return AccountActionResult.Failure(
+                "EMAIL_VERIFICATION_SUPERSEDED",
+                legacyFallback("Yêu cầu gửi mã này đã được thay thế. Vui lòng dùng mã xác minh mới nhất.")
+            )
+        }
         return AccountActionResult.Success(
             message = legacyFallback("Mã xác minh đã được gửi tới email của bạn."),
             emailVerificationCode = code,
-            emailRecipient = destination.emailNormalized,
             messageKey = TextKey.EmailVerificationSent.name
         )
     }

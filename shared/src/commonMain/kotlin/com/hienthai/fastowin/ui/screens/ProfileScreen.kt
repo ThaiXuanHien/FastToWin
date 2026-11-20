@@ -1182,6 +1182,7 @@ internal fun walletSourceTextKey(sourceType: String): TextKey = when (sourceType
     "GOLD_EXCHANGE" -> TextKey.GoldExchangeSource
     "PLAY_CREDIT_EXCHANGE" -> TextKey.PlayCredits
     "GIFT_CODE" -> TextKey.GiftCode
+    "REFERRAL" -> TextKey.ReferralRewardTitle
     "ACHIEVEMENT" -> TextKey.AchievementRewardSource
     "TOURNAMENT_ENTRY_REFUND" -> TextKey.TournamentEntryRefundSource
     "TOURNAMENT_ENTRY_REVERSED" -> TextKey.TournamentEntryReversedSource

@@ -100,10 +100,30 @@ Response lỗi dùng chung:
 `devicePlatform` có thể là `android`, `ios` hoặc `web`. `gender` nhận `MALE` hoặc
 `FEMALE`, mặc định là `MALE` nếu client cũ không gửi.
 
+`referralCode` là trường tùy chọn. Server ghi nhận mã của người chơi đã xác minh
+email khi tạo tài khoản mới. Link chia sẻ `/invite/{code}` điền sẵn mã trên web
+và cho phép mở app qua `fasttowin://invite/{code}`.
+App gửi `acceptedContentTermsVersion` khi người chơi đồng ý điều khoản trên
+form đăng ký. Sau `201 Created`, app tự gọi API gửi mã xác minh lần đầu.
+
 - Thành công: `201 Created` với response phiên đăng nhập; `emailVerified` là
   `false` cho tài khoản mới.
 - Lỗi chính: `400 INVALID_EMAIL`, `400 INVALID_PASSWORD`,
-  `400 INVALID_DISPLAY_NAME`, `409 EMAIL_ALREADY_EXISTS`.
+  `400 INVALID_DISPLAY_NAME`, `400 INVALID_REFERRAL_CODE`, `409 EMAIL_ALREADY_EXISTS`.
+
+### Tiến độ giới thiệu bạn bè
+
+`GET /api/referrals` yêu cầu bearer token của tài khoản đã xác minh email.
+Response trả về mã chia sẻ (`code`), số lượt đang chờ (`pendingCount`), số lượt
+đã thưởng người mời (`rewardedCount`), số lượt thưởng trong tháng
+(`rewardedThisMonth`) và số lượt đã hoàn thành mà người mời không nhận thưởng
+(`completedWithoutInviterBonusCount`).
+
+Sau khi xác minh email, bạn mới cần chọn đúng ít nhất một số và hoàn thành trận
+thường hoặc xếp hạng đầu tiên đủ điều kiện. Server tự động cấp 300 Vàng cho
+bạn mới và 500 Vàng cho người mời, tối đa 5 lần cho người mời mỗi tháng theo
+múi giờ Asia/Bangkok. Trận đấu giải, rời trận và thua do hết hạn kết nối không
+tính. Tiến độ và phần thưởng được lưu cùng kết quả trận trên PostgreSQL.
 
 ### 2. Đăng nhập
 
@@ -138,8 +158,9 @@ Response lỗi dùng chung:
 
 - Thành công: `200 OK` với response phiên đăng nhập. `userId` và dữ liệu chơi của
   guest được giữ nguyên.
+- `referralCode` là trường tùy chọn cho tài khoản đăng ký từ phiên khách.
 - Lỗi chính: `401 INVALID_GUEST_SESSION`, `409 EMAIL_ALREADY_EXISTS`,
-  `503 DATABASE_REQUIRED`.
+  `400 INVALID_REFERRAL_CODE`, `503 DATABASE_REQUIRED`.
 
 ### 4. Làm mới phiên
 
@@ -348,7 +369,9 @@ không được hỗ trợ, server dùng tiếng Anh.
 
 - Thành công: `200 OK` với response thao tác tài khoản. Development có thể trả
   `devEmailVerificationCode`; production gửi mã 6 số qua nhà cung cấp email.
-- Lỗi chính: `401 INVALID_ACCESS_TOKEN`, `429 RATE_LIMITED`,
+- Server giữ mã trước còn hạn nếu lần gửi lại thất bại. Khi gửi thành công,
+  mã mới thay thế các mã trước.
+- Lỗi chính: `401 INVALID_ACCESS_TOKEN`, `409 EMAIL_VERIFICATION_SUPERSEDED`, `429 RATE_LIMITED`,
   `503 EMAIL_DELIVERY_UNAVAILABLE`, `503 EMAIL_DELIVERY_FAILED`.
 
 ### 13. Xác nhận email
@@ -366,6 +389,17 @@ không được hỗ trợ, server dùng tiếng Anh.
 - Thành công: `200 OK`; response có `emailVerified: true`.
 - Lỗi chính: `400 INVALID_VERIFICATION_CODE`, `401 INVALID_ACCESS_TOKEN`,
   `429 RATE_LIMITED`.
+
+### Tiếp tục xác minh và sửa email
+
+- `POST /auth/email-verification/status` nhận `accessToken` và trả về địa chỉ
+  hiện tại cùng `emailVerified`. App dùng endpoint khi khôi phục màn xác minh.
+- `POST /auth/email-verification/change-email` nhận `accessToken` và `email`.
+  Response `200 OK` trả về địa chỉ đã chuẩn hóa cùng `emailVerified`. Server
+  cập nhật tài khoản đang chờ xác minh và hủy mã của địa chỉ cũ. App gửi yêu
+  cầu mã mới sau khi nhận phản hồi thành công.
+- Lỗi chính: `400 INVALID_EMAIL`, `401 INVALID_ACCESS_TOKEN`,
+  `409 EMAIL_ALREADY_EXISTS`, `409 EMAIL_ALREADY_VERIFIED`, `429 RATE_LIMITED`.
 
 ### 14. Xóa tài khoản
 
@@ -415,6 +449,8 @@ Request Web sai origin/header nhận `403 INVALID_WEB_SESSION_REQUEST`.
 | Gửi mã xác minh theo tài khoản | 3 lần/15 phút |
 | Thử mã xác minh theo IP | 120 lần/15 phút |
 | Thử mã xác minh theo tài khoản | 8 lần/15 phút |
+| Sửa email đang chờ xác minh theo IP | 60 lần/15 phút |
+| Sửa email đang chờ xác minh theo tài khoản | 5 lần/15 phút |
 
 Khi bật Cloudflare Turnstile (SEC-07, tắt mặc định), đăng ký, nâng cấp khách,
 gửi mã khôi phục và gửi lại mã xác minh nhận thêm trường `humanVerificationToken`.

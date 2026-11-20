@@ -3,6 +3,7 @@ package com.hienthai.fastowin.localization
 /** Maps stable server codes to client-owned copy without trusting arbitrary network keys. */
 fun protocolTextKeyForCode(code: String): TextKey? = when (code) {
     "MAINTENANCE_REMATCH_UNAVAILABLE" -> TextKey.MaintenanceRematchUnavailable
+    "INVALID_REFERRAL_CODE" -> TextKey.ReferralInvalidCode
     "AUTH_REQUIRED", "ACCOUNT_REQUIRED" -> TextKey.ServerAuthRequired
     "PLAY_QUOTA_EXHAUSTED" -> TextKey.OnlineQuotaExhaustedMessage
     "RATE_LIMITED", "TOO_MANY_REQUESTS" -> TextKey.ServerRateLimited
@@ -43,7 +44,9 @@ fun protocolTextKeyForCode(code: String): TextKey? = when (code) {
     "SEASON_REWARD_NOT_FOUND" -> TextKey.ServerResourceNotFound
     "ALREADY_CONNECTED", "FRIENDSHIP_EXISTS", "ALREADY_IN_CLAN",
     "TOURNAMENT_ALREADY_CREATED", "TOURNAMENT_ENTRY_ALREADY_PAID",
-    "ALREADY_CLAIMED", "MISSION_ALREADY_CLAIMED", "EMAIL_ALREADY_EXISTS" -> TextKey.ServerAlreadyExists
+    "ALREADY_CLAIMED", "MISSION_ALREADY_CLAIMED" -> TextKey.ServerAlreadyExists
+    "EMAIL_ALREADY_EXISTS" -> TextKey.EmailAlreadyInUse
+    "EMAIL_ALREADY_VERIFIED" -> TextKey.VerificationEmailAlreadyVerified
     "DATABASE_REQUIRED", "FRIENDS_UNAVAILABLE", "NOTIFICATIONS_UNAVAILABLE", "NOT_NOTIFICATIONS_UNAVAILABLE",
     "LEADERBOARD_UNAVAILABLE", "FRIEND_PROFILE_UNAVAILABLE", "EMAIL_DELIVERY_UNAVAILABLE",
     "EMAIL_DELIVERY_FAILED", "EMAIL_DAILY_LIMIT_REACHED", "NETWORK_ERROR", "CONNECTION_FAILED", "CONNECTION_NOT_READY",
@@ -56,13 +59,16 @@ fun protocolTextKeyForCode(code: String): TextKey? = when (code) {
     "INVALID_TOURNAMENT_NAME", "INVALID_TOURNAMENT_SIZE", "INVALID_NOTIFICATIONS",
     "INVALID_NOTIFICATION_ID", "INVALID_PLAYER_CODE", "INVALID_FRIEND", "INVALID_AVATAR",
     "INVALID_ROOM_NAME", "INVALID_CLAN_NAME", "INVALID_CREDENTIALS",
-    "INVALID_CURRENT_PASSWORD", "INVALID_DISPLAY_NAME", "INVALID_EMAIL",
+    "INVALID_CURRENT_PASSWORD", "INVALID_DISPLAY_NAME",
     "INVALID_GUEST_SESSION", "INVALID_MISSION", "INVALID_NAME", "INVALID_PASSWORD",
-    "INVALID_SOCIAL_ACTION", "INVALID_VERIFICATION_CODE", "PASSWORD_UNCHANGED" -> TextKey.ServerInvalidInput
+    "INVALID_SOCIAL_ACTION", "PASSWORD_UNCHANGED" -> TextKey.ServerInvalidInput
+    "INVALID_EMAIL" -> TextKey.EmailAddressInvalid
+    "INVALID_VERIFICATION_CODE" -> TextKey.VerificationCodeInvalid
     "PASSWORD_CHANGED" -> TextKey.PasswordChanged
     "PASSWORD_RESET_SENT" -> TextKey.PasswordResetSent
     "PASSWORD_RESET_COMPLETED" -> TextKey.PasswordResetCompleted
     "EMAIL_VERIFICATION_SENT" -> TextKey.EmailVerificationSent
+    "EMAIL_VERIFICATION_SUPERSEDED" -> TextKey.VerificationSendSuperseded
     "EMAIL_VERIFIED" -> TextKey.EmailVerified
     "SESSION_REVOKED" -> TextKey.SessionRevoked
     "ALL_SESSIONS_REVOKED" -> TextKey.AllSessionsRevoked

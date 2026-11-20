@@ -121,6 +121,7 @@ class RedisRateLimiterTest {
             "login-ip", "login-account", "password-reset-ip", "password-reset-account",
             "password-reset-confirm-ip", "password-reset-confirm-account", "email-verification-request-ip",
             "email-verification-request-account", "email-verification-confirm-ip", "email-verification-confirm-account",
+            "email-verification-change-ip", "email-verification-change-account",
             "websocket-connect-ip", "create-room-player", "create-room-ip", "join-room-player", "join-room-ip",
             "join-room-ip-room", "admin-login-ip", "admin-login-account"
         )

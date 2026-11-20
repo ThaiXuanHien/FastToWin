@@ -5,6 +5,7 @@ import com.hienthai.fastowin.state.parsePracticeChallenge
 import com.hienthai.fastowin.localization.AppLanguage
 import com.hienthai.fastowin.localization.LocalizationService
 import com.hienthai.fastowin.localization.TextKey
+import com.hienthai.fastowin.protocol.normalizeReferralCode
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -21,12 +22,43 @@ object AppDeepLinkRouter {
                 mutableNotificationInboxRequested.value = true
                 true
             }
-            else -> RoomDeepLinkRouter.openUri(uri) || ChallengeDeepLinkRouter.openUri(uri)
+            else -> RoomDeepLinkRouter.openUri(uri) || ChallengeDeepLinkRouter.openUri(uri) ||
+                ReferralDeepLinkRouter.openUri(uri)
         }
 
     internal fun consumeNotificationInboxRequest(): Boolean =
         mutableNotificationInboxRequested.compareAndSet(expect = true, update = false)
 }
+
+internal object ReferralDeepLinkRouter {
+    private val mutablePendingCode = MutableStateFlow<String?>(null)
+    val pendingCode = mutablePendingCode.asStateFlow()
+
+    fun openUri(uri: String): Boolean {
+        val code = parseReferralCode(uri, REFERRAL_DEEP_LINK_PREFIX) ?: return false
+        mutablePendingCode.value = code
+        return true
+    }
+
+    fun consume(code: String) {
+        mutablePendingCode.compareAndSet(code, null)
+    }
+}
+
+internal fun referralWebPath(code: String): String = REFERRAL_WEB_PREFIX + requireNotNull(normalizeReferralCode(code))
+
+internal fun referralNativeLink(code: String): String =
+    REFERRAL_DEEP_LINK_PREFIX + requireNotNull(normalizeReferralCode(code))
+
+internal fun parseReferralWebPath(path: String): String? = parseReferralCode(path, REFERRAL_WEB_PREFIX)
+
+private fun parseReferralCode(value: String, prefix: String): String? =
+    value.takeIf { it.startsWith(prefix) }
+        ?.removePrefix(prefix)?.substringBefore('?')?.substringBefore('#')
+        ?.let(::normalizeReferralCode)
+
+private const val REFERRAL_WEB_PREFIX = "/invite/"
+private const val REFERRAL_DEEP_LINK_PREFIX = "fasttowin://invite/"
 
 object RoomDeepLinkRouter {
     private val mutablePendingLink = MutableStateFlow<RoomDeepLink?>(null)

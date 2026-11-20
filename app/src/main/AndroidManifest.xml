@@ -44,6 +44,12 @@
                     android:scheme="fasttowin"
                     android:host="challenge" />
             </intent-filter>
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data android:scheme="fasttowin" android:host="invite" />
+            </intent-filter>
         </activity>
         <provider
             android:name="androidx.core.content.FileProvider"

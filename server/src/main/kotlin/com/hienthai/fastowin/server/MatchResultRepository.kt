@@ -50,11 +50,17 @@ data class CompletedMatch(
     val matchType: MatchType = MatchType.RANKED,
     val eventRewards: com.hienthai.fastowin.protocol.MatchRewardEventSnapshot = com.hienthai.fastowin.protocol.MatchRewardEventSnapshot(),
     val roomId: String? = null,
-    val clanLevels: Map<String, Int> = emptyMap()
+    val clanLevels: Map<String, Int> = emptyMap(),
+    val referralEligible: Boolean = false
 )
 
 fun interface MatchResultRepository {
     suspend fun save(match: CompletedMatch)
+
+    suspend fun saveAndGetReferralRecipients(match: CompletedMatch): Set<String> {
+        save(match)
+        return emptySet()
+    }
 }
 
 object NoOpMatchResultRepository : MatchResultRepository {

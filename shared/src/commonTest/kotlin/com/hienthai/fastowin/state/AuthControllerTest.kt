@@ -6,16 +6,22 @@ import com.hienthai.fastowin.data.network.StoredAuthSession
 import com.hienthai.fastowin.data.network.AuthApiClient
 import com.hienthai.fastowin.localization.AppLanguage
 import com.hienthai.fastowin.protocol.AuthSessionResponse
+import com.hienthai.fastowin.protocol.AuthErrorResponse
+import com.hienthai.fastowin.protocol.AccountActionResponse
+import com.hienthai.fastowin.protocol.PendingEmailVerificationResponse
 import com.hienthai.fastowin.protocol.ProtocolJson
 import io.ktor.client.HttpClient
 import io.ktor.client.engine.mock.MockEngine
 import io.ktor.client.engine.mock.respond
 import io.ktor.client.plugins.contentnegotiation.ContentNegotiation
 import io.ktor.http.HttpHeaders
+import io.ktor.http.HttpStatusCode
 import io.ktor.http.headersOf
 import io.ktor.serialization.kotlinx.json.json
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.test.StandardTestDispatcher
 import kotlinx.coroutines.test.resetMain
 import kotlinx.coroutines.test.runTest
@@ -26,6 +32,7 @@ import kotlin.test.BeforeTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
+import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
 @OptIn(ExperimentalCoroutinesApi::class)
@@ -113,6 +120,155 @@ class AuthControllerTest {
         try {
             assertEquals(AuthStage.VERIFY_EMAIL, controller.state.value.stage)
             assertEquals(account, controller.state.value.session)
+        } finally {
+            controller.close()
+        }
+    }
+
+    @Test
+    fun failedVerificationSendDoesNotBecomeAnErrorOnTheCodeField() = runTest(mainDispatcher) {
+        val account = storedSession("pending-refresh").copy(emailVerified = false)
+        val store = InMemoryAuthSessionStore().apply { save(SERVER_URL, account) }
+        val client = HttpClient(MockEngine { request ->
+            check(request.url.encodedPath == "/auth/email-verification/request")
+            respond(
+                ProtocolJson.encodeToString(AuthErrorResponse("EMAIL_DELIVERY_FAILED", "")),
+                HttpStatusCode.ServiceUnavailable,
+                headersOf(HttpHeaders.ContentType, "application/json")
+            )
+        }) { install(ContentNegotiation) { json(ProtocolJson) } }
+        val controller = AuthController(SERVER_URL, store, InMemoryResumeTokenStore(), "test",
+            api = AuthApiClient(SERVER_URL, client = client))
+        try {
+            controller.requestEmailVerification(challenge = false)
+            controller.state.first { !it.isLoading }
+
+            assertFalse(controller.state.value.isLoading)
+            assertNull(controller.state.value.error)
+            assertEquals(AuthStage.VERIFY_EMAIL, controller.state.value.stage)
+            assertEquals(VerificationDelivery.FAILED, controller.state.value.verificationDelivery)
+        } finally {
+            controller.close()
+        }
+    }
+
+    @Test
+    fun changingPendingEmailKeepsAccountAndAutomaticallyRequestsOneCode() = runTest(mainDispatcher) {
+        val account = storedSession("pending-refresh").copy(emailVerified = false)
+        val store = InMemoryAuthSessionStore().apply { save(SERVER_URL, account) }
+        val requests = mutableListOf<String>()
+        val newAddress = "corrected@example.test"
+        val client = HttpClient(MockEngine { request ->
+            val path = request.url.encodedPath
+            requests += path
+            val response = when (path) {
+                "/auth/email-verification/change-email" ->
+                    ProtocolJson.encodeToString(PendingEmailVerificationResponse(newAddress, emailVerified = false))
+                "/auth/email-verification/request" ->
+                    ProtocolJson.encodeToString(AccountActionResponse("sent"))
+                else -> error("Unexpected request $path")
+            }
+            respond(response, headers = headersOf(HttpHeaders.ContentType, "application/json"))
+        }) { install(ContentNegotiation) { json(ProtocolJson) } }
+        val controller = AuthController(SERVER_URL, store, InMemoryResumeTokenStore(), "test",
+            api = AuthApiClient(SERVER_URL, client = client))
+        try {
+            controller.changePendingEmail(newAddress)
+            controller.state.first { it.verificationDelivery == VerificationDelivery.SENT }
+
+            assertEquals(listOf("/auth/email-verification/change-email", "/auth/email-verification/request"), requests)
+            assertEquals(account.copy(email = newAddress), store.load(SERVER_URL))
+            assertEquals(AuthStage.VERIFY_EMAIL, controller.state.value.stage)
+        } finally {
+            controller.close()
+        }
+    }
+
+    @Test
+    fun reopeningWithAStaleAddressRestoresTheCurrentEmailWithoutSendingACode() = runTest(mainDispatcher) {
+        val account = storedSession("pending-refresh").copy(emailVerified = false)
+        val store = InMemoryAuthSessionStore().apply { save(SERVER_URL, account) }
+        val currentAddress = "updated-before-restart@example.test"
+        val client = HttpClient(MockEngine { request ->
+            check(request.url.encodedPath == "/auth/email-verification/status")
+            respond(
+                ProtocolJson.encodeToString(PendingEmailVerificationResponse(currentAddress, emailVerified = false)),
+                headers = headersOf(HttpHeaders.ContentType, "application/json")
+            )
+        }) { install(ContentNegotiation) { json(ProtocolJson) } }
+        val controller = AuthController(SERVER_URL, store, InMemoryResumeTokenStore(), "test",
+            api = AuthApiClient(SERVER_URL, client = client))
+        try {
+            controller.refreshPendingEmailVerification()
+            controller.state.first { it.session?.email == currentAddress }
+
+            assertEquals(account.copy(email = currentAddress), store.load(SERVER_URL))
+            assertEquals(VerificationDelivery.UNKNOWN, controller.state.value.verificationDelivery)
+        } finally {
+            controller.close()
+        }
+    }
+
+    @Test
+    fun refreshingTheSessionKeepsTheVerificationSendBusyUntilItFinishes() = runTest(mainDispatcher) {
+        val account = storedSession("pending-refresh").copy(emailVerified = false, accessExpiresAtEpochMillis = 0)
+        val store = InMemoryAuthSessionStore().apply { save(SERVER_URL, account) }
+        val sendStarted = CompletableDeferred<Unit>()
+        val finishSend = CompletableDeferred<Unit>()
+        val client = HttpClient(MockEngine { request ->
+            val body = when (request.url.encodedPath) {
+                "/auth/refresh" -> ProtocolJson.encodeToString(AuthSessionResponse(
+                    userId = account.userId, accessToken = "new-access", refreshToken = "new-refresh",
+                    accessExpiresAtEpochMillis = Long.MAX_VALUE, refreshExpiresAtEpochMillis = Long.MAX_VALUE,
+                    emailVerified = false
+                ))
+                "/auth/email-verification/request" -> {
+                    sendStarted.complete(Unit)
+                    finishSend.await()
+                    ProtocolJson.encodeToString(AccountActionResponse("sent"))
+                }
+                else -> error("Unexpected request")
+            }
+            respond(body, headers = headersOf(HttpHeaders.ContentType, "application/json"))
+        }) { install(ContentNegotiation) { json(ProtocolJson) } }
+        val controller = AuthController(SERVER_URL, store, InMemoryResumeTokenStore(), "test",
+            api = AuthApiClient(SERVER_URL, client = client))
+        try {
+            controller.requestEmailVerification(challenge = false)
+            sendStarted.await()
+            assertTrue(controller.state.value.isLoading)
+            finishSend.complete(Unit)
+            controller.state.first { !it.isLoading }
+        } finally {
+            finishSend.complete(Unit)
+            controller.close()
+        }
+    }
+
+    @Test
+    fun retryingAfterALostConfirmationRestoresTheVerifiedSession() = runTest(mainDispatcher) {
+        val account = storedSession("pending-refresh").copy(emailVerified = false)
+        val store = InMemoryAuthSessionStore().apply { save(SERVER_URL, account) }
+        val client = HttpClient(MockEngine { request ->
+            val headers = headersOf(HttpHeaders.ContentType, "application/json")
+            when (request.url.encodedPath) {
+                "/auth/email-verification/confirm" -> respond(
+                    ProtocolJson.encodeToString(AuthErrorResponse("INVALID_VERIFICATION_CODE", "")),
+                    HttpStatusCode.BadRequest, headers
+                )
+                "/auth/email-verification/status" -> respond(
+                    ProtocolJson.encodeToString(PendingEmailVerificationResponse(account.email, emailVerified = true)),
+                    headers = headers
+                )
+                else -> error("Unexpected request")
+            }
+        }) { install(ContentNegotiation) { json(ProtocolJson) } }
+        val controller = AuthController(SERVER_URL, store, InMemoryResumeTokenStore(), "test",
+            api = AuthApiClient(SERVER_URL, client = client))
+        try {
+            controller.confirmEmailVerification("357924")
+            controller.state.first { it.stage == AuthStage.PLAYING }
+            assertEquals(account.copy(emailVerified = true), store.load(SERVER_URL))
         } finally {
             controller.close()
         }

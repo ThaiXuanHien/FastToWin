@@ -31,6 +31,8 @@ data class ServerRateLimitPolicies(
     val emailVerificationRequestPerAccount: RateLimitPolicy = RateLimitPolicy(3, 15 * 60_000L),
     val emailVerificationConfirmPerIp: RateLimitPolicy = RateLimitPolicy(120, 15 * 60_000L),
     val emailVerificationConfirmPerAccount: RateLimitPolicy = RateLimitPolicy(8, 15 * 60_000L),
+    val emailVerificationChangePerIp: RateLimitPolicy = RateLimitPolicy(60, 15 * 60_000L),
+    val emailVerificationChangePerAccount: RateLimitPolicy = RateLimitPolicy(5, 15 * 60_000L),
     // SEC-07: one verification email per account per window may skip Turnstile (the automatic
     // send right after a challenged sign-up); resends inside the window need a fresh challenge.
     val emailVerificationUnchallengedPerAccount: RateLimitPolicy = RateLimitPolicy(1, 15 * 60_000L),
@@ -190,6 +192,8 @@ internal object RateLimitBuckets {
     const val EMAIL_VERIFICATION_REQUEST_ACCOUNT = "email-verification-request-account"
     const val EMAIL_VERIFICATION_CONFIRM_IP = "email-verification-confirm-ip"
     const val EMAIL_VERIFICATION_CONFIRM_ACCOUNT = "email-verification-confirm-account"
+    const val EMAIL_VERIFICATION_CHANGE_IP = "email-verification-change-ip"
+    const val EMAIL_VERIFICATION_CHANGE_ACCOUNT = "email-verification-change-account"
     const val EMAIL_VERIFICATION_UNCHALLENGED = "email-verification-unchallenged"
     const val WEBSOCKET_CONNECT_IP = "websocket-connect-ip"
     const val WEBSOCKET_MESSAGE_IP = "websocket-message-ip"

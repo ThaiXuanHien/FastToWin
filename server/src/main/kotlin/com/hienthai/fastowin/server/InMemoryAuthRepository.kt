@@ -1,6 +1,7 @@
 package com.hienthai.fastowin.server
 
 import com.hienthai.fastowin.protocol.AuthSessionResponse
+import com.hienthai.fastowin.protocol.PendingEmailVerificationResponse
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import java.util.UUID
@@ -13,9 +14,11 @@ class InMemoryAuthRepository : AuthRepository {
     private val sessionsByAccessToken = mutableMapOf<String, StoredSession>()
     private val displayNamesByUserId = mutableMapOf<UUID, String>()
     private val passwordResets = mutableMapOf<String, StoredPasswordReset>()
-    private val emailVerifications = mutableMapOf<Pair<UUID, String>, StoredEmailVerification>()
+    private val emailVerifications = mutableMapOf<UUID, StoredEmailVerification>()
+    private var emailVerificationSequence = 0L
 
     override suspend fun createAccount(account: NewAccount): Boolean = mutex.withLock {
+        if (account.referralCode != null) throw InvalidReferralCodeException()
         if (account.emailNormalized in accounts) return@withLock false
         accounts[account.emailNormalized] = AccountCredentials(
             account.userId,
@@ -125,9 +128,7 @@ class InMemoryAuthRepository : AuthRepository {
         accessTokenHash: String,
         nowMillis: Long
     ): AuthenticatedAccount? = mutex.withLock {
-        val session = sessionsByAccessToken[accessTokenHash]
-            ?.takeIf { !it.revoked && it.accessExpiresAtMillis > nowMillis }
-            ?: return@withLock null
+        val session = activeAccessSession(accessTokenHash, nowMillis) ?: return@withLock null
         val displayName = displayNamesByUserId[session.userId] ?: return@withLock null
         val account = accounts.values.firstOrNull { it.userId == session.userId } ?: return@withLock null
         AuthenticatedAccount(session.userId, displayName, session.sessionId, account.emailVerified, account.supportEmailVerificationExempt)
@@ -234,20 +235,67 @@ class InMemoryAuthRepository : AuthRepository {
         true
     }
 
-    override suspend fun createEmailVerification(
+    override suspend fun stageEmailVerification(
         userId: UUID,
         verification: NewEmailVerification
     ): EmailVerificationDestination? = mutex.withLock {
         val entry = accounts.entries.firstOrNull { it.value.userId == userId } ?: return@withLock null
-        if (entry.value.emailVerified) {
-            return@withLock EmailVerificationDestination(entry.key, alreadyVerified = true)
+        if (!entry.value.emailVerified) {
+            emailVerifications[verification.id] = StoredEmailVerification(
+                userId = userId,
+                codeHash = verification.codeHash,
+                expiresAtMillis = verification.expiresAtMillis,
+                sequence = ++emailVerificationSequence
+            )
         }
-        emailVerifications.entries.removeAll { it.value.userId == userId }
-        emailVerifications[userId to verification.codeHash] = StoredEmailVerification(
-            userId = userId,
-            expiresAtMillis = verification.expiresAtMillis
+        EmailVerificationDestination(entry.key, entry.value.emailVerified, entry.value.supportEmailVerificationExempt)
+    }
+
+    override suspend fun finishEmailVerification(userId: UUID, verificationId: UUID, delivered: Boolean): Boolean =
+        mutex.withLock {
+            val staged = emailVerifications[verificationId]?.takeIf { it.userId == userId } ?: return@withLock false
+            if (!delivered) {
+                if (!staged.delivered) emailVerifications.remove(verificationId)
+                return@withLock false
+            }
+            emailVerifications[verificationId] = staged.copy(delivered = true)
+            emailVerifications.entries.removeAll { it.value.userId == userId && it.value.sequence < staged.sequence }
+            true
+        }
+
+    override suspend fun findEmailVerificationStatus(
+        accessTokenHash: String,
+        nowMillis: Long
+    ): PendingEmailVerificationResponse? = mutex.withLock {
+        val session = activeAccessSession(accessTokenHash, nowMillis) ?: return@withLock null
+        val account = accounts.entries.firstOrNull { it.value.userId == session.userId } ?: return@withLock null
+        PendingEmailVerificationResponse(account.key, account.value.emailVerified)
+    }
+
+    override suspend fun changePendingEmail(
+        userId: UUID,
+        accessTokenHash: String,
+        emailNormalized: String,
+        nowMillis: Long
+    ): PendingEmailVerificationResult = mutex.withLock {
+        if (activeAccessSession(accessTokenHash, nowMillis)?.userId != userId) {
+            return@withLock PendingEmailVerificationResult.InvalidAccessToken
+        }
+        val account = accounts.entries.firstOrNull { it.value.userId == userId }
+            ?: return@withLock PendingEmailVerificationResult.InvalidAccessToken
+        if (account.value.emailVerified || account.value.supportEmailVerificationExempt) {
+            return@withLock PendingEmailVerificationResult.EmailAlreadyVerified
+        }
+        if (account.key != emailNormalized) {
+            if (emailNormalized in accounts) return@withLock PendingEmailVerificationResult.EmailAlreadyExists
+            accounts[emailNormalized] = account.value
+            accounts.remove(account.key)
+            emailVerifications.entries.removeAll { it.value.userId == userId }
+            passwordResets.entries.removeAll { it.value.userId == userId }
+        }
+        PendingEmailVerificationResult.Current(
+            PendingEmailVerificationResponse(emailNormalized, emailVerified = false)
         )
-        EmailVerificationDestination(entry.key, alreadyVerified = false)
     }
 
     override suspend fun consumeEmailVerification(
@@ -255,10 +303,11 @@ class InMemoryAuthRepository : AuthRepository {
         codeHash: String,
         nowMillis: Long
     ): Boolean = mutex.withLock {
-        val verification = emailVerifications.remove(userId to codeHash)
-            ?.takeIf { it.userId == userId && it.expiresAtMillis > nowMillis }
-            ?: return@withLock false
         val entry = accounts.entries.firstOrNull { it.value.userId == userId } ?: return@withLock false
+        if (entry.value.emailVerified || emailVerifications.values.none {
+                it.userId == userId && it.codeHash == codeHash && it.delivered && it.expiresAtMillis > nowMillis
+            }
+        ) return@withLock false
         accounts[entry.key] = entry.value.copy(emailVerified = true)
         emailVerifications.entries.removeAll { it.value.userId == userId }
         true
@@ -279,6 +328,9 @@ class InMemoryAuthRepository : AuthRepository {
         sessions.entries.removeAll { it.value.userId == userId }
         sessionsByAccessToken.entries.removeAll { it.value.userId == userId }
     }
+
+    private fun activeAccessSession(accessTokenHash: String, nowMillis: Long): StoredSession? =
+        sessionsByAccessToken[accessTokenHash]?.takeIf { !it.revoked && it.accessExpiresAtMillis > nowMillis }
 
     private fun store(userId: UUID, devicePlatform: String?, session: NewAuthSession) {
         val stored = StoredSession(
@@ -313,6 +365,9 @@ class InMemoryAuthRepository : AuthRepository {
 
     private data class StoredEmailVerification(
         val userId: UUID,
-        val expiresAtMillis: Long
+        val codeHash: String,
+        val expiresAtMillis: Long,
+        val sequence: Long,
+        val delivered: Boolean = false
     )
 }

@@ -31,6 +31,7 @@ import com.hienthai.fastowin.protocol.AccountActionResponse
 import com.hienthai.fastowin.protocol.AccountSessionsRequest
 import com.hienthai.fastowin.protocol.AccountSessionsResponse
 import com.hienthai.fastowin.protocol.ChangePasswordRequest
+import com.hienthai.fastowin.protocol.ChangePendingEmailRequest
 import com.hienthai.fastowin.protocol.DeleteAccountRequest
 import com.hienthai.fastowin.protocol.EmailVerificationConfirmRequest
 import com.hienthai.fastowin.protocol.EmailVerificationRequest
@@ -38,11 +39,13 @@ import com.hienthai.fastowin.protocol.LoginRequest
 import com.hienthai.fastowin.protocol.LogoutRequest
 import com.hienthai.fastowin.protocol.PasswordResetConfirmRequest
 import com.hienthai.fastowin.protocol.PasswordResetRequest
+import com.hienthai.fastowin.protocol.PendingEmailVerificationRequest
 import com.hienthai.fastowin.protocol.ProtocolJson
 import com.hienthai.fastowin.protocol.RefreshTokenRequest
 import com.hienthai.fastowin.protocol.RevokeAccountSessionRequest
 import com.hienthai.fastowin.protocol.RevokeAllAccountSessionsRequest
 import com.hienthai.fastowin.protocol.RegisterRequest
+import com.hienthai.fastowin.protocol.REFERRAL_SUMMARY_PATH
 import com.hienthai.fastowin.protocol.UpgradeGuestRequest
 import com.hienthai.fastowin.protocol.ServerMessage
 import com.hienthai.fastowin.protocol.ServiceStatusResponse
@@ -464,12 +467,35 @@ fun Application.gameModule(
                     request.displayName,
                     request.devicePlatform,
                     request.gender,
-                    request.acceptedContentTermsVersion
+                    request.acceptedContentTermsVersion,
+                    request.referralCode
                 ),
                 successStatus = HttpStatusCode.Created,
                 webSession = webSession,
                 cookieConfiguration = webSessionCookies
             )
+        }
+
+        get(REFERRAL_SUMMARY_PATH) {
+            call.response.header(HttpHeaders.CacheControl, "no-store")
+            val token = call.request.header(HttpHeaders.Authorization)
+                ?.takeIf { it.startsWith("Bearer ", ignoreCase = true) }
+                ?.substring(7)
+            val account = token?.let { authService.authenticateAccessToken(it) }
+            if (account == null) {
+                call.respond(HttpStatusCode.Unauthorized, structuredAuthError("AUTH_REQUIRED", ""))
+                return@get
+            }
+            if (!account.emailVerified) {
+                call.respond(HttpStatusCode.Forbidden, structuredAuthError("EMAIL_NOT_VERIFIED", ""))
+                return@get
+            }
+            val summary = authService.referralSummary(account.userId)
+            if (summary == null) {
+                call.respond(HttpStatusCode.ServiceUnavailable, structuredAuthError("DATABASE_REQUIRED", ""))
+            } else {
+                call.respond(summary)
+            }
         }
 
         post("/auth/login") {
@@ -527,7 +553,8 @@ fun Application.gameModule(
                     request.email,
                     request.password,
                     request.devicePlatform,
-                    request.acceptedContentTermsVersion
+                    request.acceptedContentTermsVersion,
+                    request.referralCode
                 ),
                 webSession = webSession,
                 cookieConfiguration = webSessionCookies
@@ -661,6 +688,35 @@ fun Application.gameModule(
             )
         }
 
+        post("/auth/email-verification/status") {
+            val request = call.receiveOrReject<PendingEmailVerificationRequest>() ?: return@post
+            call.respondPendingEmailVerification(authService.emailVerificationStatus(request.accessToken))
+        }
+
+        post("/auth/email-verification/change-email") {
+            val ipAllowed = call.consumeHttpRateLimit(
+                rateLimiter,
+                RateLimitBuckets.EMAIL_VERIFICATION_CHANGE_IP,
+                call.clientRateLimitKey(),
+                rateLimitPolicies.emailVerificationChangePerIp
+            )
+            if (!ipAllowed) return@post
+            val request = call.receiveOrReject<ChangePendingEmailRequest>() ?: return@post
+            val account = authService.authenticateAccessToken(request.accessToken)
+            if (account == null) {
+                call.respondPendingEmailVerification(PendingEmailVerificationResult.InvalidAccessToken)
+                return@post
+            }
+            val accountAllowed = call.consumeHttpRateLimit(
+                rateLimiter,
+                RateLimitBuckets.EMAIL_VERIFICATION_CHANGE_ACCOUNT,
+                stableRateLimitKey(account.userId.toString()),
+                rateLimitPolicies.emailVerificationChangePerAccount
+            )
+            if (!accountAllowed) return@post
+            call.respondPendingEmailVerification(authService.changePendingEmail(account, request.accessToken, request.email))
+        }
+
         post("/auth/email-verification/request") {
             if (environment != "dev" && !authEmailSender.isConfigured) {
                 call.respond(
@@ -699,32 +755,25 @@ fun Application.gameModule(
             if (!firstSendExempt &&
                 !call.passHumanVerification(humanVerifier, request.humanVerificationToken, HumanVerificationAction.EMAIL_VERIFICATION)
             ) return@post
-            val result = authService.requestEmailVerification(request.accessToken)
-            if (result is AccountActionResult.Success &&
-                result.emailVerificationCode != null && result.emailRecipient != null &&
-                authEmailSender.isConfigured
-            ) {
-                try {
-                    authEmailSender.sendEmailVerification(
-                        result.emailRecipient,
-                        result.emailVerificationCode,
-                        resolveNotificationLanguage(request.languageTag)
-                    )
-                } catch (_: EmailDailyLimitReachedException) {
-                    System.err.println("Email verification skipped: daily email allowance reached")
-                    call.respond(
-                        HttpStatusCode.ServiceUnavailable,
-                        structuredAuthError("EMAIL_DAILY_LIMIT_REACHED", legacyFallback("Chưa thể gửi email. Vui lòng thử lại sau."))
-                    )
-                    return@post
-                } catch (error: Exception) {
-                    System.err.println("Could not send email verification: ${error.message}")
-                    call.respond(
-                        HttpStatusCode.ServiceUnavailable,
-                        structuredAuthError("EMAIL_DELIVERY_FAILED", legacyFallback("Chưa thể gửi email. Vui lòng thử lại sau."))
-                    )
-                    return@post
+            val result = try {
+                authService.requestEmailVerification(request.accessToken) { recipient, code ->
+                    if (authEmailSender.isConfigured) {
+                        authEmailSender.sendEmailVerification(recipient, code, resolveNotificationLanguage(request.languageTag))
+                    }
                 }
+            } catch (error: EmailVerificationDeliveryFailure) {
+                val code = if (error.cause is EmailDailyLimitReachedException) {
+                    System.err.println("Email verification skipped: daily email allowance reached")
+                    "EMAIL_DAILY_LIMIT_REACHED"
+                } else {
+                    System.err.println("Could not send email verification: ${error.cause?.message}")
+                    "EMAIL_DELIVERY_FAILED"
+                }
+                call.respond(
+                    HttpStatusCode.ServiceUnavailable,
+                    structuredAuthError(code, legacyFallback("Chưa thể gửi email. Vui lòng thử lại sau."))
+                )
+                return@post
             }
             call.respondAccountAction(
                 result,
@@ -1340,6 +1389,26 @@ private val DEV_WEB_ORIGINS = listOf(
 )
 private val QUIET_LOG_PATHS = setOf("/health", "/internal/metrics")
 
+private suspend fun ApplicationCall.respondPendingEmailVerification(result: PendingEmailVerificationResult) {
+    val (status, code, fallback) = when (result) {
+        is PendingEmailVerificationResult.Current -> {
+            response.header(HttpHeaders.CacheControl, "no-store")
+            respond(HttpStatusCode.OK, result.status)
+            return
+        }
+        PendingEmailVerificationResult.InvalidAccessToken -> Triple(
+            HttpStatusCode.Unauthorized, "INVALID_ACCESS_TOKEN", legacyFallback("Phiên đăng nhập không hợp lệ hoặc đã hết hạn.")
+        )
+        PendingEmailVerificationResult.InvalidEmail ->
+            Triple(HttpStatusCode.BadRequest, "INVALID_EMAIL", legacyFallback("Email không hợp lệ."))
+        PendingEmailVerificationResult.EmailAlreadyExists ->
+            Triple(HttpStatusCode.Conflict, "EMAIL_ALREADY_EXISTS", legacyFallback("Email này đã được sử dụng."))
+        PendingEmailVerificationResult.EmailAlreadyVerified ->
+            Triple(HttpStatusCode.Conflict, "EMAIL_ALREADY_VERIFIED", legacyFallback("Không thể đổi địa chỉ email của tài khoản này."))
+    }
+    respond(status, structuredAuthError(code, fallback))
+}
+
 private suspend fun ApplicationCall.respondAccountAction(
     result: AccountActionResult,
     exposeResetToken: Boolean = false,
@@ -1361,6 +1430,7 @@ private suspend fun ApplicationCall.respondAccountAction(
         is AccountActionResult.Failure -> respond(
             when (result.code) {
                 "INVALID_ACCESS_TOKEN" -> HttpStatusCode.Unauthorized
+                "EMAIL_VERIFICATION_SUPERSEDED" -> HttpStatusCode.Conflict
                 else -> HttpStatusCode.BadRequest
             },
             structuredAuthError(result.code, result.message)

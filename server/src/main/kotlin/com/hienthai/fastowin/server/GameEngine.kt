@@ -69,6 +69,7 @@ import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeout
+import kotlinx.coroutines.withTimeoutOrNull
 import java.security.MessageDigest
 import java.security.SecureRandom
 import java.util.UUID
@@ -2590,11 +2591,11 @@ class GameEngine(
     private suspend fun settleCompletedMatch(completed: CompletedMatch): List<Delivery> = withContext(NonCancellable) {
         val admitted = mutex.withLock { completed.matchId in pendingCompletedMatches && settlementsInFlight.add(completed.matchId) }
         if (!admitted) return@withContext emptyList()
-        try { withTimeout(4_000) {
+        val settlement = try { withTimeout(4_000) {
             val roomId = mutex.withLock { rooms.values.firstOrNull { it.matchId == completed.matchId }?.id }
             // Save the exact accepted result before wallet/result work so restored rooms can retry.
             roomId?.let { persistRoom(it) }
-            if (!persistCompletedMatch(completed)) return@withTimeout emptyList()
+            val referralRecipients = persistCompletedMatch(completed) ?: return@withTimeout null
             val deliveries = advanceTournamentAfterMatch(completed.matchId)
             persistenceMutex.withLock {
                 val remaining = mutex.withLock {
@@ -2610,28 +2611,53 @@ class GameEngine(
                     pendingCompletedMatches.remove(completed.matchId)
                 }
             }
-            deliveries
+            deliveries to referralRecipients
         }
         } catch (_: kotlinx.coroutines.TimeoutCancellationException) {
             // This attempt owns its timeout; keep the durable payload and the runtime retry worker alive.
-            emptyList()
+            null
         } finally {
             mutex.withLock { settlementsInFlight.remove(completed.matchId) }
         }
+        if (settlement == null) return@withContext emptyList()
+        val (deliveries, referralRecipients) = settlement
+        deliveries + referralRewardDeliveries(referralRecipients)
     }
 
-    private suspend fun persistCompletedMatch(completed: CompletedMatch): Boolean {
+    private suspend fun referralRewardDeliveries(recipients: Set<String>): List<Delivery> {
+        if (recipients.isEmpty()) return emptyList()
+        // Rewards and inbox entries are already committed. Live updates cannot fail the match.
+        return try {
+            withTimeoutOrNull(750) {
+                val notifications = refreshNotificationsFor(recipients)
+                val profiles = notifications.flatMap { delivery ->
+                    delivery.recipients.orEmpty().mapNotNull { playerId ->
+                        playerProfileRepository.findByPlayerId(playerId)?.let { profile ->
+                            Delivery(ServerMessage.ProfileData(profile, isBackgroundRefresh = true), setOf(playerId))
+                        }
+                    }
+                }
+                notifications + profiles
+            }.orEmpty()
+        } catch (cancelled: CancellationException) {
+            throw cancelled
+        } catch (error: Exception) {
+            System.err.println("Could not refresh referral rewards: ${error.message}")
+            emptyList()
+        }
+    }
+
+    private suspend fun persistCompletedMatch(completed: CompletedMatch): Set<String>? {
         val profilesBefore = completed.players.associate { player ->
             player.playerId to runCatching {
                 playerProfileRepository.findByPlayerId(player.playerId)
             }.getOrNull()
         }
-        val saved = runCatching { matchResultRepository.save(completed) }
+        val referralRecipients = runCatching { matchResultRepository.saveAndGetReferralRecipients(completed) }
             .onFailure { error ->
                 System.err.println("Could not persist match ${completed.matchId}: ${error.message}")
             }
-            .isSuccess
-        if (!saved) return false
+            .getOrNull() ?: return null
 
         completed.players.forEach { player ->
             val previous = profilesBefore[player.playerId] ?: return@forEach
@@ -2666,7 +2692,7 @@ class GameEngine(
                 )
             }
         }
-        return true
+        return referralRecipients
     }
 
     /** Push text leaves the app, so moderated names are replaced exactly like in-app projections. */
@@ -3180,7 +3206,7 @@ class GameEngine(
                             sessionsByPlayerId[playerId]?.accountResumeToken?.let {
                                 pendingAccountTokensByPlayerId[playerId] = PendingAccountToken(it, now)
                             }
-                            room.takeCompletedMatch()?.let(completedMatches::add)
+                            room.takeCompletedMatch(disconnectForfeit = true)?.let(completedMatches::add)
                             deliveries += Delivery(ServerMessage.GameFinished(snapshot), room.activePlayerIds())
                             removeRoomIfSettled(room)
                             removedRoomIds += room.id
@@ -4405,7 +4431,7 @@ class GameEngine(
         }
     }
 
-    private fun Room.takeCompletedMatch(): CompletedMatch? {
+    private fun Room.takeCompletedMatch(disconnectForfeit: Boolean = false): CompletedMatch? {
         if (maintenanceAborted || phase != RoomPhase.FINISHED || resultQueued) return null
         val startedAt = startedAtEpochMillis ?: return null
         val winnerId = winnerId()
@@ -4449,7 +4475,8 @@ class GameEngine(
             },
             events = selectionEvents.toList(),
             eventRewards = eventRewards,
-            clanLevels = clanLevels
+            clanLevels = clanLevels,
+            referralEligible = tournamentId == null && !disconnectForfeit && intentionalLeavePlayerIds.isEmpty()
         ).also { pendingCompletedMatches[it.matchId] = it }
     }
 

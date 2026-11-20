@@ -2,6 +2,10 @@ package com.hienthai.fastowin.localization
 
 /** Stable keys shared by clients and the backend. Never use player input as a key. */
 enum class TextKey {
+    ReferralInvite, ReferralCodeLabel, ReferralCodeOptional, ReferralInvalidCode, ReferralOffer,
+    ReferralShare, ReferralCopyCode, ReferralShareText, ReferralPending, ReferralRewarded, ReferralMonth,
+    ReferralCompletedWithoutBonus, ReferralRewardTitle, ReferralRewardMessage, ReferralOpenApp,
+    ReferralLoadFailed,
     RewardResultClanBonus, ClanRacePoolStarter, ClanRacePoolStrength, ClanRacePoolRules,
     PlayCredits, PlayCreditsDescription, DailyPlaysRemaining, BankedPlays, PlayCreditOffer, PlayCreditExchange, PlayCreditConfirmation,
     PlayCreditExchanged, RewardsReceived, GiftCode, GiftCodeEntry, GiftCodeRedeem, GiftCodeRedeemed,
@@ -62,6 +66,10 @@ ClanRaceTitle, ClanRacePrizes, ClanRacePerMember, ClanRaceEligibility, ClanRaceW
     StartPlaying, Continue,
 
     VerifyEmailTitle, VerifyEmailDescription, DevVerificationCode, VerificationCode,
+    VerificationSendingCode, VerificationSendFailed, VerificationRetrySend, VerificationEditEmail, VerificationNewEmail,
+    VerificationSendSuperseded,
+    VerificationSaveEmail, VerificationCodeInvalid, EmailAddressInvalid, EmailAlreadyInUse,
+    VerificationEmailAlreadyVerified,
     Verifying, Verify, ResendCode, Logout,
     AuthWelcomeDescription, AuthLoginTitle, Login, LoggingIn, CreateAccount, PlayAsGuest, Password,
     ForgotPassword, ResetPasswordTitle, ResetPasswordDescription, Sending, SendResetCode,

@@ -9,6 +9,9 @@ import com.hienthai.fastowin.protocol.ChangePasswordRequest
 import com.hienthai.fastowin.protocol.DeleteAccountRequest
 import com.hienthai.fastowin.protocol.EmailVerificationConfirmRequest
 import com.hienthai.fastowin.protocol.EmailVerificationRequest
+import com.hienthai.fastowin.protocol.ChangePendingEmailRequest
+import com.hienthai.fastowin.protocol.PendingEmailVerificationRequest
+import com.hienthai.fastowin.protocol.PendingEmailVerificationResponse
 import com.hienthai.fastowin.protocol.HUMAN_VERIFICATION_CONFIG_PATH
 import com.hienthai.fastowin.protocol.HumanVerificationConfigResponse
 import com.hienthai.fastowin.protocol.LoginRequest
@@ -18,6 +21,8 @@ import com.hienthai.fastowin.protocol.PasswordResetRequest
 import com.hienthai.fastowin.protocol.ProtocolJson
 import com.hienthai.fastowin.protocol.RefreshTokenRequest
 import com.hienthai.fastowin.protocol.RegisterRequest
+import com.hienthai.fastowin.protocol.ReferralSummary
+import com.hienthai.fastowin.protocol.REFERRAL_SUMMARY_PATH
 import com.hienthai.fastowin.protocol.PlayerGender
 import com.hienthai.fastowin.protocol.RevokeAccountSessionRequest
 import com.hienthai.fastowin.protocol.RevokeAllAccountSessionsRequest
@@ -27,6 +32,7 @@ import io.ktor.client.call.body
 import io.ktor.client.plugins.HttpTimeout
 import io.ktor.client.plugins.contentnegotiation.ContentNegotiation
 import io.ktor.client.request.HttpRequestBuilder
+import io.ktor.client.request.bearerAuth
 import io.ktor.client.request.get
 import io.ktor.client.request.post
 import io.ktor.client.request.setBody
@@ -63,11 +69,22 @@ class AuthApiClient(
         devicePlatform: String,
         gender: PlayerGender,
         acceptedContentTermsVersion: String? = null,
-        humanVerificationToken: String? = null
+        humanVerificationToken: String? = null,
+        referralCode: String? = null
     ): AuthSessionResponse = execute(
         "$baseUrl/auth/register",
-        RegisterRequest(email, password, displayName, devicePlatform, gender, acceptedContentTermsVersion, humanVerificationToken)
+        RegisterRequest(email, password, displayName, devicePlatform, gender, acceptedContentTermsVersion,
+            humanVerificationToken, referralCode)
     )
+
+    suspend fun referralSummary(accessToken: String): ReferralSummary {
+        val response = client.get(baseUrl + REFERRAL_SUMMARY_PATH) {
+            requestConfigurator.configure(this)
+            bearerAuth(accessToken)
+        }
+        if (!response.status.isSuccess()) throw response.toAuthException()
+        return response.body()
+    }
 
     suspend fun login(email: String, password: String, devicePlatform: String): AuthSessionResponse =
         execute("$baseUrl/auth/login", LoginRequest(email, password, devicePlatform))
@@ -78,10 +95,12 @@ class AuthApiClient(
         password: String,
         devicePlatform: String,
         acceptedContentTermsVersion: String? = null,
-        humanVerificationToken: String? = null
+        humanVerificationToken: String? = null,
+        referralCode: String? = null
     ): AuthSessionResponse = execute(
         "$baseUrl/auth/upgrade-guest",
-        UpgradeGuestRequest(resumeToken, email, password, devicePlatform, acceptedContentTermsVersion, humanVerificationToken)
+        UpgradeGuestRequest(resumeToken, email, password, devicePlatform, acceptedContentTermsVersion,
+            humanVerificationToken, referralCode)
     )
 
     suspend fun refresh(
@@ -161,6 +180,12 @@ class AuthApiClient(
         "$baseUrl/auth/email-verification/confirm",
         EmailVerificationConfirmRequest(accessToken, verificationCode)
     )
+
+    suspend fun pendingEmailVerification(accessToken: String): PendingEmailVerificationResponse =
+        executeResponse("$baseUrl/auth/email-verification/status", PendingEmailVerificationRequest(accessToken))
+
+    suspend fun changePendingEmail(accessToken: String, email: String): PendingEmailVerificationResponse =
+        executeResponse("$baseUrl/auth/email-verification/change-email", ChangePendingEmailRequest(accessToken, email))
 
     suspend fun deleteAccount(accessToken: String, password: String): AccountActionResponse = executeAction(
         "$baseUrl/auth/delete-account",

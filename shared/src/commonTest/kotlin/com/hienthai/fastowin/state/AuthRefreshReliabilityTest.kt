@@ -26,7 +26,7 @@ class AuthRefreshReliabilityTest {
     @Test fun accountActionRefreshOutageShowsErrorWithoutLogoutOrStuckLoading() = runTest {
         val f = Fixture(this, expiredAccess = true) { respond("outage", HttpStatusCode.ServiceUnavailable) }
         try {
-            f.controller.requestEmailVerification()
+            f.controller.changePassword("current-password", "new-password")
             f.controller.state.first { !it.isLoading }
             assertEquals(f.initial, f.store.load(URL))
             assertEquals(AuthStage.PLAYING, f.controller.state.value.stage)

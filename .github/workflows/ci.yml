@@ -2,6 +2,8 @@ name: CI
 
 on:
   push:
+    branches-ignore:
+      - 'codex/mobile-build-1.0.17'
   pull_request:
   workflow_dispatch:
     inputs:
@@ -395,3 +397,86 @@ jobs:
             ONLY_ACTIVE_ARCH=YES \
             CODE_SIGNING_ALLOWED=NO \
             build
+
+
+      - name: Archive and export iOS release IPA
+        if: github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/codex/mobile-build-1.0.17'
+        env:
+          ASC_KEY_P8: ${{ secrets.APP_STORE_CONNECT_API_KEY_P8 }}
+          ASC_KEY_ID: ${{ vars.APP_STORE_CONNECT_KEY_ID }}
+          ASC_ISSUER_ID: ${{ vars.APP_STORE_CONNECT_ISSUER_ID }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          shopt -s nullglob
+          umask 077
+          build_root="$RUNNER_TEMP/ftw-ios-release"
+          mkdir -p "$build_root"
+          key_dir="$(mktemp -d "$RUNNER_TEMP/ftw-asc.XXXXXX")"
+          key_file="$key_dir/AuthKey.p8"
+          trap 'rm -f "$key_file"; rmdir "$key_dir"' EXIT
+          : "${ASC_KEY_P8:?Missing App Store Connect key}" "${ASC_KEY_ID:?Missing App Store Connect key ID}" "${ASC_ISSUER_ID:?Missing App Store Connect issuer ID}"
+          printf '%s\n' "$ASC_KEY_P8" > "$key_file"
+          unset ASC_KEY_P8
+
+          xcodebuild archive \
+            -project iosApp/iosApp.xcodeproj \
+            -scheme iosApp \
+            -configuration Release \
+            -destination 'generic/platform=iOS' \
+            -archivePath "$build_root/FastToWin.xcarchive" \
+            -allowProvisioningUpdates \
+            -authenticationKeyPath "$key_file" \
+            -authenticationKeyID "$ASC_KEY_ID" \
+            -authenticationKeyIssuerID "$ASC_ISSUER_ID" \
+            DEVELOPMENT_TEAM=Y4S52B8V9C \
+            CODE_SIGN_STYLE=Automatic \
+            MARKETING_VERSION=1.0.17 \
+            CURRENT_PROJECT_VERSION=18
+
+          cat > "$build_root/ExportOptions.plist" <<'PLIST'
+          <?xml version="1.0" encoding="UTF-8"?>
+          <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+          <plist version="1.0">
+          <dict>
+            <key>method</key><string>app-store-connect</string>
+            <key>destination</key><string>export</string>
+            <key>teamID</key><string>Y4S52B8V9C</string>
+            <key>signingStyle</key><string>automatic</string>
+            <key>manageAppVersionAndBuildNumber</key><false/>
+          </dict>
+          </plist>
+          PLIST
+          xcodebuild -exportArchive \
+            -archivePath "$build_root/FastToWin.xcarchive" \
+            -exportOptionsPlist "$build_root/ExportOptions.plist" \
+            -exportPath "$build_root/export" \
+            -allowProvisioningUpdates \
+            -authenticationKeyPath "$key_file" \
+            -authenticationKeyID "$ASC_KEY_ID" \
+            -authenticationKeyIssuerID "$ASC_ISSUER_ID"
+
+          ipas=("$build_root"/export/*.ipa)
+          [[ "${#ipas[@]}" -eq 1 ]]
+          artifact="$build_root/FastToWin-iOS-1.0.17-18.ipa"
+          mv "${ipas[0]}" "$artifact"
+          ditto -x -k "$artifact" "$build_root/verify"
+          bundles=("$build_root"/verify/Payload/*.app)
+          [[ "${#bundles[@]}" -eq 1 ]]
+          app="${bundles[0]}"
+          codesign --verify --deep --strict "$app"
+          [[ "$(/usr/libexec/PlistBuddy -c 'Print :CFBundleIdentifier' "$app/Info.plist")" == 'com.hienthai.fastowin' ]]
+          [[ "$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' "$app/Info.plist")" == '1.0.17' ]]
+          [[ "$(/usr/libexec/PlistBuddy -c 'Print :CFBundleVersion' "$app/Info.plist")" == '18' ]]
+          (cd "$build_root" && shasum -a 256 FastToWin-iOS-1.0.17-18.ipa > FastToWin-iOS-1.0.17-18.sha256)
+
+      - name: Upload iOS IPA artifact
+        if: github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/codex/mobile-build-1.0.17'
+        uses: actions/upload-artifact@v7
+        with:
+          name: FastToWin-iOS-1.0.17-18
+          path: |
+            ${{ runner.temp }}/ftw-ios-release/FastToWin-iOS-1.0.17-18.ipa
+            ${{ runner.temp }}/ftw-ios-release/FastToWin-iOS-1.0.17-18.sha256
+          if-no-files-found: error
+          retention-days: 7

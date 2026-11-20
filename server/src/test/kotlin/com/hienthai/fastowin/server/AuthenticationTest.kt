@@ -31,8 +31,13 @@ import io.ktor.http.HttpStatusCode
 import io.ktor.http.contentType
 import io.ktor.http.parseServerSetCookieHeader
 import io.ktor.server.testing.testApplication
+import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.async
+import kotlinx.coroutines.coroutineScope
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.decodeFromString
+import kotlinx.serialization.json.JsonElement
+import kotlinx.serialization.json.JsonPrimitive
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertNotEquals
@@ -505,6 +510,142 @@ class AuthenticationTest {
     }
 
     @Test
+    fun `pending email change keeps the account and invalidates the former address code`() = testApplication {
+        application { gameModule(environment = "dev") }
+        val originalEmail = "correction-typo@example.com"
+        val correctedEmail = "corrected@example.com"
+        val session = client.postJson(
+            "/auth/register", RegisterRequest(originalEmail, PASSWORD, "Correct email", "android")
+        ).decode<AuthSessionResponse>()
+        client.postJson(
+            "/auth/register", RegisterRequest("taken@example.com", PASSWORD, "Other player", "android")
+        )
+        val access = mapOf("accessToken" to session.accessToken)
+        suspend fun status() = client.postJson("/auth/email-verification/status", access)
+        suspend fun change(email: String) = client.postJson(
+            "/auth/email-verification/change-email", access + ("email" to email)
+        )
+        suspend fun requestCode() = requireNotNull(
+            client.postJson("/auth/email-verification/request", EmailVerificationRequest(session.accessToken))
+                .decode<AccountActionResponse>().devEmailVerificationCode
+        )
+        suspend fun confirm(code: String) = client.postJson(
+            "/auth/email-verification/confirm", EmailVerificationConfirmRequest(session.accessToken, code)
+        )
+
+        val initialStatus = status()
+        assertEquals(HttpStatusCode.OK, initialStatus.status)
+        assertEquals(pendingStatus(originalEmail, verified = false), initialStatus.decode<Map<String, JsonElement>>())
+        assertEquals("INVALID_EMAIL", change("bad email").decode<AuthErrorResponse>().code)
+        assertEquals("EMAIL_ALREADY_EXISTS", change("TAKEN@example.com").decode<AuthErrorResponse>().code)
+        val issued = requestCode()
+
+        val changed = change(" ${correctedEmail.uppercase()} ")
+        assertEquals(HttpStatusCode.OK, changed.status)
+        assertEquals(pendingStatus(correctedEmail, verified = false), changed.decode<Map<String, JsonElement>>())
+        assertEquals(pendingStatus(correctedEmail, verified = false), status().decode<Map<String, JsonElement>>())
+        assertEquals("INVALID_VERIFICATION_CODE", confirm(issued).decode<AuthErrorResponse>().code)
+
+        val correctedCode = requestCode()
+        assertEquals(HttpStatusCode.OK, change(" ${correctedEmail.uppercase()} ").status)
+        assertEquals(HttpStatusCode.OK, confirm(correctedCode).status)
+        assertEquals(pendingStatus(correctedEmail, verified = true), status().decode<Map<String, JsonElement>>())
+        assertEquals("EMAIL_ALREADY_VERIFIED", change("other@example.com").decode<AuthErrorResponse>().code)
+        assertEquals(
+            HttpStatusCode.Unauthorized,
+            client.postJson("/auth/login", LoginRequest(originalEmail, PASSWORD, "android")).status
+        )
+        val loggedIn = client.postJson("/auth/login", LoginRequest(correctedEmail, PASSWORD, "android"))
+            .decode<AuthSessionResponse>()
+        assertEquals(session.userId, loggedIn.userId)
+        assertTrue(loggedIn.emailVerified)
+        assertEquals(HttpStatusCode.Unauthorized, status().status)
+    }
+
+    @Test
+    fun `failed verification resends preserve the delivered code`() = testApplication {
+        val sender = RecordingAuthEmailSender()
+        application { gameModule(environment = "prod", authEmailSender = sender) }
+        val session = client.postJson(
+            "/auth/register", RegisterRequest("failed-resend@example.com", PASSWORD, "Retry", "android")
+        ).decode<AuthSessionResponse>()
+        suspend fun requestCode() = client.postJson(
+            "/auth/email-verification/request", EmailVerificationRequest(session.accessToken)
+        )
+
+        assertEquals(HttpStatusCode.OK, requestCode().status)
+        val delivered = sender.emailVerifications.single().second
+
+        sender.verificationFailure = IllegalStateException("Provider returned an error")
+        val providerFailed = requestCode()
+        assertEquals(HttpStatusCode.ServiceUnavailable, providerFailed.status)
+        assertEquals("EMAIL_DELIVERY_FAILED", providerFailed.decode<AuthErrorResponse>().code)
+
+        sender.verificationFailure = EmailDailyLimitReachedException()
+        val budgetExceeded = requestCode()
+        assertEquals(HttpStatusCode.ServiceUnavailable, budgetExceeded.status)
+        assertEquals("EMAIL_DAILY_LIMIT_REACHED", budgetExceeded.decode<AuthErrorResponse>().code)
+
+        assertEquals(
+            HttpStatusCode.OK,
+            client.postJson(
+                "/auth/email-verification/confirm", EmailVerificationConfirmRequest(session.accessToken, delivered)
+            ).status
+        )
+    }
+
+    @Test
+    fun `a code is usable after the provider accepts the message`() = testApplication {
+        val stagedCode = CompletableDeferred<String>()
+        val accepted = CompletableDeferred<Unit>()
+        val sender = RecordingAuthEmailSender().apply {
+            onVerification = { code ->
+                stagedCode.complete(code)
+                accepted.await()
+            }
+        }
+        application { gameModule(environment = "prod", authEmailSender = sender) }
+        val session = client.postJson(
+            "/auth/register", RegisterRequest("staged-code@example.com", PASSWORD, "Staged", "android")
+        ).decode<AuthSessionResponse>()
+        coroutineScope {
+            val sending = async {
+                client.postJson("/auth/email-verification/request", EmailVerificationRequest(session.accessToken))
+            }
+            val confirmation = EmailVerificationConfirmRequest(session.accessToken, stagedCode.await())
+            try {
+                val premature = client.postJson("/auth/email-verification/confirm", confirmation)
+                assertEquals(HttpStatusCode.BadRequest, premature.status)
+                assertEquals("INVALID_VERIFICATION_CODE", premature.decode<AuthErrorResponse>().code)
+            } finally {
+                accepted.complete(Unit)
+            }
+            assertEquals(HttpStatusCode.OK, sending.await().status)
+            assertEquals(HttpStatusCode.OK, client.postJson("/auth/email-verification/confirm", confirmation).status)
+        }
+    }
+
+    @Test
+    fun `pending email corrections share a rate limit across refreshed tokens`() = testApplication {
+        val policies = ServerRateLimitPolicies(emailVerificationChangePerAccount = RateLimitPolicy(1, 60_000L))
+        application { gameModule(environment = "dev", rateLimitPolicies = policies) }
+        val session = client.postJson(
+            "/auth/register", RegisterRequest("change-limit@example.com", PASSWORD, "Rate limit", "android")
+        ).decode<AuthSessionResponse>()
+        suspend fun change(accessToken: String, email: String) = client.postJson(
+            "/auth/email-verification/change-email", mapOf("accessToken" to accessToken, "email" to email)
+        )
+
+        assertEquals(HttpStatusCode.OK, change(session.accessToken, "changed@example.com").status)
+        val refreshed = client.postJson("/auth/refresh", RefreshTokenRequest(session.refreshToken))
+            .decode<AuthSessionResponse>()
+        assertEquals(HttpStatusCode.Unauthorized, change(session.accessToken, "third@example.com").status)
+        val limited = change(refreshed.accessToken, "third@example.com")
+        assertEquals(HttpStatusCode.TooManyRequests, limited.status)
+        assertEquals("RATE_LIMITED", limited.decode<AuthErrorResponse>().code)
+    }
+
+    @Test
     fun `production sends reset email in English for unsupported requested language`() = testApplication {
         val sender = RecordingAuthEmailSender()
         application {
@@ -620,6 +761,9 @@ class AuthenticationTest {
     private suspend inline fun <reified T> HttpResponse.decode(): T =
         ProtocolJson.decodeFromString(bodyAsText())
 
+    private fun pendingStatus(email: String, verified: Boolean): Map<String, JsonElement> =
+        mapOf("email" to JsonPrimitive(email), "emailVerified" to JsonPrimitive(verified))
+
     private companion object {
         const val PASSWORD = "strong-password-123"
         const val NEW_PASSWORD = "new-strong-password-456"
@@ -631,6 +775,8 @@ class AuthenticationTest {
         override val isConfigured: Boolean = true
         val passwordResets = mutableListOf<Triple<String, String, AppLanguage>>()
         val emailVerifications = mutableListOf<Triple<String, String, AppLanguage>>()
+        var verificationFailure: Exception? = null
+        var onVerification: suspend (String) -> Unit = {}
 
         override suspend fun sendPasswordReset(
             recipient: String,
@@ -645,6 +791,8 @@ class AuthenticationTest {
             verificationCode: String,
             language: AppLanguage
         ) {
+            verificationFailure?.let { throw it }
+            onVerification(verificationCode)
             emailVerifications += Triple(recipient, verificationCode, language)
         }
     }

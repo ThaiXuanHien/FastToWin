@@ -86,8 +86,8 @@ class CriticalFlowsUiTest {
                         submittedEmail = email
                         submittedPassword = password
                     },
-                    onRegister = { _, _, _, _ -> },
-                    onUpgradeGuest = { _, _ -> },
+                    onRegister = { _, _, _, _, _ -> },
+                    onUpgradeGuest = { _, _, _ -> },
                     onRequestPasswordReset = {},
                     onConfirmPasswordReset = { _, _, _ -> },
                     onRequestEmailVerification = {},

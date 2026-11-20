@@ -16,6 +16,7 @@ import com.hienthai.fastowin.localization.LocalizationService
 import com.hienthai.fastowin.localization.LocalizedMessageMapper
 import com.hienthai.fastowin.localization.TextKey
 import com.hienthai.fastowin.protocol.PlayerGender
+import com.hienthai.fastowin.protocol.PendingEmailVerificationResponse
 import com.hienthai.fastowin.platform.epochMillis
 import com.hienthai.fastowin.protocol.AuthSessionResponse
 import com.hienthai.fastowin.protocol.AccountSessionSnapshot
@@ -44,6 +45,17 @@ import kotlinx.coroutines.launch
 
 enum class AuthStage { WELCOME, LOGIN, REGISTER, RESET_PASSWORD, VERIFY_EMAIL, UPGRADE_GUEST, PLAYING }
 
+enum class VerificationDelivery { UNKNOWN, SENDING, SENT, FAILED }
+
+data class SignupTermsState(
+    val version: String? = null,
+    val isLoading: Boolean = false,
+    val hasError: Boolean = false,
+    val accepted: Boolean = false
+) {
+    val acceptedVersion: String? get() = version.takeIf { accepted && !isLoading && !hasError }
+}
+
 data class AuthState(
     val stage: AuthStage = AuthStage.WELCOME,
     val isGuest: Boolean = false,
@@ -55,7 +67,11 @@ data class AuthState(
     val devEmailVerificationCode: String? = null,
     val passwordResetEmail: String? = null,
     val accountSessions: List<AccountSessionSnapshot> = emptyList(),
-    val areSessionsLoading: Boolean = false
+    val areSessionsLoading: Boolean = false,
+    val signupTerms: SignupTermsState = SignupTermsState(),
+    val verificationDelivery: VerificationDelivery = VerificationDelivery.UNKNOWN,
+    val verificationDeliveryError: String? = null,
+    val verificationSendCount: Int = 0
 )
 
 /** SEC-07: a Turnstile challenge the UI must show; [challengePageUrl] is the mobile WebView page. */
@@ -121,18 +137,21 @@ class AuthController(
     private var refreshWork: RefreshWork? = null
     private var closed = false
     private val termsApi = com.hienthai.fastowin.data.network.ContentTermsApiClient(serverUrl)
-    val contentEntryConsent = ContentEntryConsent(termsApi::fetch)
+    private var signupTermsSequence = 0
 
     init { diagnostics.emit(AuthDiagnosticPhase.CONTROLLER_CREATED) }
 
     fun updateLanguage(language: AppLanguage) {
         if (messageMapper.language == language) return
         messageMapper.updateLanguage(language)
-        _state.update { it.copy(error = null, notice = null) }
+        _state.update { it.copy(error = null, notice = null, verificationDeliveryError = null) }
     }
 
     fun openLogin() = _state.update { it.copy(stage = AuthStage.LOGIN, error = null) }
-    fun openRegister() = _state.update { it.copy(stage = AuthStage.REGISTER, error = null) }
+    fun openRegister() = _state.update {
+        if (it.stage == AuthStage.REGISTER) it
+        else it.copy(stage = AuthStage.REGISTER, error = null, signupTerms = SignupTermsState())
+    }
     fun openPasswordReset() = _state.update {
         it.copy(
             stage = AuthStage.RESET_PASSWORD,
@@ -145,7 +164,9 @@ class AuthController(
     fun backToWelcome() { loginEpoch++; _state.value = AuthState() }
     fun playAsGuest() { loginEpoch++; _state.value = AuthState(stage = AuthStage.PLAYING, isGuest = true) }
     fun openGuestUpgrade() = _state.update {
-        if (it.isGuest) it.copy(stage = AuthStage.UPGRADE_GUEST, error = null) else it
+        if (it.isGuest && it.stage != AuthStage.UPGRADE_GUEST) {
+            it.copy(stage = AuthStage.UPGRADE_GUEST, error = null, signupTerms = SignupTermsState())
+        } else it
     }
     fun cancelGuestUpgrade() = _state.update {
         if (it.stage == AuthStage.UPGRADE_GUEST) {
@@ -153,6 +174,30 @@ class AuthController(
         } else {
             it
         }
+    }
+
+    fun loadSignupTerms() {
+        val stage = _state.value.stage
+        if (stage !in setOf(AuthStage.REGISTER, AuthStage.UPGRADE_GUEST) || _state.value.signupTerms.isLoading) return
+        val sequence = ++signupTermsSequence
+        _state.update { it.copy(signupTerms = SignupTermsState(isLoading = true)) }
+        scope.launch {
+            val result = try {
+                SignupTermsState(version = termsApi.fetch().requiredVersion)
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (_: Exception) {
+                SignupTermsState(hasError = true)
+            }
+            if (sequence == signupTermsSequence && _state.value.stage == stage) {
+                _state.update { it.copy(signupTerms = result) }
+            }
+        }
+    }
+
+    fun acceptSignupTerms(accepted: Boolean) = _state.update {
+        if (it.signupTerms.version == null || it.isLoading) it
+        else it.copy(signupTerms = it.signupTerms.copy(accepted = accepted))
     }
 
     fun login(email: String, password: String) {
@@ -167,42 +212,66 @@ class AuthController(
         }
     }
 
-    fun register(email: String, password: String, displayName: String, gender: PlayerGender) {
-        if (_state.value.isLoading) return
-        scope.launch { contentEntryConsent.begin { version ->
-            _state.update { it.copy(isLoading = true, error = null) }
-            try {
-                val response = withHumanVerification(HumanVerificationAction.REGISTER) { token ->
-                    api.register(email, password, displayName, devicePlatform, gender, version, token)
-                }
-                persist(email, displayName.trim(), response)
-                if (!response.emailVerified) requestEmailVerification(challenge = false)
-            } catch (_: HumanVerificationCancelledException) {
-                _state.update { it.copy(isLoading = false) }
-            } catch (error: Exception) { showError(error); throw error }
-        } }
+    fun register(email: String, password: String, displayName: String, gender: PlayerGender, referralCode: String? = null) {
+        submitSignup(email, HumanVerificationAction.REGISTER) { version, token ->
+            api.register(email, password, displayName, devicePlatform, gender, version, token, referralCode)
+        }
     }
 
-    fun upgradeGuest(email: String, password: String) {
+    suspend fun loadReferralSummary(ownerId: String): com.hienthai.fastowin.protocol.ReferralSummary {
+        suspend fun token(forceRefresh: Boolean): String {
+            check(state.value.session?.userId == ownerId)
+            return checkNotNull(validAccessToken(forceRefresh)).also {
+                check(state.value.session?.userId == ownerId)
+            }
+        }
+        return try {
+            api.referralSummary(token(false))
+        } catch (error: AuthApiException) {
+            if (error.httpStatus != 401) throw error
+            api.referralSummary(token(true))
+        }
+    }
+
+    fun upgradeGuest(email: String, password: String, referralCode: String? = null) {
         if (_state.value.isLoading) return
         val resumeToken = resumeTokenStore.load(serverUrl)
         if (resumeToken == null) {
             _state.update { it.copy(error = messageMapper.text(TextKey.GuestSessionMissing)) }
             return
         }
-        scope.launch { contentEntryConsent.begin { version ->
-            _state.update { it.copy(isLoading = true, error = null) }
+        submitSignup(email, HumanVerificationAction.UPGRADE_GUEST) { version, token ->
+            api.upgradeGuest(resumeToken, email, password, devicePlatform, version, token, referralCode)
+        }
+    }
+
+    private fun submitSignup(
+        email: String,
+        action: HumanVerificationAction,
+        submit: suspend (version: String, token: String?) -> AuthSessionResponse
+    ) {
+        val current = _state.value
+        val version = current.signupTerms.acceptedVersion ?: return
+        if (current.isLoading) return
+        val epoch = loginEpoch
+        _state.update { it.copy(isLoading = true, error = null) }
+        scope.launch {
             try {
-                val response = withHumanVerification(HumanVerificationAction.UPGRADE_GUEST) { token ->
-                    api.upgradeGuest(resumeToken, email, password, devicePlatform, version, token)
-                }
+                val response = withHumanVerification(action) { token -> submit(version, token) }
+                if (epoch != loginEpoch || _state.value.stage != current.stage) return@launch
                 persist(email, response.displayName, response)
-                resumeTokenStore.clear(serverUrl)
-                if (!response.emailVerified) requestEmailVerification(challenge = false)
-            } catch (_: HumanVerificationCancelledException) {
-                _state.update { it.copy(isLoading = false) }
-            } catch (error: Exception) { showError(error); throw error }
-        } }
+                if (action == HumanVerificationAction.UPGRADE_GUEST) resumeTokenStore.clear(serverUrl)
+                if (_state.value.stage == AuthStage.VERIFY_EMAIL) requestEmailVerification(challenge = false)
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (error: Exception) {
+                if (epoch != loginEpoch || _state.value.stage != current.stage) return@launch
+                showError(error)
+                if (error is AuthApiException && error.code in setOf("CONTENT_TERMS_REQUIRED", "CONTENT_TERMS_VERSION_INVALID")) {
+                    loadSignupTerms()
+                }
+            }
+        }
     }
 
     suspend fun validAccessToken(forceRefresh: Boolean = false): String? {
@@ -266,14 +335,15 @@ class AuthController(
                     store.load(serverUrl)?.takeIf { refreshed.sameGeneration(it) } ?: return@mapCatching null
                 } else refreshed
                 _state.update {
+                    val stage = when (it.stage) {
+                        AuthStage.PLAYING, AuthStage.VERIFY_EMAIL ->
+                            if (saved.emailVerified || saved.supportEmailVerificationExempt) AuthStage.PLAYING else AuthStage.VERIFY_EMAIL
+                        else -> it.stage
+                    }
                     it.copy(
                         session = saved,
-                        stage = when (it.stage) {
-                            AuthStage.PLAYING, AuthStage.VERIFY_EMAIL ->
-                                if (saved.emailVerified || saved.supportEmailVerificationExempt) AuthStage.PLAYING else AuthStage.VERIFY_EMAIL
-                            else -> it.stage
-                        },
-                        isLoading = false,
+                        stage = stage,
+                        isLoading = it.isLoading && it.stage == AuthStage.VERIFY_EMAIL && stage == AuthStage.VERIFY_EMAIL,
                         error = null
                     )
                 }
@@ -390,46 +460,160 @@ class AuthController(
      * through on the sign-up challenge, and asks again (handled below) only if it was already used.
      */
     fun requestEmailVerification(challenge: Boolean = true) {
-        if (_state.value.isLoading || _state.value.session == null) return
-        _state.update { it.copy(isLoading = true, error = null, notice = null) }
+        val previous = _state.value
+        if (previous.stage != AuthStage.VERIFY_EMAIL || previous.isLoading) return
+        val expected = currentOwnership() ?: return
+        _state.update {
+            it.copy(isLoading = true, error = null, notice = null,
+                verificationDelivery = VerificationDelivery.SENDING, verificationDeliveryError = null)
+        }
         scope.launch {
-            val accessToken = actionAccessToken(::showError) ?: return@launch
-            val expected = sessionForAccessToken(accessToken) ?: return@launch
-            runCatching {
-                withHumanVerification(HumanVerificationAction.EMAIL_VERIFICATION, eager = challenge) { token ->
+            var refreshAddress = false
+            try {
+                val accessToken = validAccessToken() ?: return@launch
+                if (!ownsLogin(expected) || _state.value.stage != AuthStage.VERIFY_EMAIL) return@launch
+                val response = withHumanVerification(HumanVerificationAction.EMAIL_VERIFICATION, eager = challenge) { token ->
                     api.requestEmailVerification(accessToken, messageMapper.language.languageTag, token)
                 }
-            }
-                .onSuccess { response ->
-                    if (response.emailVerified == true) {
-                        completeEmailVerification(messageMapper.message(response), expected)
-                    } else {
-                        _state.update {
-                            it.copy(
-                                isLoading = false,
-                                notice = messageMapper.message(response),
-                                devEmailVerificationCode = response.devEmailVerificationCode,
-                                error = null
-                            )
-                        }
+                if (!ownsLogin(expected)) return@launch
+                if (response.emailVerified == true) {
+                    completeEmailVerification(messageMapper.message(response), expected)
+                } else {
+                    _state.update {
+                        it.copy(
+                            verificationDelivery = VerificationDelivery.SENT,
+                            devEmailVerificationCode = response.devEmailVerificationCode,
+                            verificationSendCount = it.verificationSendCount + 1
+                        )
                     }
                 }
-                .onFailure(::showError)
+            } catch (_: HumanVerificationCancelledException) {
+                if (ownsLogin(expected)) _state.update {
+                    it.copy(verificationDelivery = previous.verificationDelivery,
+                        verificationDeliveryError = previous.verificationDeliveryError)
+                }
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (error: Exception) {
+                val code = (error as? AuthApiException)?.code
+                refreshAddress = code == "EMAIL_VERIFICATION_SUPERSEDED"
+                if (ownsLogin(expected)) _state.update {
+                    it.copy(
+                        verificationDelivery = VerificationDelivery.FAILED,
+                        verificationDeliveryError = when (code) {
+                            "RATE_LIMITED", "TOO_MANY_REQUESTS", "HUMAN_VERIFICATION_FAILED",
+                            "HUMAN_VERIFICATION_UNAVAILABLE", "EMAIL_VERIFICATION_SUPERSEDED" -> errorMessage(error)
+                            else -> null
+                        }
+                    )
+                }
+            } finally {
+                if (ownsLogin(expected) && _state.value.stage == AuthStage.VERIFY_EMAIL) {
+                    _state.update {
+                        it.copy(isLoading = false, verificationDelivery =
+                            if (it.verificationDelivery == VerificationDelivery.SENDING) previous.verificationDelivery
+                            else it.verificationDelivery)
+                    }
+                    if (refreshAddress) refreshPendingEmailVerification()
+                }
+            }
         }
     }
 
     fun confirmEmailVerification(verificationCode: String) {
-        if (_state.value.isLoading || _state.value.session == null) return
+        val expected = currentOwnership() ?: return
+        if (_state.value.isLoading || _state.value.stage != AuthStage.VERIFY_EMAIL) return
         _state.update { it.copy(isLoading = true, error = null, notice = null) }
         scope.launch {
-            val accessToken = actionAccessToken(::showError) ?: return@launch
-            val expected = sessionForAccessToken(accessToken) ?: return@launch
-            runCatching { api.confirmEmailVerification(accessToken, verificationCode) }
-                .onSuccess { response ->
-                    completeEmailVerification(messageMapper.message(response), expected)
+            try {
+                val accessToken = validAccessToken() ?: return@launch
+                if (!ownsLogin(expected) || _state.value.stage != AuthStage.VERIFY_EMAIL) return@launch
+                val response = api.confirmEmailVerification(accessToken, verificationCode)
+                completeEmailVerification(messageMapper.message(response), expected)
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (error: Exception) {
+                if (ownsLogin(expected)) {
+                    showError(error)
+                    if (error !is AuthApiException || error.code == "INVALID_VERIFICATION_CODE" ||
+                        (error.httpStatus ?: 0) >= 500
+                    ) refreshPendingEmailVerification()
                 }
-                .onFailure(::showError)
+            } finally {
+                if (ownsLogin(expected) && _state.value.stage == AuthStage.VERIFY_EMAIL) {
+                    _state.update { it.copy(isLoading = false) }
+                }
+            }
         }
+    }
+
+    fun changePendingEmail(email: String) {
+        val expected = currentOwnership() ?: return
+        if (_state.value.isLoading || _state.value.stage != AuthStage.VERIFY_EMAIL) return
+        _state.update { it.copy(isLoading = true, error = null) }
+        scope.launch {
+            var sendNewCode = false
+            try {
+                val accessToken = validAccessToken() ?: return@launch
+                if (!ownsLogin(expected) || _state.value.stage != AuthStage.VERIFY_EMAIL) return@launch
+                val response = api.changePendingEmail(accessToken, email)
+                sendNewCode = applyPendingEmailVerification(response, expected) && !response.emailVerified
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (error: Exception) {
+                if (ownsLogin(expected)) {
+                    showError(error)
+                    if (error !is AuthApiException || error.code == "EMAIL_ALREADY_VERIFIED" ||
+                        (error.httpStatus ?: 0) >= 500
+                    ) refreshPendingEmailVerification()
+                }
+            } finally {
+                if (ownsLogin(expected) && _state.value.stage == AuthStage.VERIFY_EMAIL) {
+                    _state.update { it.copy(isLoading = false) }
+                    if (sendNewCode) requestEmailVerification(challenge = false)
+                }
+            }
+        }
+    }
+
+    fun refreshPendingEmailVerification() {
+        val current = _state.value
+        if (current.stage != AuthStage.VERIFY_EMAIL || current.isLoading) return
+        val expected = currentOwnership() ?: return
+        scope.launch {
+            try {
+                val accessToken = validAccessToken() ?: return@launch
+                if (!ownsLogin(expected) || _state.value.stage != AuthStage.VERIFY_EMAIL) return@launch
+                val response = api.pendingEmailVerification(accessToken)
+                val latest = _state.value
+                if (latest.stage == AuthStage.VERIFY_EMAIL && !latest.isLoading &&
+                    latest.session?.email == current.session?.email
+                ) applyPendingEmailVerification(response, expected)
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (_: Exception) {
+                // The saved session still allows entering an existing code or requesting another.
+            }
+        }
+    }
+
+    private fun applyPendingEmailVerification(
+        response: PendingEmailVerificationResponse,
+        expected: LoginOwnership
+    ): Boolean {
+        if (!ownsLogin(expected)) return false
+        val current = _state.value.session ?: return false
+        if (response.emailVerified) {
+            completeEmailVerification(messageMapper.text(TextKey.EmailVerified), expected, response.email)
+            return true
+        }
+        if (current.email == response.email) return true
+        val updated = updateSessionMetadata(expected) { it.copy(email = response.email) } ?: return false
+        _state.update {
+            it.copy(session = updated, error = null, notice = null, devEmailVerificationCode = null,
+                verificationDelivery = VerificationDelivery.UNKNOWN, verificationDeliveryError = null)
+        }
+        return true
     }
 
     fun changePassword(currentPassword: String, newPassword: String) {
@@ -564,7 +748,6 @@ class AuthController(
         loginEpoch++
         closed = true
         diagnostics.emit(AuthDiagnosticPhase.CONTROLLER_CLOSED)
-        contentEntryConsent.dismiss()
         pendingHumanVerification?.complete(null)
         termsApi.close()
         api.close()
@@ -684,8 +867,8 @@ class AuthController(
         }
     }
 
-    private fun completeEmailVerification(message: String, expected: LoginOwnership) {
-        val verified = updateSessionMetadata(expected) { it.copy(emailVerified = true) } ?: return
+    private fun completeEmailVerification(message: String, expected: LoginOwnership, email: String? = null) {
+        val verified = updateSessionMetadata(expected) { it.copy(email = email ?: it.email, emailVerified = true) } ?: return
         _state.value = AuthState(
             stage = AuthStage.PLAYING,
             session = verified,
