@@ -183,11 +183,23 @@ jobs:
           "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" "platforms;android-37.0" "build-tools;36.1.0"
 
       - name: Validate 2D Arcade screenshots
-        run: >-
-          ./gradlew
-          :app:validateDevDebugScreenshotTest
-          --no-daemon
-          --no-configuration-cache
+        shell: bash
+        run: |
+          args=(:app:validateDevDebugScreenshotTest --no-daemon --no-configuration-cache)
+          log="$RUNNER_TEMP/android-screenshot-gradle.log"
+          if ./gradlew "${args[@]}" 2>&1 | tee "$log"; then
+            exit 0
+          else
+            status=$?
+          fi
+
+          if ! grep -Fq "could not resolve plugin artifact 'org.gradle.toolchains.foojay-resolver-convention:" "$log"; then
+            exit "$status"
+          fi
+
+          echo '::warning::Gradle could not resolve the Foojay plugin. Retrying screenshot validation once.'
+          sleep 5
+          ./gradlew "${args[@]}" --refresh-dependencies
 
       - name: Upload screenshot report and comparison images
         if: always()
