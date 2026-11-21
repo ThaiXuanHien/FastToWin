@@ -24,7 +24,7 @@ concurrency:
 jobs:
   testflight:
     name: Archive and upload to TestFlight
-    runs-on: macos-latest
+    runs-on: xcode-27
     timeout-minutes: 60
     env:
       TEAM_ID: Y4S52B8V9C
@@ -77,6 +77,19 @@ jobs:
             CODE_SIGN_STYLE=Automatic \
             MARKETING_VERSION="${{ inputs.marketing_version }}" \
             CURRENT_PROJECT_VERSION="$BUILD_NUMBER"
+
+      - name: Verify iOS SDK in the release archive
+        run: |
+          archive="$RUNNER_TEMP/FastToWin.xcarchive"
+          app_path=$(/usr/libexec/PlistBuddy -c 'Print :ApplicationProperties:ApplicationPath' "$archive/Info.plist")
+          sdk=$(/usr/libexec/PlistBuddy -c 'Print :DTSDKName' "$archive/Products/$app_path/Info.plist")
+
+          if [[ ! "$sdk" =~ ^iphoneos([0-9]+)(\.[0-9]+)*$ ]] || (( BASH_REMATCH[1] < 27 )); then
+            echo "::error::Expected an iOS 27 or later SDK in the release archive, got '$sdk'."
+            exit 1
+          fi
+
+          echo "Release archive SDK: $sdk" >> "$GITHUB_STEP_SUMMARY"
 
       - name: Export and upload to App Store Connect
         run: |
