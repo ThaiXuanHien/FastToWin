@@ -376,7 +376,7 @@ jobs:
 
   ios-build:
     name: iOS simulator build
-    runs-on: macos-latest
+    runs-on: xcode-27
     timeout-minutes: 30
 
     steps:
@@ -393,6 +393,11 @@ jobs:
         uses: gradle/actions/setup-gradle@v6
         with:
           cache-provider: basic
+
+      - name: Show iOS build tools
+        run: |
+          xcodebuild -version
+          xcrun --sdk iphonesimulator --show-sdk-version
 
       - name: Build iOS simulator app
         run: |
