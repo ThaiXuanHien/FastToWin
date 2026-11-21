@@ -51,7 +51,7 @@ class UgcEntryConsentTest {
         assertNull(consent.state.value.terms)
     }
     @Test fun `legal links use the trusted public terms pages for selected language`() {
-        assertEquals("https://fasttowin.up.railway.app/terms", contentTermsLegalUrl(AppLanguage.VIETNAMESE))
-        assertEquals("https://fasttowin.up.railway.app/terms/en", contentTermsLegalUrl(AppLanguage.ENGLISH))
+        assertEquals("https://fasttowin.xyz/terms", contentTermsLegalUrl(AppLanguage.VIETNAMESE))
+        assertEquals("https://fasttowin.xyz/terms/en", contentTermsLegalUrl(AppLanguage.ENGLISH))
     }
 }

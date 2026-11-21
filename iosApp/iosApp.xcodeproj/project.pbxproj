@@ -263,7 +263,7 @@
 					"$(inherited)",
 					"$(SRCROOT)/../shared/build/xcode-frameworks/$(CONFIGURATION)/$(SDK_NAME)",
 				);
-				FASTTOWIN_PUBLIC_HOST = fasttowin.up.railway.app;
+				FASTTOWIN_PUBLIC_HOST = fasttowin.xyz;
 				GAME_SERVER_URL = "wss://$(FASTTOWIN_PUBLIC_HOST)/game";
 				INFOPLIST_FILE = iosApp/Info.plist;
 				IPHONEOS_DEPLOYMENT_TARGET = 15.0;
