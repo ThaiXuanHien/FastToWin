@@ -22,6 +22,7 @@ fun protocolTextKeyForCode(code: String): TextKey? = when (code) {
     "HOST_REQUIRED", "NOT_CLAN_OWNER" -> TextKey.ServerHostRequired
     "MODE_LOCKED", "COSMETIC_LOCKED", "AVATAR_LOCKED" -> TextKey.ServerModeLocked
     "NOT_ENOUGH_GOLD" -> TextKey.ServerNotEnoughGold
+    "INVALID_TOURNAMENT_ENTRY_FEE" -> TextKey.TournamentEntryFeeMustBePositive
     "TOURNAMENT_NOT_PUBLIC" -> TextKey.ServerTournamentNotPublic
     "TOURNAMENT_FULL" -> TextKey.ServerTournamentFull
     "TOURNAMENT_ALREADY_STARTED" -> TextKey.ServerTournamentClosed

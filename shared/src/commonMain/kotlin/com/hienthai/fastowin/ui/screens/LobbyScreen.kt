@@ -465,9 +465,11 @@ private fun RoomBrowser(
     var searchQuery by remember { mutableStateOf("") }
     var matchTypeFilter by remember { mutableStateOf<MatchType?>(null) }
     val filteredRooms = remember(state.availableRooms, searchQuery, matchTypeFilter) {
+        val query = searchQuery.trim()
         state.availableRooms.filter { room ->
-            (searchQuery.isBlank() || room.name.contains(searchQuery.trim(), ignoreCase = true) ||
-                room.hostName.contains(searchQuery.trim(), ignoreCase = true)) &&
+            room.gameMode != GameMode.TEAM_2V2 &&
+                (query.isEmpty() || room.name.contains(query, ignoreCase = true) ||
+                    room.hostName.contains(query, ignoreCase = true)) &&
                 (matchTypeFilter == null || room.matchType == matchTypeFilter)
         }
     }

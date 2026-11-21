@@ -300,7 +300,7 @@ jobs:
           mkdir -p ../.tmp
           printf '%s' 'fasttowin' > ../.tmp/web-e2e-password.txt
           node --input-type=module -e "import {writeFileSync} from 'node:fs'; import {resolve} from 'node:path'; writeFileSync('../.tmp/web-e2e-settings.json', JSON.stringify({url:'jdbc:postgresql://127.0.0.1:15432/admin_test',user:'fasttowin',passwordFile:resolve('../.tmp/web-e2e-password.txt')}));"
-          E2E_POSTGRES_SETTINGS=../.tmp/web-e2e-settings.json pnpm exec playwright test --project=chromium-wallet --project=chromium-report-postgres --project=webkit-report-postgres
+          E2E_POSTGRES_SETTINGS=../.tmp/web-e2e-settings.json pnpm exec playwright test --project=chromium-wallet --project=chromium-tournament --project=chromium-report-postgres --project=webkit-report-postgres
 
       - name: Upload Web E2E report and failure diagnostics
         if: always()

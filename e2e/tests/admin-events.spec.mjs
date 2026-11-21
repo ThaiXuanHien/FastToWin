@@ -71,11 +71,19 @@ test('cancel confirmation pending guard and retry preserve payload', async ({ pa
   await open(page, fixture); await detail(page); await page.getByRole('button', { name: 'Hủy sự kiện', exact: true }).click(); await page.getByLabel('Lý do hủy', { exact: true }).fill('Local cancel'); await page.getByRole('button', { name: 'Xác nhận hủy sự kiện', exact: true }).click(); await expect.poll(() => typeof release).toBe('function'); await page.keyboard.press('Escape'); await expect(page.getByRole('dialog')).toBeVisible(); release(); await expect(page.getByRole('alert')).toContainText('Chưa xác nhận');
   fixture.handlers.set(target, async (_, send) => { send(200, eventView({ state: 'CANCELLED', version: 4 })); return true; }); await page.getByRole('button', { name: 'Xác nhận hủy sự kiện', exact: true }).click(); await expect(page.locator('.confirmation')).toContainText('Đã hủy'); const calls = fixture.calls.filter(c => c.route === target); expect(calls[0].body).toEqual(calls[1].body);
 });
-test('eight holiday suggestions stay editable drafts with manual Gregorian year and lunar dates', async ({ page, fixture }) => {
+test('holiday suggestions preserve the manually entered event names', async ({ page, fixture }) => {
   events(fixture); await open(page, fixture); await page.getByRole('button', { name: 'Tạo sự kiện', exact: true }).click();
+  const nameVi = page.getByLabel('Tên tiếng Việt', { exact: true });
+  const nameEn = page.getByLabel('Tên tiếng Anh', { exact: true });
+  await expect(nameVi).toHaveValue('');
+  await expect(nameEn).toHaveValue('');
+  await nameVi.fill('Cuối tuần Vàng');
+  await nameEn.fill('Gold Weekend');
   const preset = page.getByLabel('Gợi ý ngày lễ', { exact: true }); expect(await preset.locator('option').count()).toBe(9);
   await preset.selectOption('lunar'); await expect(page.getByLabel('Bắt đầu (UTC, bao gồm)', { exact: true })).toHaveValue(''); await expect(page.getByRole('dialog')).toContainText('Gregorian');
   await preset.selectOption('christmas'); await page.getByLabel('Năm ngày lễ', { exact: true }).fill('2028'); await page.getByRole('button', { name: 'Áp dụng gợi ý', exact: true }).click(); await expect(page.getByLabel('Bắt đầu (UTC, bao gồm)', { exact: true })).toHaveValue('2028-12-24T00:00'); await expect(page.getByLabel('Kết thúc (UTC, không bao gồm)', { exact: true })).toHaveValue('2028-12-26T00:00'); expect(fixture.calls.filter(c => c.method === 'POST' && c.route.startsWith(eventPath))).toHaveLength(0);
+  await expect(nameVi).toHaveValue('Cuối tuần Vàng');
+  await expect(nameEn).toHaveValue('Gold Weekend');
 });
 for (const exit of ['view', 'logout', 'role', 'expiry']) test(`late API/session fence ${exit}`, async ({ page, fixture }) => {
   events(fixture); await open(page, fixture); await expect(page.locator('.event-row')).toBeVisible(); let release;

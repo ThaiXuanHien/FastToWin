@@ -156,10 +156,10 @@ class MaintenanceGameEngineTest {
         val tournaments = InMemoryTournamentRepository(); val rooms = InMemoryActiveRoomRepository()
         val results = mutableListOf<CompletedMatch>()
         val engine = GameEngine(tournamentRepository = tournaments, activeRoomRepository = rooms,
-            matchResultRepository = MatchResultRepository { results += it })
+            matchResultRepository = MatchResultRepository { results += it }, playerProfileRepository = TournamentTestWallet)
         val players = List(4) { engine.connectAccount(AuthenticatedAccount(UUID.randomUUID(), "p$it")) }
         val tournament = engine.handle(players[0].playerId, ClientMessage.CreateTournament("cup", ProtocolGameMode.ORDER,
-            0, 4, TournamentVisibility.PUBLIC)).map { it.message }.filterIsInstance<ServerMessage.TournamentUpdated>().single().tournament
+            1, 4, TournamentVisibility.PUBLIC)).map { it.message }.filterIsInstance<ServerMessage.TournamentUpdated>().single().tournament
         players.drop(1).forEach { engine.handle(it.playerId, ClientMessage.JoinPublicTournament(tournament.tournamentId)) }
         val games = engine.handle(players[0].playerId, ClientMessage.StartTournament(tournament.tournamentId))
             .map { it.message }.filterIsInstance<ServerMessage.GameStarted>().map { it.game }

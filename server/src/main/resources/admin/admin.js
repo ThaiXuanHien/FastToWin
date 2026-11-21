@@ -75,7 +75,6 @@ function icon(name) {
     missions: 'M4 3h16v18H4z M8 8l2 2 4-4 M8 15h8',
     clanRace: 'M8 3h8v6a4 4 0 0 1-8 0z M8 5H4v3a4 4 0 0 0 4 4 M16 5h4v3a4 4 0 0 1-4 4 M12 13v5 M7 21h10 M9 18h6',
     events: 'M3 4h18v18H3z M16 2v4 M8 2v4 M3 10h18 M12 12.5l.8 1.6 1.8.3-1.3 1.3.3 1.8-1.6-.8-1.6.8.3-1.8-1.3-1.3 1.8-.3z',
-    compensation: 'M11 15l2 2a1 1 0 0 0 1.4 0l4.3-4.3a1 1 0 0 0 0-1.4l-2.6-2.6a1 1 0 0 0-1.4 0l-1.3 1.3 M13 9.5l-2.3-2.3a1 1 0 0 0-1.4 0l-4.3 4.3a1 1 0 0 0 0 1.4l2 2 M18 10l3-3a2.1 2.1 0 0 0-3-3l-2.5 2.5 M6 14.5l-3 3a2.1 2.1 0 0 0 3 3l2.5-2.5',
     moderation: 'M5 3h14v11l-7 7-7-7V3ZM9 11l2 2 4-4',
     announcements: 'M3 11l18-5v12L3 14v-3z M11.6 16.8a3 3 0 1 1-5.8-1.6',
     coin: 'M21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0ZM12 7v10M15 9h-4a2 2 0 0 0 0 4h2a2 2 0 0 1 0 4H9',
@@ -355,7 +354,6 @@ function shell(title, section) {
   if (session.admin.role !== 'SUPPORT') links.push(['events', 'Sự kiện thưởng', rewardEvents]);
   if (session.admin.role !== 'SUPPORT') links.push(['missions', 'Nhiệm vụ', missions]);
   if (session.admin.role !== 'SUPPORT') links.push(['clanRace', 'Đua top bang', clanRace]);
-  links.push(['compensation', 'Đền bù', compensation]);
   links.push(['announcements', 'Thông báo', announcements]);
   links.push(['moderation', 'Kiểm duyệt', moderation]);
   if (session.admin.role === 'OWNER') links.push(['accounts', 'Tài khoản quản trị', accounts], ['audit', 'Nhật ký kiểm toán', audit]);
@@ -455,19 +453,6 @@ async function clanRace() {
       api: (path, request, payload, method) => api(path, request, payload, session?.csrfToken, method),
     });
   } catch (error) { if (task.current() && error.name !== 'AbortError') notices.fail(new Error('Không thể tải tuần đua. Vui lòng thử lại.')); }
-  finally { pending.delete(task.controller); }
-}
-async function compensation() {
-  if (!session) return;
-  const { task, notices } = beginNavigation('Đền bù', 'compensation');
-  try {
-    const { openCompensation } = await import('./admin-compensation.js');
-    if (!task.current() || !session) return;
-    openCompensation({ node, append, button, icon, iconButton, field, modal, feedback, shell, channel,
-      role: () => session?.admin.role,
-      api: (path, request, payload, method) => api(path, request, payload, session?.csrfToken, method),
-    });
-  } catch (error) { if (task.current() && error.name !== 'AbortError') notices.fail(new Error('Không thể tải đền bù. Vui lòng thử lại.')); }
   finally { pending.delete(task.controller); }
 }
 async function announcements() {

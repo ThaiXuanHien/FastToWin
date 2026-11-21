@@ -17,7 +17,7 @@ class AdminAssetsTest {
     @Test fun `enabled console serves only named resources with browser security headers`() = testApplication {
         val fixture = AdminFixture()
         application { gameModule(adminService = fixture.service) }
-        for ((path, type) in listOf("/admin/" to "text/html", "/admin/index.html" to "text/html", "/admin/admin.css" to "text/css", "/admin/admin.js" to "application/javascript", "/admin/admin-network.js" to "application/javascript", "/admin/admin-gifts.js" to "application/javascript", "/admin/admin-analytics.js" to "application/javascript", "/admin/admin-missions.js" to "application/javascript", "/admin/admin-clan-race.js" to "application/javascript", "/admin/admin-events.js" to "application/javascript", "/admin/admin-announcements.js" to "application/javascript", "/admin/admin-compensation.js" to "application/javascript")) {
+        for ((path, type) in listOf("/admin/" to "text/html", "/admin/index.html" to "text/html", "/admin/admin.css" to "text/css", "/admin/admin.js" to "application/javascript", "/admin/admin-network.js" to "application/javascript", "/admin/admin-gifts.js" to "application/javascript", "/admin/admin-analytics.js" to "application/javascript", "/admin/admin-missions.js" to "application/javascript", "/admin/admin-clan-race.js" to "application/javascript", "/admin/admin-events.js" to "application/javascript", "/admin/admin-announcements.js" to "application/javascript")) {
             val response = client.get(path)
             assertEquals(HttpStatusCode.OK, response.status, path)
             assertTrue(response.bodyAsText().isNotBlank())
@@ -32,7 +32,7 @@ class AdminAssetsTest {
             assertFalse(csp.contains("unsafe-inline"))
             assertFalse(csp.contains("unsafe-eval"))
         }
-        for (path in listOf("/admin/unknown.js", "/admin/AdminModels.kt", "/admin/../application.conf", "/admin/%2e%2e/application.conf", "/admin/sub/index.html")) {
+        for (path in listOf("/admin/unknown.js", "/admin/admin-compensation.js", "/admin/AdminModels.kt", "/admin/../application.conf", "/admin/%2e%2e/application.conf", "/admin/sub/index.html")) {
             assertEquals(HttpStatusCode.NotFound, client.get(path).status, path)
         }
         assertEquals(HttpStatusCode.Unauthorized, client.get("/admin/api/accounts").status)

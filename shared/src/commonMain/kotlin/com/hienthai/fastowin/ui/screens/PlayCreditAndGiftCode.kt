@@ -3,11 +3,13 @@ package com.hienthai.fastowin.ui.screens
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.semantics.LiveRegionMode
 import androidx.compose.ui.semantics.liveRegion
 import androidx.compose.ui.semantics.semantics
@@ -126,10 +128,27 @@ private fun PlayCreditBalance(label: TextKey, amount: Number?, modifier: Modifie
 @Composable
 internal fun GiftCodeEntry(redeem: (suspend (String) -> GiftCodeRedeemResult)?) {
     val scope = rememberCoroutineScope()
+    val focusManager = LocalFocusManager.current
     var code by remember { mutableStateOf("") }
     var pending by remember { mutableStateOf(false) }
-    var notice by remember { mutableStateOf<TextKey?>(null) }
+    var redemptionError by remember { mutableStateOf<TextKey?>(null) }
     var receivedReward by remember { mutableStateOf<GiftCodeReward?>(null) }
+    redemptionError?.let { error ->
+        val dismiss = { redemptionError = null }
+        ArcadeDialog(
+            title = localized(TextKey.GiftCode),
+            onDismissRequest = dismiss,
+            fixedActions = {
+                ArcadeActionButton(
+                    label = localized(TextKey.Understood),
+                    onClick = dismiss,
+                    modifier = Modifier.fillMaxWidth()
+                )
+            }
+        ) {
+            Text(localized(error), style = MaterialTheme.typography.bodyMedium)
+        }
+    }
     receivedReward?.let { reward ->
         RewardReceiptDialog(
             RewardReceiptAmounts(
@@ -144,7 +163,7 @@ internal fun GiftCodeEntry(redeem: (suspend (String) -> GiftCodeRedeemResult)?) 
     Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
         OutlinedTextField(
             value = code,
-            onValueChange = { if (it.length <= 24) { code = it; notice = null; receivedReward = null } },
+            onValueChange = { if (it.length <= 24) code = it },
             label = { Text(localized(TextKey.GiftCode)) },
             modifier = Modifier.fillMaxWidth(),
             enabled = !pending,
@@ -156,16 +175,15 @@ internal fun GiftCodeEntry(redeem: (suspend (String) -> GiftCodeRedeemResult)?) 
             enabled = redeem != null && !pending && code.trim().length >= 4,
             onClick = {
                 if (pending || redeem == null) return@ArcadeActionButton
+                focusManager.clearFocus()
                 pending = true
-                notice = null
-                receivedReward = null
                 scope.launch {
                     try {
                         receivedReward = redeem(code).reward
                     } catch (error: CancellationException) {
                         throw error
                     } catch (error: Exception) {
-                        notice = when ((error as? GiftApiException)?.code) {
+                        redemptionError = when ((error as? GiftApiException)?.code) {
                             "GIFT_CODE_ALREADY_USED" -> TextKey.GiftCodeAlreadyUsed
                             "GIFT_CODE_EXPIRED" -> TextKey.GiftCodeExpired
                             "GIFT_CODE_EXHAUSTED" -> TextKey.GiftCodeExhausted
@@ -180,6 +198,5 @@ internal fun GiftCodeEntry(redeem: (suspend (String) -> GiftCodeRedeemResult)?) 
                 }
             }
         )
-        notice?.let { Text(localized(it), Modifier.semantics { liveRegion = LiveRegionMode.Polite }) }
     }
 }

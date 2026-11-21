@@ -28,20 +28,8 @@ class TournamentScheduleTest {
         assertEquals("00:00", tournamentCountdown(-1))
     }
 
-    @Test fun `local schedule converts selected zone and rejects invalid or normalized gap times`() {
-        assertEquals(1_792_040_400_000, parseTournamentSchedule("2026-10-15 12:00", "Asia/Bangkok").getOrThrow().startsAtEpochMillis)
-        assertEquals("UTC", parseTournamentSchedule("2026-10-15 12:00", " UTC ").getOrThrow().timeZoneId)
-        assertTrue(parseTournamentSchedule("2026-10-15", "UTC").isFailure)
-        assertTrue(parseTournamentSchedule("2026-13-15 12:00", "UTC").isFailure)
-        assertTrue(parseTournamentSchedule("2026-10-15 12:00", "Invalid/Zone").isFailure)
-        assertTrue(parseTournamentSchedule("2026-03-08 02:30", "America/New_York").isFailure)
-    }
-
-    @Test fun `summary preserves named zone and the fifteen minute interval`() {
-        val request = parseTournamentSchedule("2026-10-15 12:00", "Asia/Bangkok").getOrThrow()
-        val snapshot = request.toScheduleSnapshot()
-        assertEquals(request.startsAtEpochMillis - 900_000, snapshot.registrationClosesAtEpochMillis)
-        assertEquals(snapshot.registrationClosesAtEpochMillis, snapshot.checkInOpensAtEpochMillis)
-        assertEquals("2026-10-15 12:00", tournamentLocalDateTime(snapshot.startsAtEpochMillis, snapshot.timeZoneId))
+    @Test fun `summary shows the scheduled time in the named zone`() {
+        assertEquals("2026-10-15 12:00", tournamentLocalDateTime(1_792_040_400_000, "Asia/Bangkok"))
+        assertEquals("2026-10-15 05:00", tournamentLocalDateTime(1_792_040_400_000, "UTC"))
     }
 }

@@ -435,9 +435,9 @@ class RewardEventGameEngineTest {
         val source = MutableSource().apply { fail = true }; val results = mutableListOf<CompletedMatch>()
         val rooms = InMemoryActiveRoomRepository(); val tournaments = InMemoryTournamentRepository()
         val engine = GameEngine(activeRoomRepository = rooms, tournamentRepository = tournaments, eventRewardSource = source,
-            matchResultRepository = MatchResultRepository { results += it })
+            matchResultRepository = MatchResultRepository { results += it }, playerProfileRepository = TournamentTestWallet)
         val ids = (1..4).map { engine.connectAccount(AuthenticatedAccount(UUID.randomUUID(), "player$it")).playerId }
-        val tournament = engine.handle(ids[0], ClientMessage.CreateTournament("Cup", ProtocolGameMode.ORDER, 0, 4, TournamentVisibility.PUBLIC))
+        val tournament = engine.handle(ids[0], ClientMessage.CreateTournament("Cup", ProtocolGameMode.ORDER, 1, 4, TournamentVisibility.PUBLIC))
             .map { it.message }.filterIsInstance<ServerMessage.TournamentUpdated>().single().tournament
         ids.drop(1).forEach { engine.handle(it, ClientMessage.JoinPublicTournament(tournament.tournamentId)) }
         val first = engine.handle(ids[0], ClientMessage.StartTournament(tournament.tournamentId))
@@ -448,7 +448,7 @@ class RewardEventGameEngineTest {
         assertEquals(MatchRewardEventSnapshot(), final.eventRewards)
         // Restart between tournament rounds must retain exclusion without contacting a catalog.
         val restored = GameEngine(activeRoomRepository = rooms, tournamentRepository = tournaments, eventRewardSource = source,
-            matchResultRepository = MatchResultRepository { results += it })
+            matchResultRepository = MatchResultRepository { results += it }, playerProfileRepository = TournamentTestWallet)
         restored.connectAccount(AuthenticatedAccount(UUID.fromString(final.host.playerId), "finalist"))
         finish(restored, final.host.playerId, final.roomId)
         assertEquals(3, results.size); assertTrue(results.all { it.eventRewards == MatchRewardEventSnapshot() }); assertEquals(0, source.calls)

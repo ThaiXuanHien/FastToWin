@@ -32,7 +32,7 @@ class UgcInvitationPushTest {
         val friend = UUID.randomUUID().toString()
         val repository = InMemoryModerationRepository()
         val sent = mutableListOf<LocalizedPushContent>()
-        val profiles = object : PlayerProfileRepository by NoOpPlayerProfileRepository {
+        val profiles = object : PlayerProfileRepository by TournamentTestWallet {
             override suspend fun findByPlayerId(playerId: String) =
                 PlayerProfileSnapshot(playerId, if (playerId == host) "Alex" else "Friend", "code",
                     progression = PlayerProgressionSnapshot(level = 20))
@@ -61,7 +61,7 @@ class UgcInvitationPushTest {
             engine.handle(host, ClientMessage.CreateRoom("Arena", "1234", ProtocolGameMode.ORDER))
                 .map(Delivery::message).filterIsInstance<ServerMessage.RoomCreated>().single().game.roomId
         } else {
-            engine.handle(host, ClientMessage.CreateTournament("Arena", ProtocolGameMode.ORDER,
+            engine.handle(host, ClientMessage.CreateTournament("Arena", ProtocolGameMode.ORDER, entryFee = 1,
                 visibility = TournamentVisibility.PRIVATE))
                 .map(Delivery::message).filterIsInstance<ServerMessage.TournamentUpdated>().single().tournament.tournamentId
         }

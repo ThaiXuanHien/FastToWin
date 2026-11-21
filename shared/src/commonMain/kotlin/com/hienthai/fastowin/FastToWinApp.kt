@@ -1891,8 +1891,7 @@ private fun GameContent(
                 state.isTournamentOpen -> TournamentScreen(
                     state = state,
                     onBack = { navigateBack(controller::closeTournament) },
-                    onCreate = { name, mode, fee, size, visibility -> controller.createTournament(name, mode, fee, size, visibility) },
-                    onCreateScheduled = controller::createTournament,
+                    onCreate = controller::createTournament,
                     onCheckIn = controller::checkInTournament,
                     onPublicFiltersChange = controller::updatePublicTournamentFilters,
                     onRefreshPublic = controller::refreshPublicTournaments,

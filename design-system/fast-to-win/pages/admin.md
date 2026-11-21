@@ -116,15 +116,7 @@ UTC entry fields are explicitly separate from the IANA display timezone and incl
 
 ## Incident compensation
 
-**Đền bù** uses the approved white Material shell and native dialogs. Every current role reads history; Owner/Operator create/edit unpublished incident and round drafts and preview; only Owner confirms publication/cancellation. Keep one primary create, labelled 48px add/view/edit/back/refresh utilities and readable save/cancel/confirmation text.
-
-Separate bilingual player explanation from labelled internal cause/evidence/responsibility. UTC fields include the full year and explain inclusive start/exclusive end. Supplemental preview and confirmation name the explicit round number and internal reason plus three independent previous-payment counts. Show the saved round source, using saved campaign-draft fallback only for legacy replies. Enable ACTIVITY from source capability and explain registered game connections, 90-day history, latest observed freshness and the affected interval. Source availability does not prove complete interval coverage; safe range/source errors block publication. Never imply automatic detection, annual publication, inferred activity targeting or automatic next-round creation on retry.
-
-Amount summaries use Mission's filled MonetizationOn-style gold coin and primary filled star, with light tonal backing, visible exact numbers and accessible Vàng/Kinh nghiệm names. Avoid extra GOLD/XP text in compact pills. Decimal strings go directly to BigInt formatting, including pagination. Published history and incident freeze retain true first-publication evidence after cancellation. Report wording explains overlapping counters and delivery versus payout.
-
-Use a fixed native-dialog header and an independently scrolling form body so close remains reachable at 360px and 200% text. Reset preview content to its top after the response replaces the request form. Preserve focus containment/restoration, pending dismissal guards, same-payload/request-ID retry and current role/session/navigation/dialog fencing. Long copy and UUIDs wrap; motion respects reduced-motion preferences.
-
-Actual settled fixture images (list, incident form, round form, preview, report; modal top/footer) and geometry at 360/768/1024/1440 plus 200% normal/reduced motion live under `.artifacts/admin-compensation-delivery/task4/`. Native modals use viewport captures after animation finishes; avoid full-page dialog compositing. The owned browser/Ktor/PostgreSQL runner and SQL evidence are local acceptance only.
+The **Đền bù** screen has been removed from the admin console. The [historical delivery record](../../../docs/admin-compensation-delivery.md) describes the former interface.
 
 ## Announcements
 

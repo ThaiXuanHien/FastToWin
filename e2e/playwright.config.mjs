@@ -97,7 +97,7 @@ export default defineConfig({
     })) : []),
     {
       name: 'chromium-tournament',
-      testMatch: /tournament-schedule\.spec\.mjs/,
+      testMatch: /tournament-creation\.spec\.mjs/,
       use: { browserName: 'chromium' },
     },
     {

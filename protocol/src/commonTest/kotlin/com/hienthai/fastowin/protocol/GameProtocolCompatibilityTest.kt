@@ -11,6 +11,14 @@ import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 
 class GameProtocolCompatibilityTest {
+    @Test fun `tournament rewards round trip through the server message discriminator`() {
+        for (type in TournamentRewardType.entries) {
+            val message = ServerMessage.TournamentRewardResult("reward-1", "tournament-1", type, 50)
+            val payload = ProtocolJson.encodeToString<ServerMessage>(message)
+            assertEquals(message, ProtocolJson.decodeFromString<ServerMessage>(payload))
+        }
+    }
+
     @Serializable private data class OldNotification(
         val id: String, val kind: NotificationKind, val title: String, val message: String,
         val createdAtEpochMillis: Long, val isRead: Boolean = false,
@@ -40,7 +48,7 @@ class GameProtocolCompatibilityTest {
         val current = ProtocolJson.decodeFromString<ServerMessage>(oldPayload) as ServerMessage.ProfileData
         assertFalse(current.isBackgroundRefresh)
         assertEquals(profile, current.profile)
-        assertEquals(44, PROTOCOL_VERSION)
+        assertEquals(45, PROTOCOL_VERSION)
         assertEquals(38, MIN_COMPATIBLE_PROTOCOL_VERSION)
     }
 
@@ -61,7 +69,7 @@ class GameProtocolCompatibilityTest {
             """{"type":"tournament_hub_data","hub":{}}""") as ServerMessage.TournamentHubData
         assertFalse(legacy.isHistoryRefresh)
         assertEquals(TournamentHubSnapshot(), legacy.hub)
-        assertEquals(44, PROTOCOL_VERSION)
+        assertEquals(45, PROTOCOL_VERSION)
         assertEquals(38, MIN_COMPATIBLE_PROTOCOL_VERSION)
     }
 

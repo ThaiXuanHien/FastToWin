@@ -179,6 +179,43 @@ class PlayCreditsAndGiftCodeUiTest {
     }
 
     @Test
+    fun profileCodeEntryShowsRedemptionErrorsInDismissiblePopups() {
+        val profile = PlayerProfileSnapshot("self", "QA Player", "QA001")
+        val errors = listOf(
+            "GIFT_CODE_ALREADY_USED" to "Tài khoản này đã sử dụng mã.",
+            "GIFT_CODE_EXPIRED" to "Mã đã hết hạn.",
+            "GIFT_CODE_EXHAUSTED" to "Mã đã hết lượt nhận.",
+            "GIFT_CODE_NOT_FOUND" to "Mã quà tặng không hợp lệ.",
+            "NETWORK_ERROR" to "Mất kết nối. Thử lại để kiểm tra quà đã được nhận hay chưa."
+        )
+        val responses = errors.iterator()
+        render {
+            ProfileSectionScreen(
+                state = GameState(profile = profile), profile = profile, section = ProfileSection.GIFT_CODE,
+                isExternalProfile = false, canEdit = true, onBack = {}, onRefresh = {},
+                onOpenMatchDetail = {}, onCloseMatchDetail = {}, onEquipCosmetics = { _, _ -> },
+                onClaimMissionReward = {}, onSave = { _, _ -> }, onOpenNotifications = {},
+                onRedeemGiftCode = { code ->
+                    assertEquals("PLAYWEEK", code)
+                    throw GiftApiException(responses.next().first, "Fixture error")
+                }
+            )
+        }
+        composeRule.onNode(hasSetTextAction()).performTextInput("PLAYWEEK")
+        closeSoftKeyboard()
+        errors.forEach { (error, message) ->
+            composeRule.onNodeWithText("Nhận quà").performScrollTo().performClick()
+            composeRule.onNode(isDialog()).assertIsDisplayed()
+            composeRule.onNode(hasText(message) and hasAnyAncestor(isDialog())).assertIsDisplayed()
+            composeRule.onNodeWithTag("reward_receipt_dialog").assertDoesNotExist()
+            if (error == "GIFT_CODE_ALREADY_USED") capture("gift-code-already-used-popup")
+            composeRule.onNode(hasText("Đã hiểu") and hasAnyAncestor(isDialog())).performClick()
+            composeRule.onNode(isDialog()).assertDoesNotExist()
+            composeRule.onNodeWithText(message).assertDoesNotExist()
+        }
+    }
+
+    @Test
     fun leaderboardPopupUsesExistingFriendActionAndShowsCenteredMetrics() {
         var sentCode: String? = null
         render {

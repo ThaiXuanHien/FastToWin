@@ -1,5 +1,7 @@
 # Incident compensation — local delivery record
 
+This record describes the former admin console screen. The **Đền bù** screen has since been removed.
+
 Approved Issue20 and admin integration Issue21, implemented on `codex/admin-foundation`. This document records local acceptance; GitHub issues remain open until integration/deployment acceptance. No push, merge, production publication or data reset was performed.
 
 ## Behavior

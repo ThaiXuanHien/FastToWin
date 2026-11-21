@@ -27,7 +27,6 @@ import androidx.compose.material.icons.rounded.EmojiEvents
 import androidx.compose.material.icons.rounded.GroupAdd
 import androidx.compose.material.icons.rounded.PlayArrow
 import androidx.compose.material.icons.rounded.CheckCircle
-import androidx.compose.material3.Switch
 import androidx.compose.material.icons.filled.MonetizationOn
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -52,8 +51,6 @@ import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.testTag
-import androidx.compose.ui.semantics.contentDescription
-import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
@@ -69,14 +66,10 @@ import com.hienthai.fastowin.protocol.TournamentMatchPhase
 import com.hienthai.fastowin.protocol.TournamentMatchSnapshot
 import com.hienthai.fastowin.protocol.TournamentPhase
 import com.hienthai.fastowin.protocol.TournamentSnapshot
-import com.hienthai.fastowin.protocol.TournamentScheduleRequest
 import com.hienthai.fastowin.state.TournamentScheduleStage
-import com.hienthai.fastowin.state.parseTournamentSchedule
 import com.hienthai.fastowin.state.stageAt
-import com.hienthai.fastowin.state.toScheduleSnapshot
 import com.hienthai.fastowin.platform.epochMillis
 import kotlinx.coroutines.delay
-import kotlinx.datetime.TimeZone
 import com.hienthai.fastowin.state.GameState
 import com.hienthai.fastowin.state.PublicTournamentFilters
 import com.hienthai.fastowin.state.ConnectionStatus
@@ -150,7 +143,6 @@ fun TournamentScreen(
     onJoinPublic: (String) -> Unit = {},
     onOpenNotifications: () -> Unit = {},
     modifier: Modifier = Modifier,
-    onCreateScheduled: ((String, GameMode, Int, Int, TournamentVisibility, TournamentScheduleRequest?) -> Unit)? = null,
     onCheckIn: () -> Unit = {},
     nowEpochMillis: Long? = null
 ) {
@@ -207,7 +199,7 @@ fun TournamentScreen(
                         TournamentPhase.CANCELLED -> localized(TextKey.TournamentCancelled)
                     }
                     heroSubtitle = when (tournament.phase) {
-                        TournamentPhase.LOBBY -> localized(TextKey.TournamentLobbySummary, "mode" to tournament.gameMode.title(), "current" to tournament.players.size, "max" to tournament.maxPlayers, "prize" to tournament.prizePool)
+                        TournamentPhase.LOBBY -> localized(TextKey.TournamentLobbySummary, "mode" to tournament.gameMode.title(), "current" to tournament.players.size, "max" to tournament.maxPlayers)
                         TournamentPhase.RUNNING -> localized(TextKey.BracketInProgress)
                         TournamentPhase.FINISHED -> localized(TextKey.TournamentPrizeAwarded, "prize" to tournament.prizePool)
                         TournamentPhase.CANCELLED -> localized(TextKey.CreateAnotherTournament)
@@ -229,7 +221,7 @@ fun TournamentScreen(
                 }
                 if (tournament == null) {
                     PublicTournamentSection(
-                        tournaments = state.publicTournaments,
+                        tournaments = state.publicTournaments.filterNot { it.gameMode == ProtocolGameMode.TEAM_2V2 },
                         filters = state.publicTournamentFilters,
                         isLoading = state.isPublicTournamentsLoading,
                         isJoining = state.isTournamentLoading,
@@ -249,8 +241,6 @@ fun TournamentScreen(
                         playerLevel = state.profile?.progression?.level ?: 1,
                         enabled = LocalNewOnlineIntentAllowed.current && !state.isTournamentLoading,
                         onCreate = onCreate,
-                        onCreateScheduled = onCreateScheduled,
-                        now = now,
                         error = state.error
                     )
                     if (state.tournamentHub.recentTournaments.isNotEmpty()) {
@@ -425,7 +415,7 @@ private fun TournamentFilters(
         TournamentFilterChip(localized(TextKey.All), filters.gameMode == null, "public_tournament_filter_mode_ALL") {
             onChange(filters.copy(gameMode = null))
         }
-        ProtocolGameMode.entries.forEach { mode ->
+        ProtocolGameMode.entries.filterNot { it == ProtocolGameMode.TEAM_2V2 }.forEach { mode ->
             TournamentFilterChip(mode.title(), filters.gameMode == mode, "public_tournament_filter_mode_${mode.name}") {
                 onChange(filters.copy(gameMode = mode))
             }
@@ -484,7 +474,16 @@ private fun PublicTournamentCard(tournament: PublicTournamentSummary, enabled: B
             tournament.schedule?.let { TournamentSchedulePanel(it, now, tournament.maxPlayers, compact = true) }
             Text(localized(TextKey.PublicTournamentHost, "host" to tournament.hostDisplayName), color = MaterialTheme.colorScheme.onSurfaceVariant)
             Text(localized(TextKey.PublicTournamentSummary, "mode" to tournament.gameMode.title(),
-                "current" to tournament.playerCount, "max" to tournament.maxPlayers, "prize" to tournament.prizePool))
+                "current" to tournament.playerCount, "max" to tournament.maxPlayers))
+            val projectedPrize = tournamentPrizeAtCapacity(tournament.entryFee, tournament.maxPlayers)
+            if (projectedPrize > tournament.prizePool) {
+                ProjectedTournamentPrize(projectedPrize)
+                Text(localized(TextKey.TournamentCollectedPrize, "count" to tournament.prizePool),
+                    color = MaterialTheme.colorScheme.onSurfaceVariant)
+            } else {
+                Text(localized(TextKey.TournamentPrizeTotal, "count" to tournament.prizePool),
+                    color = ArcadePalette.Gold500, fontWeight = FontWeight.Bold)
+            }
             Text(
                 if (tournament.entryFee == 0) localized(TextKey.Free)
                 else localized(TextKey.PublicTournamentEntryFee, "fee" to tournament.entryFee),
@@ -500,6 +499,18 @@ private fun PublicTournamentCard(tournament: PublicTournamentSummary, enabled: B
             )
         }
     }
+}
+
+private fun tournamentPrizeAtCapacity(entryFee: Int, maxPlayers: Int): Long = entryFee.toLong() * maxPlayers
+
+@Composable
+private fun ProjectedTournamentPrize(amount: Long, modifier: Modifier = Modifier) {
+    Text(
+        text = localized(TextKey.TournamentPrizeAtCapacity, "count" to amount),
+        modifier = modifier,
+        color = ArcadePalette.Gold500,
+        fontWeight = FontWeight.Bold
+    )
 }
 
 @Composable
@@ -524,6 +535,10 @@ private fun PaidTournamentJoinDialog(
         tournament.schedule?.let {
             TournamentSchedulePanel(it, now, tournament.maxPlayers)
         }
+        val projectedPrize = tournamentPrizeAtCapacity(tournament.entryFee, tournament.maxPlayers)
+        if (projectedPrize > tournament.prizePool) {
+            ProjectedTournamentPrize(projectedPrize, Modifier.testTag("join_tournament_projected_prize"))
+        }
         ArcadeActionButton(
             label = localized(TextKey.Confirm),
             onClick = onConfirm,
@@ -546,8 +561,6 @@ private fun CreateTournamentCard(
     playerLevel: Int,
     enabled: Boolean,
     onCreate: (String, GameMode, Int, Int, TournamentVisibility) -> Unit,
-    onCreateScheduled: ((String, GameMode, Int, Int, TournamentVisibility, TournamentScheduleRequest?) -> Unit)?,
-    now: Long,
     error: String?
 ) {
     var showCreate by rememberSaveable { mutableStateOf(false) }
@@ -562,7 +575,7 @@ private fun CreateTournamentCard(
         onDismissRequest = { showCreate = false },
         showCloseButton = true
     ) {
-        CreateTournamentForm(playerLevel, enabled, onCreate, onCreateScheduled, now, error)
+        CreateTournamentForm(playerLevel, enabled, onCreate, error)
     }
 }
 
@@ -571,8 +584,6 @@ private fun CreateTournamentForm(
     playerLevel: Int,
     enabled: Boolean,
     onCreate: (String, GameMode, Int, Int, TournamentVisibility) -> Unit,
-    onCreateScheduled: ((String, GameMode, Int, Int, TournamentVisibility, TournamentScheduleRequest?) -> Unit)?,
-    now: Long,
     error: String?
 ) {
     var name by remember { mutableStateOf("") }
@@ -742,10 +753,12 @@ private fun CreateTournamentForm(
                 }
             }
 
-            var entryFee by remember { mutableStateOf(100) }
-            val entryFeeOptions = listOf(0, 50, 100, 200, 500, 1000)
+            var presetFee by remember { mutableStateOf(100) }
+            val entryFeeOptions = listOf(50, 100, 200, 500, 1000)
             var isCustomFee by remember { mutableStateOf(false) }
             var customFeeText by remember { mutableStateOf("") }
+            val entryFee = if (isCustomFee) customFeeText.toIntOrNull()?.takeIf { it > 0 } else presetFee
+            val hasCustomFeeError = isCustomFee && customFeeText.isNotEmpty() && entryFee == null
 
             LaunchedEffect(isCustomFee) {
                 if (isCustomFee) {
@@ -753,16 +766,19 @@ private fun CreateTournamentForm(
                 }
             }
 
-            Column(
-                modifier = Modifier.testTag("tournament_fee_section"),
-                verticalArrangement = Arrangement.spacedBy(10.dp)
-            ) {
+            Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
                 Text(
                     localized(TextKey.EntryFeeGold),
                     style = MaterialTheme.typography.titleSmall,
                     fontWeight = FontWeight.Bold
                 )
+                entryFee?.let { ProjectedTournamentPrize(tournamentPrizeAtCapacity(it, maxPlayers)) }
+            }
 
+            Column(
+                modifier = Modifier.testTag("tournament_fee_section"),
+                verticalArrangement = Arrangement.spacedBy(10.dp)
+            ) {
                 BoxWithConstraints(modifier = Modifier.fillMaxWidth()) {
                     val columnCount = if (maxWidth < 280.dp) 2 else 3
                     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -773,18 +789,19 @@ private fun CreateTournamentForm(
                             ) {
                                 rowOptions.forEach { fee ->
                                     TournamentFeeChip(
-                                        label = if (fee == 0) localized(TextKey.Free) else "$fee",
-                                        selected = !isCustomFee && entryFee == fee,
+                                        label = "$fee",
+                                        selected = !isCustomFee && presetFee == fee,
                                         iconTestTag = "tournament_fee_icon_$fee",
                                         modifier = Modifier
                                             .weight(1f)
                                             .testTag("tournament_fee_$fee"),
                                         onClick = {
                                             isCustomFee = false
-                                            entryFee = fee
+                                            presetFee = fee
                                         }
                                     )
                                 }
+                                if (rowOptions.size < columnCount) Spacer(Modifier.weight(1f))
                             }
                         }
                         TournamentFeeChip(
@@ -812,11 +829,11 @@ private fun CreateTournamentForm(
                             onValueChange = {
                                 if (it.isEmpty() || (it.length <= 6 && it.all { char -> char.isDigit() })) {
                                     customFeeText = it
-                                    entryFee = it.toIntOrNull() ?: 0
                                 }
                             },
                             label = localized(TextKey.EnterEntryFee),
                             placeholder = localized(TextKey.EntryFeeExample),
+                            isError = hasCustomFeeError,
                             singleLine = true,
                             prefix = {
                                 Icon(
@@ -834,50 +851,21 @@ private fun CreateTournamentForm(
                         )
                     }
                 }
+                if (hasCustomFeeError) {
+                    Text(
+                        localized(TextKey.TournamentEntryFeeMustBePositive),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.error
+                    )
+                }
             }
 
-            var scheduled by rememberSaveable { mutableStateOf(false) }
-            var localStart by rememberSaveable { mutableStateOf("") }
-            var timeZone by rememberSaveable { mutableStateOf(TimeZone.currentSystemDefault().id) }
-            val parsed = if (scheduled) parseTournamentSchedule(localStart, timeZone) else null
-            val request = parsed?.getOrNull()
-            val validRange = request?.let { it.startsAtEpochMillis >= now + 900_000 &&
-                it.startsAtEpochMillis <= now + 365L * 24 * 60 * 60_000 } ?: !scheduled
-            if (onCreateScheduled != null) {
-                Row(Modifier.fillMaxWidth().heightIn(min = 48.dp),
-                    verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                    val scheduleLabel = localized(TextKey.ScheduleTournament)
-                    Text(scheduleLabel, modifier = Modifier.weight(1f))
-                    Switch(checked = scheduled, onCheckedChange = { scheduled = it },
-                        modifier = Modifier.heightIn(min = 48.dp).testTag("tournament_schedule_toggle")
-                            .semantics { contentDescription = scheduleLabel })
-                }
-            }
-            if (scheduled) {
-                OutlinedTextField(value = localStart, onValueChange = { localStart = it },
-                    label = localized(TextKey.TournamentLocalStart),
-                    placeholder = "YYYY-MM-DD HH:mm", singleLine = true,
-                    modifier = Modifier.fillMaxWidth().testTag("tournament_schedule_local_start"))
-                Text(localized(TextKey.TournamentDateTimeHint), style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant)
-                OutlinedTextField(value = timeZone, onValueChange = { timeZone = it },
-                    label = localized(TextKey.TournamentTimeZone), singleLine = true,
-                    modifier = Modifier.fillMaxWidth().testTag("tournament_schedule_time_zone"))
-                Text(localized(TextKey.TournamentTimeZoneHint), style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant)
-                if (localStart.isNotBlank() && (request == null || !validRange)) {
-                    Text(localized(if (request == null) TextKey.TournamentLocalTimeError else TextKey.InvalidTournamentSchedule),
-                        color = MaterialTheme.colorScheme.error, modifier = Modifier.testTag("tournament_schedule_error"))
-                }
-                request?.let { TournamentSchedulePanel(it.toScheduleSnapshot(), now, maxPlayers, showCountdown = false) }
-            }
             ArcadeActionButton(
                 label = localized(TextKey.CreateTournamentAction),
                 onClick = {
-                    if (scheduled) onCreateScheduled?.invoke(name.trim(), mode, entryFee, maxPlayers, visibility, request)
-                    else onCreate(name.trim(), mode, entryFee, maxPlayers, visibility)
+                    entryFee?.let { onCreate(name.trim(), mode, it, maxPlayers, visibility) }
                 },
-                enabled = enabled && name.trim().length >= 3 && (!isCustomFee || customFeeText.isNotEmpty()) && validRange && (!scheduled || request != null),
+                enabled = enabled && name.trim().length >= 3 && entryFee != null,
                 style = ArcadeActionStyle.GOLD,
                 modifier = Modifier.fillMaxWidth().testTag("create_tournament")
             )
@@ -1045,6 +1033,9 @@ private fun ActiveTournamentContent(
 
             if (tournament.entryFee > 0) {
                 HorizontalDivider(color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.2f))
+                val projectedPrize = tournamentPrizeAtCapacity(tournament.entryFee, tournament.maxPlayers)
+                    .takeIf { tournament.phase == TournamentPhase.LOBBY && it > tournament.prizePool }
+                projectedPrize?.let { ProjectedTournamentPrize(it) }
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.SpaceBetween
@@ -1057,16 +1048,25 @@ private fun ActiveTournamentContent(
                         )
                         Text(localized(TextKey.GoldAmount, "count" to tournament.entryFee), fontWeight = FontWeight.SemiBold)
                     }
-                    Column(horizontalAlignment = Alignment.End) {
+                    if (projectedPrize == null) {
+                        Column(horizontalAlignment = Alignment.End) {
+                            Text(
+                                localized(TextKey.Prize),
+                                style = MaterialTheme.typography.labelSmall,
+                                color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.6f)
+                            )
+                            Text(
+                                localized(TextKey.GoldAmount, "count" to tournament.prizePool),
+                                fontWeight = FontWeight.Black,
+                                color = MaterialTheme.colorScheme.primary
+                            )
+                        }
+                    } else {
                         Text(
-                            localized(TextKey.Prize),
-                            style = MaterialTheme.typography.labelSmall,
-                            color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.6f)
-                        )
-                        Text(
-                            localized(TextKey.GoldAmount, "count" to tournament.prizePool),
-                            fontWeight = FontWeight.Black,
-                            color = MaterialTheme.colorScheme.primary
+                            localized(TextKey.TournamentCollectedPrize, "count" to tournament.prizePool),
+                            modifier = Modifier.weight(1f).padding(start = 12.dp),
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            textAlign = TextAlign.End
                         )
                     }
                 }
@@ -1474,6 +1474,9 @@ private fun InvitationDetails(invitation: TournamentInvitationSnapshot, now: Lon
     Text(if (invitation.entryFee == 0) localized(TextKey.Free)
         else localized(TextKey.PublicTournamentEntryFee, "fee" to invitation.entryFee),
         fontWeight = FontWeight.Bold)
+    if (invitation.entryFee > 0) {
+        ProjectedTournamentPrize(tournamentPrizeAtCapacity(invitation.entryFee, invitation.maxPlayers))
+    }
     invitation.schedule?.let {
         TournamentSchedulePanel(it, now, invitation.maxPlayers, showCountdown = false)
         if (now >= it.registrationClosesAtEpochMillis) {
@@ -1506,6 +1509,9 @@ private fun TournamentHistoryCard(
                     style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
             champion?.let { Text(localized(TextKey.ChampionCompact, "player" to it), color = ArcadePalette.Gold500, fontWeight = FontWeight.Bold) }
+            if (tournament.phase == TournamentPhase.FINISHED && tournament.prizePool > 0) {
+                Text(localized(TextKey.TournamentPrizeTotal, "count" to tournament.prizePool))
+            }
 
             Text(
                 localized(if (expanded) TextKey.HideBracket else TextKey.ViewBracket),

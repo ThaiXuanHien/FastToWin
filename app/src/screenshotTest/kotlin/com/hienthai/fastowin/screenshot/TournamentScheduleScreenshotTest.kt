@@ -35,7 +35,7 @@ fun scheduledTournamentLobby() = ArcadeScreenshotFrame {
             profile = ArcadeScreenshotFixtures.profile(), connectionStatus = ConnectionStatus.CONNECTED,
             tournamentHub = TournamentHubSnapshot(activeTournament = tournament)),
         onBack = {}, onCreate = { _, _, _, _, _ -> }, onInvite = {}, onRespondInvitation = { _, _ -> },
-        onStart = {}, onLeave = {}, onOpenFriendProfile = {}, onCreateScheduled = { _, _, _, _, _, _ -> },
+        onStart = {}, onLeave = {}, onOpenFriendProfile = {},
         onCheckIn = {}, nowEpochMillis = SCHEDULE_NOW
     )
 }

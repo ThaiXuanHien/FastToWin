@@ -70,9 +70,10 @@ class ArcadeProfilePracticeUiTest {
 
     @Test
     fun practice_landscape_keepsNumberBoardUsable() {
+        val mode = mutableStateOf(GameMode.ORDER)
         setAdaptiveContent(700.dp, 320.dp, 1f) {
             PracticeScreen(
-                mode = GameMode.ORDER,
+                mode = mode.value,
                 preferences = quietPreferences(),
                 onBack = {}
             )
@@ -81,6 +82,9 @@ class ArcadeProfilePracticeUiTest {
         composeRule.onNodeWithTag("number_grid")
             .assertIsDisplayed()
         composeRule.onNodeWithTag("game_number_50").assertIsDisplayed()
+        composeRule.onNodeWithText("Combo").assertDoesNotExist()
+        composeRule.runOnIdle { mode.value = GameMode.COMBO }
+        composeRule.onNodeWithText("Combo").assertIsDisplayed()
     }
 
     @Test

@@ -259,11 +259,15 @@ private fun PracticeStatus(game: PracticeGameState, compact: Boolean) {
                     formatPracticeTime(if (isCountdownMode) game.timeLeftMillis else game.elapsedMillis),
                     Modifier.weight(1f)
                 )
-                PracticeCompactMetric(
-                    localized(if (game.mode == GameMode.SURVIVAL) TextKey.Lives else TextKey.ComboLabel),
-                    if (game.mode == GameMode.SURVIVAL) game.lives.toString() else "x${game.combo}",
-                    Modifier.weight(1f)
-                )
+                when (game.mode) {
+                    GameMode.SURVIVAL -> PracticeCompactMetric(
+                        localized(TextKey.Lives), game.lives.toString(), Modifier.weight(1f)
+                    )
+                    GameMode.COMBO -> PracticeCompactMetric(
+                        localized(TextKey.ComboLabel), "x${game.combo}", Modifier.weight(1f)
+                    )
+                    else -> Unit
+                }
             }
         }
         return

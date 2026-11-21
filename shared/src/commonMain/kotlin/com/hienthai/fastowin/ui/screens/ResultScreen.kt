@@ -58,6 +58,7 @@ import com.hienthai.fastowin.protocol.MATCH_LOSS_REWARD_GOLD
 import com.hienthai.fastowin.protocol.MATCH_LOSS_REWARD_XP
 import com.hienthai.fastowin.protocol.MATCH_WIN_REWARD_GOLD
 import com.hienthai.fastowin.protocol.MATCH_WIN_REWARD_XP
+import com.hienthai.fastowin.navigation.GameMode
 import com.hienthai.fastowin.state.GameState
 import com.hienthai.fastowin.state.PlayerState
 import com.hienthai.fastowin.state.PostMatchFriendStatus
@@ -99,7 +100,7 @@ fun ResultScreen(
     modifier: Modifier = Modifier
 ) {
     val localization = LocalLocalization.current
-    val is2v2 = state.gameMode == com.hienthai.fastowin.navigation.GameMode.TEAM_2V2
+    val is2v2 = state.gameMode == GameMode.TEAM_2V2
     val myScore = if (is2v2) state.player.score + state.teammates.sumOf { it.score } else state.player.score
     val opponentScore = if (is2v2) state.opponents.sumOf { it.score } else state.opponent.score
 
@@ -327,7 +328,7 @@ private fun ScoreBoard(
     onOpponentInfo: (() -> Unit)? = null
 ) {
 
-    val is2v2 = state.gameMode == com.hienthai.fastowin.navigation.GameMode.TEAM_2V2
+    val is2v2 = state.gameMode == GameMode.TEAM_2V2
     val myName = if (is2v2) localized(TextKey.YourTeam) else localized(TextKey.PlayerYou, "player" to state.player.name)
     val opponentName = if (is2v2) localized(TextKey.OpponentTeam) else state.opponent.name
     val myResult = localized(if (isDraw) TextKey.Draw else if (isPlayerWinner) TextKey.Win else TextKey.Loss)
@@ -596,13 +597,17 @@ private fun MatchSummaryCard(state: GameState) {
                     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                         SummaryMetric(localized(TextKey.AverageReaction), formatReaction(state.player.averageReactionMillis), Modifier.fillMaxWidth())
                         SummaryMetric(localized(TextKey.Accuracy), "$accuracy%", Modifier.fillMaxWidth())
-                        SummaryMetric("Combo", "x${state.player.combo}", Modifier.fillMaxWidth())
+                        if (state.gameMode == GameMode.COMBO) {
+                            SummaryMetric(localized(TextKey.ComboLabel), "x${state.player.combo}", Modifier.fillMaxWidth())
+                        }
                     }
                 } else {
                     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                         SummaryMetric(localized(TextKey.AverageReaction), formatReaction(state.player.averageReactionMillis), Modifier.weight(1f))
                         SummaryMetric(localized(TextKey.Accuracy), "$accuracy%", Modifier.weight(1f))
-                        SummaryMetric("Combo", "x${state.player.combo}", Modifier.weight(1f))
+                        if (state.gameMode == GameMode.COMBO) {
+                            SummaryMetric(localized(TextKey.ComboLabel), "x${state.player.combo}", Modifier.weight(1f))
+                        }
                     }
                 }
             }

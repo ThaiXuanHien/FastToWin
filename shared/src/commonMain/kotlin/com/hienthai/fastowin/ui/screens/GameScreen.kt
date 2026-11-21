@@ -63,6 +63,7 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.hienthai.fastowin.navigation.GameMode
 import com.hienthai.fastowin.state.GAME_NUMBER_COUNT
 import com.hienthai.fastowin.state.ConnectionStatus
 import com.hienthai.fastowin.state.GameState
@@ -291,35 +292,39 @@ private fun LiveMetricsBar(state: GameState, onSendEmoji: (String) -> Unit) {
         horizontalArrangement = Arrangement.SpaceBetween,
         verticalAlignment = Alignment.CenterVertically
     ) {
-        val leading = when (state.gameMode) {
-            com.hienthai.fastowin.navigation.GameMode.SURVIVAL -> localized(TextKey.LivesCount, "count" to state.player.lives)
-            com.hienthai.fastowin.navigation.GameMode.SPEED_UP -> localized(TextKey.PaceProgress, "current" to state.player.correctSelections + 1, "total" to GAME_NUMBER_COUNT)
-            else -> "${localized(TextKey.ComboLabel).uppercase()} x${comboMultiplier(state.player.combo)}"
+        val modeMetric = when (state.gameMode) {
+            GameMode.SURVIVAL -> localized(TextKey.LivesCount, "count" to state.player.lives)
+            GameMode.SPEED_UP -> localized(TextKey.PaceProgress, "current" to state.player.correctSelections + 1, "total" to GAME_NUMBER_COUNT)
+            GameMode.COMBO -> "${localized(TextKey.ComboLabel).uppercase()} x${comboMultiplier(state.player.combo)}"
+            else -> null
         }
-        Surface(
-            shape = RoundedCornerShape(11.dp),
-            color = if (state.player.combo >= 5) ArcadePalette.Violet600 else Color(0xFF102B60),
-            border = BorderStroke(1.dp, ArcadePalette.Violet400.copy(alpha = 0.72f))
-        ) {
-            Row(
-                modifier = Modifier.padding(horizontal = 11.dp, vertical = 8.dp),
-                horizontalArrangement = Arrangement.spacedBy(5.dp),
-                verticalAlignment = Alignment.CenterVertically
+        if (modeMetric != null) {
+            val comboBoostActive = state.gameMode == GameMode.COMBO && state.player.combo >= 5
+            Surface(
+                shape = RoundedCornerShape(11.dp),
+                color = if (comboBoostActive) ArcadePalette.Violet600 else Color(0xFF102B60),
+                border = BorderStroke(1.dp, ArcadePalette.Violet400.copy(alpha = 0.72f))
             ) {
-                if (state.gameMode == com.hienthai.fastowin.navigation.GameMode.SURVIVAL) {
-                    Icon(
-                        imageVector = Icons.Rounded.Favorite,
-                        contentDescription = null,
-                        modifier = Modifier.size(15.dp),
-                        tint = Color(0xFFFF6B84)
+                Row(
+                    modifier = Modifier.padding(horizontal = 11.dp, vertical = 8.dp),
+                    horizontalArrangement = Arrangement.spacedBy(5.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    if (state.gameMode == GameMode.SURVIVAL) {
+                        Icon(
+                            imageVector = Icons.Rounded.Favorite,
+                            contentDescription = null,
+                            modifier = Modifier.size(15.dp),
+                            tint = Color(0xFFFF6B84)
+                        )
+                    }
+                    Text(
+                        modeMetric,
+                        style = MaterialTheme.typography.labelMedium,
+                        fontWeight = FontWeight.Black,
+                        color = Color.White
                     )
                 }
-                Text(
-                    leading,
-                    style = MaterialTheme.typography.labelMedium,
-                    fontWeight = FontWeight.Black,
-                    color = Color.White
-                )
             }
         }
         Text(
@@ -441,7 +446,7 @@ private fun PlayerScoreBar(
     onOpponentInfo: (() -> Unit)? = null,
     modifier: Modifier = Modifier
 ) {
-    val is2v2 = state.gameMode == com.hienthai.fastowin.navigation.GameMode.TEAM_2V2
+    val is2v2 = state.gameMode == GameMode.TEAM_2V2
     val myScore = if (is2v2) {
         state.player.score + state.teammates.sumOf { it.score }
     } else {

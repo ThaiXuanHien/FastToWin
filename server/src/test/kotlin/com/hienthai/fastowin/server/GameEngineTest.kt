@@ -15,6 +15,9 @@ import com.hienthai.fastowin.protocol.DAILY_CHECK_IN_AVATAR_ID
 import com.hienthai.fastowin.protocol.ProtocolGameMode
 import com.hienthai.fastowin.protocol.PublicTournamentQuery
 import com.hienthai.fastowin.protocol.TournamentFeeFilter
+import com.hienthai.fastowin.protocol.TournamentPhase
+import com.hienthai.fastowin.protocol.TournamentPlayerSnapshot
+import com.hienthai.fastowin.protocol.TournamentSnapshot
 import com.hienthai.fastowin.protocol.TournamentVisibility
 import com.hienthai.fastowin.protocol.PlayerProfileSnapshot
 import com.hienthai.fastowin.protocol.DailyCheckInSnapshot
@@ -2621,6 +2624,22 @@ class GameEngineTest {
     }
 
     @Test
+    fun `tournament creation rejects zero and negative entry fees before saving`() = runTest {
+        val repository = InMemoryTournamentRepository()
+        val engine = GameEngine(tournamentRepository = repository)
+        val host = engine.connectAccount(AuthenticatedAccount(UUID.randomUUID(), "Host")).playerId
+
+        for (fee in listOf(0, -1)) {
+            val deliveries = engine.handle(host, ClientMessage.CreateTournament("Open Cup", ProtocolGameMode.ORDER, fee))
+            val error = deliveries.map(Delivery::message).filterIsInstance<ServerMessage.Error>().single()
+            assertEquals("INVALID_TOURNAMENT_ENTRY_FEE", error.code)
+            assertEquals(TextKey.TournamentEntryFeeMustBePositive.name, error.messageKey)
+        }
+
+        assertTrue(repository.loadActive().isEmpty())
+    }
+
+    @Test
     fun `public tournament discovery filters private and mismatched tournaments`() = runTest {
         val wallet = object : PlayerProfileRepository {
             override suspend fun findByPlayerId(playerId: String): PlayerProfileSnapshot? = null
@@ -2630,18 +2649,16 @@ class GameEngineTest {
                 goldDelta: Int, gemsDelta: Int, xpDelta: Int
             ) = WalletMutationStatus.APPLIED
         }
-        val engine = GameEngine(playerProfileRepository = wallet)
-        val hosts = List(5) { index -> UUID.randomUUID().toString().also {
-            engine.connectAccount(AuthenticatedAccount(UUID.fromString(it), "Host $index"))
-        } }
+        val repository = InMemoryTournamentRepository()
+        val hosts = List(5) { UUID.randomUUID().toString() }
+        repository.save(legacyFreeTournament(hosts[2], "Public Free"))
+        val engine = GameEngine(playerProfileRepository = wallet, tournamentRepository = repository)
+        hosts.forEachIndexed { index, id -> engine.connectAccount(AuthenticatedAccount(UUID.fromString(id), "Host $index")) }
         val public = engine.handle(hosts[0], ClientMessage.CreateTournament(
             "  Public Cup  ", ProtocolGameMode.ORDER, 100, 4, TournamentVisibility.PUBLIC
         )).tournamentUpdate()
         engine.handle(hosts[1], ClientMessage.CreateTournament(
             "Private Cup", ProtocolGameMode.ORDER, 100, 4, TournamentVisibility.PRIVATE
-        ))
-        engine.handle(hosts[2], ClientMessage.CreateTournament(
-            "Public Free", ProtocolGameMode.ORDER, 0, 4, TournamentVisibility.PUBLIC
         ))
         engine.handle(hosts[3], ClientMessage.CreateTournament(
             "Public Survival", ProtocolGameMode.SURVIVAL, 100, 8, TournamentVisibility.PUBLIC
@@ -2662,13 +2679,13 @@ class GameEngineTest {
     @Test
     fun `public tournament discovery caps at fifty and orders by remaining slots then newest`() = runTest {
         var now = 1_000L
-        val engine = GameEngine(nowMillis = { now++ })
+        val engine = GameEngine(nowMillis = { now++ }, playerProfileRepository = TournamentTestWallet)
         val hosts = List(52) { index -> UUID.randomUUID().toString().also {
             engine.connectAccount(AuthenticatedAccount(UUID.fromString(it), "Host $index"))
         } }
         val created = hosts.take(51).mapIndexed { index, host ->
             engine.handle(host, ClientMessage.CreateTournament(
-                "Cup $index", ProtocolGameMode.ORDER, 0, 4, TournamentVisibility.PUBLIC
+                "Cup $index", ProtocolGameMode.ORDER, 1, 4, TournamentVisibility.PUBLIC
             )).tournamentUpdate()
         }
         val guest = hosts.last()
@@ -2683,27 +2700,32 @@ class GameEngineTest {
     }
 
     @Test
-    fun `public tournament join is free once and survives restoration`() = runTest {
+    fun `legacy free public tournament remains joinable and survives restoration`() = runTest {
         val repository = InMemoryTournamentRepository()
-        val engine = GameEngine(tournamentRepository = repository)
         val host = UUID.randomUUID().toString()
         val guest = UUID.randomUUID().toString()
+        val existing = legacyFreeTournament(host, "Open Cup")
+        repository.save(existing)
+        val engine = GameEngine(tournamentRepository = repository)
         engine.connectAccount(AuthenticatedAccount(UUID.fromString(host), "Host"))
         engine.connectAccount(AuthenticatedAccount(UUID.fromString(guest), "Guest"))
-        val created = engine.handle(host, ClientMessage.CreateTournament(
-            "Open Cup", ProtocolGameMode.ORDER, 0, 4, TournamentVisibility.PUBLIC
-        )).tournamentUpdate()
-        assertEquals(TournamentVisibility.PUBLIC, created.visibility)
-        val joined = engine.handle(guest, ClientMessage.JoinPublicTournament(created.tournamentId)).tournamentUpdate()
+        val joined = engine.handle(guest, ClientMessage.JoinPublicTournament(existing.tournamentId)).tournamentUpdate()
         assertEquals(listOf(host, guest), joined.players.map { it.playerId })
         assertEquals(0, joined.prizePool)
-        assertEquals(1, engine.handle(guest, ClientMessage.JoinPublicTournament(created.tournamentId))
+        assertEquals(1, engine.handle(guest, ClientMessage.JoinPublicTournament(existing.tournamentId))
             .filter { it.message is ServerMessage.Error }.size)
         val restarted = GameEngine(tournamentRepository = repository)
         restarted.connectAccount(AuthenticatedAccount(UUID.fromString(host), "Host"))
-        assertEquals(listOf(created.tournamentId), restarted.handle(host, ClientMessage.GetPublicTournaments())
+        assertEquals(listOf(existing.tournamentId), restarted.handle(host, ClientMessage.GetPublicTournaments())
             .publicTournamentList().map { it.tournamentId })
     }
+
+    private fun legacyFreeTournament(host: String, name: String) = TournamentSnapshot(
+        tournamentId = UUID.randomUUID().toString(), name = name, hostPlayerId = host,
+        gameMode = ProtocolGameMode.ORDER, phase = TournamentPhase.LOBBY,
+        players = listOf(TournamentPlayerSnapshot(host, "Host", isHost = true)),
+        createdAtEpochMillis = System.currentTimeMillis(), visibility = TournamentVisibility.PUBLIC
+    )
 
     @Test
     fun `public tournament paid join charges once and failed wallet leaves state unchanged`() = runTest {
@@ -3153,7 +3175,7 @@ class GameEngineTest {
             engine.connectAccount(AuthenticatedAccount(UUID.fromString(id), id))
         } }
         val private = engine.handle(ids[0], ClientMessage.CreateTournament(
-            "Private Cup", ProtocolGameMode.ORDER, 0, 4, TournamentVisibility.PRIVATE
+            "Private Cup", ProtocolGameMode.ORDER, 1, 4, TournamentVisibility.PRIVATE
         )).tournamentUpdate()
         assertEquals("TOURNAMENT_NOT_PUBLIC", engine.handle(ids[1], ClientMessage.JoinPublicTournament(private.tournamentId))
             .map(Delivery::message).filterIsInstance<ServerMessage.Error>().single().code)
@@ -3180,15 +3202,15 @@ class GameEngineTest {
 
     @Test
     fun `public tournament join reports distinct visibility phase membership and busy errors`() = runTest {
-        val engine = GameEngine()
+        val engine = GameEngine(playerProfileRepository = TournamentTestWallet)
         val ids = List(7) { UUID.randomUUID().toString().also { id ->
             engine.connectAccount(AuthenticatedAccount(UUID.fromString(id), id))
         } }
         val privateId = engine.handle(ids[0], ClientMessage.CreateTournament(
-            "Private Cup", ProtocolGameMode.ORDER, 0, 4, TournamentVisibility.PRIVATE
+            "Private Cup", ProtocolGameMode.ORDER, 1, 4, TournamentVisibility.PRIVATE
         )).tournamentUpdate().tournamentId
         val publicId = engine.handle(ids[1], ClientMessage.CreateTournament(
-            "Public Cup", ProtocolGameMode.ORDER, 0, 4, TournamentVisibility.PUBLIC
+            "Public Cup", ProtocolGameMode.ORDER, 1, 4, TournamentVisibility.PUBLIC
         )).tournamentUpdate().tournamentId
         fun List<Delivery>.errorCode() = map(Delivery::message).filterIsInstance<ServerMessage.Error>().single().code
 
@@ -3206,7 +3228,7 @@ class GameEngineTest {
         assertEquals("TOURNAMENT_ALREADY_STARTED",
             engine.handle(ids[6], ClientMessage.JoinPublicTournament(publicId)).errorCode())
         val cancelledId = engine.handle(ids[5], ClientMessage.CreateTournament(
-            "Cancelled Cup", ProtocolGameMode.ORDER, 0, 4, TournamentVisibility.PUBLIC
+            "Cancelled Cup", ProtocolGameMode.ORDER, 1, 4, TournamentVisibility.PUBLIC
         )).tournamentUpdate().tournamentId
         engine.handle(ids[5], ClientMessage.LeaveTournament(cancelledId))
         assertEquals("TOURNAMENT_CANCELLED",
@@ -3217,11 +3239,11 @@ class GameEngineTest {
     fun `host inviting an existing participant receives friend-context error`() = runTest {
         val host = UUID.randomUUID().toString()
         val friend = UUID.randomUUID().toString()
-        val engine = GameEngine(friendRepository = friendRepositoryForPair(host, friend))
+        val engine = GameEngine(friendRepository = friendRepositoryForPair(host, friend), playerProfileRepository = TournamentTestWallet)
         engine.connectAccount(AuthenticatedAccount(UUID.fromString(host), "Host"))
         engine.connectAccount(AuthenticatedAccount(UUID.fromString(friend), "Friend"))
         val tournamentId = engine.handle(host, ClientMessage.CreateTournament(
-            "Open Cup", ProtocolGameMode.ORDER, 0, 4, TournamentVisibility.PUBLIC
+            "Open Cup", ProtocolGameMode.ORDER, 1, 4, TournamentVisibility.PUBLIC
         )).tournamentUpdate().tournamentId
         engine.handle(friend, ClientMessage.JoinPublicTournament(tournamentId)).tournamentUpdate()
 
@@ -3232,11 +3254,11 @@ class GameEngineTest {
 
     @Test
     fun `public tournament creation notice does not call the tournament private`() = runTest {
-        val engine = GameEngine()
+        val engine = GameEngine(playerProfileRepository = TournamentTestWallet)
         val host = UUID.randomUUID().toString()
         engine.connectAccount(AuthenticatedAccount(UUID.fromString(host), "Host"))
         val notice = engine.handle(host, ClientMessage.CreateTournament(
-            "Open Cup", ProtocolGameMode.ORDER, 0, 4, TournamentVisibility.PUBLIC
+            "Open Cup", ProtocolGameMode.ORDER, 1, 4, TournamentVisibility.PUBLIC
         )).map(Delivery::message).filterIsInstance<ServerMessage.TournamentNotice>().single()
         assertEquals("TOURNAMENT_CREATED", notice.code)
         assertEquals(TextKey.TournamentCreatedNotice.name, notice.messageKey)
@@ -3245,16 +3267,16 @@ class GameEngineTest {
 
     @Test
     fun `public tournament mutations invalidate connected accounts but private mutations do not`() = runTest {
-        val engine = GameEngine()
+        val engine = GameEngine(playerProfileRepository = TournamentTestWallet)
         val ids = List(5) { UUID.randomUUID().toString().also { id ->
             engine.connectAccount(AuthenticatedAccount(UUID.fromString(id), id))
         } }
         val privateCreate = engine.handle(ids[0], ClientMessage.CreateTournament(
-            "Private Cup", ProtocolGameMode.ORDER, 0, 4, TournamentVisibility.PRIVATE
+            "Private Cup", ProtocolGameMode.ORDER, 1, 4, TournamentVisibility.PRIVATE
         ))
         assertTrue(privateCreate.none { it.message is ServerMessage.PublicTournamentsInvalidated })
         val created = engine.handle(ids[1], ClientMessage.CreateTournament(
-            "Open Cup", ProtocolGameMode.ORDER, 0, 4, TournamentVisibility.PUBLIC
+            "Open Cup", ProtocolGameMode.ORDER, 1, 4, TournamentVisibility.PUBLIC
         ))
         assertEquals(ids.toSet(), created.singlePublicInvalidation().recipients)
         val tournamentId = created.tournamentUpdate().tournamentId
@@ -3273,7 +3295,7 @@ class GameEngineTest {
         assertTrue(engine.handle(ids[0], ClientMessage.GetPublicTournaments()).publicTournamentList().isEmpty())
         engine.handle(ids[0], ClientMessage.LeaveTournament(privateCreate.tournamentUpdate().tournamentId))
         val cancelledId = engine.handle(ids[0], ClientMessage.CreateTournament(
-            "Cancel Cup", ProtocolGameMode.ORDER, 0, 4, TournamentVisibility.PUBLIC
+            "Cancel Cup", ProtocolGameMode.ORDER, 1, 4, TournamentVisibility.PUBLIC
         )).tournamentUpdate().tournamentId
         assertEquals(ids.toSet(), engine.handle(ids[0], ClientMessage.LeaveTournament(cancelledId))
             .singlePublicInvalidation().recipients)
@@ -3299,12 +3321,12 @@ class GameEngineTest {
                 saved.save(tournament)
             }
         }
-        val engine = GameEngine(tournamentRepository = repository)
+        val engine = GameEngine(tournamentRepository = repository, playerProfileRepository = TournamentTestWallet)
         val ids = List(3) { UUID.randomUUID().toString().also { id ->
             engine.connectAccount(AuthenticatedAccount(UUID.fromString(id), id))
         } }
         val tournamentId = engine.handle(ids[0], ClientMessage.CreateTournament(
-            "Open Cup", ProtocolGameMode.ORDER, 0, 4, TournamentVisibility.PUBLIC
+            "Open Cup", ProtocolGameMode.ORDER, 1, 4, TournamentVisibility.PUBLIC
         )).tournamentUpdate().tournamentId
         blockNextSave = true
         val first = async { engine.handle(ids[1], ClientMessage.JoinPublicTournament(tournamentId)) }
@@ -3338,7 +3360,7 @@ class GameEngineTest {
                 progression = PlayerProgressionSnapshot(level = 20)
             )
         }.toMap()
-        val profileRepository = object : PlayerProfileRepository {
+        val profileRepository = object : PlayerProfileRepository by TournamentTestWallet {
             override suspend fun findByPlayerId(playerId: String) = profiles[playerId]
             override suspend fun updateProfile(
                 playerId: String,
@@ -3382,7 +3404,7 @@ class GameEngineTest {
 
         val created = engine.handle(
             playerIds[0],
-            ClientMessage.CreateTournament("Cúp bạn bè", ProtocolGameMode.SURVIVAL,
+            ClientMessage.CreateTournament("Cúp bạn bè", ProtocolGameMode.SURVIVAL, entryFee = 1,
                 visibility = TournamentVisibility.PRIVATE)
         ).map(Delivery::message).filterIsInstance<ServerMessage.TournamentUpdated>().single().tournament
         assertEquals(1, created.players.size)
@@ -3545,7 +3567,7 @@ class GameEngineTest {
         val appliedSources = mutableSetOf<Triple<String, String, String>>()
         val fixture = createStartedTournamentFixture(
             maxPlayers = 4,
-            entryFee = 100,
+            entryFee = 50,
             walletMutation = { playerId, sourceType, sourceId, goldDelta ->
                 calls += WalletCall(sourceType, sourceId, goldDelta)
                 if (appliedSources.add(Triple(playerId, sourceType, sourceId))) {
@@ -3556,11 +3578,14 @@ class GameEngineTest {
             }
         )
 
+        val entries = calls.filter { it.sourceType == "TOURNAMENT_ENTRY" }
+        assertEquals(List(4) { -50 }, entries.map { it.goldDelta })
         val completed = finishStartedTournament(fixture)
+        assertEquals(200, completed.prizePool)
         val prizeCalls = calls.filter { it.sourceType == "TOURNAMENT_PRIZE" }
         assertEquals(1, prizeCalls.size)
         assertEquals(fixture.tournamentId, prizeCalls.single().sourceId)
-        assertEquals(400, prizeCalls.single().goldDelta)
+        assertEquals(200, prizeCalls.single().goldDelta)
         assertEquals(fixture.playerIds.first(), completed.championPlayerId)
 
         fixture.engine.handle(fixture.playerIds.first(), ClientMessage.GetTournamentHub)
@@ -3589,7 +3614,7 @@ class GameEngineTest {
                 progression = PlayerProgressionSnapshot(level = 20)
             )
         }.toMap()
-        val profileRepository = object : PlayerProfileRepository {
+        val profileRepository = object : PlayerProfileRepository by TournamentTestWallet {
             override suspend fun findByPlayerId(playerId: String) = profiles[playerId]
             override suspend fun updateProfile(
                 playerId: String,
@@ -3636,6 +3661,7 @@ class GameEngineTest {
             ClientMessage.CreateTournament(
                 name = "Cúp $maxPlayers người",
                 gameMode = ProtocolGameMode.SURVIVAL,
+                entryFee = 1,
                 maxPlayers = maxPlayers,
                 visibility = TournamentVisibility.PRIVATE
             )
@@ -3702,13 +3728,13 @@ class GameEngineTest {
 
     private suspend fun createStartedTournamentFixture(
         maxPlayers: Int,
-        entryFee: Int = 0,
+        entryFee: Int = 1,
         activeRoomRepository: ActiveRoomRepository = NoOpActiveRoomRepository,
         tournamentRepository: TournamentRepository = InMemoryTournamentRepository(),
         playQuotaRepository: PlayQuotaRepository = InMemoryPlayQuotaRepository(),
         nowMillis: () -> Long = System::currentTimeMillis,
         walletMutation: suspend (String, String, String, Int) -> WalletMutationStatus =
-            { _, _, _, _ -> WalletMutationStatus.PLAYER_NOT_FOUND }
+            { _, _, _, _ -> WalletMutationStatus.APPLIED }
     ): StartedTournamentFixture {
         val playerIds = List(maxPlayers) { UUID.randomUUID().toString() }
         val names = playerIds.mapIndexed { index, playerId -> playerId to "Đấu thủ ${index + 1}" }.toMap()

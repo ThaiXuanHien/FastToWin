@@ -12,6 +12,7 @@ import com.hienthai.fastowin.data.preferences.AppPreferences
 import com.hienthai.fastowin.localization.AppLanguage
 import com.hienthai.fastowin.localization.ProvideLocalization
 import com.hienthai.fastowin.navigation.GameMode
+import com.hienthai.fastowin.state.AvailableRoom
 import com.hienthai.fastowin.state.ConnectionStatus
 import com.hienthai.fastowin.state.GameState
 import com.hienthai.fastowin.state.LobbyStage
@@ -47,6 +48,66 @@ class LocalizedGameplayUiTest {
 
         composeRule.onNodeWithText("PHÒNG CÔNG KHAI").assertIsDisplayed()
         composeRule.onNodeWithText("Tạo phòng", ignoreCase = true).performScrollTo().assertIsDisplayed()
+    }
+
+    @Test
+    fun roomBrowserHidesPublicTeamRooms() {
+        setLocalizedContent(AppLanguage.ENGLISH) {
+            LocalizedLobbyScreen(
+                state = lobbyState(LobbyStage.ROOM_BROWSER).copy(
+                    availableRooms = listOf(
+                        AvailableRoom("classic", "Classic Room", "Hien", GameMode.ORDER,
+                            requiresPassword = false, lastSeenAtMillis = 0),
+                        AvailableRoom("team", "Team Room", "Hien", GameMode.TEAM_2V2,
+                            requiresPassword = false, lastSeenAtMillis = 0)
+                    )
+                ),
+                isGuest = false
+            )
+        }
+
+        composeRule.onNodeWithText("Classic Room").performScrollTo().assertIsDisplayed()
+        composeRule.onNodeWithText("Team Room").assertDoesNotExist()
+    }
+
+    @Test
+    fun liveGameShowsComboOnlyInComboMode() {
+        val mode = mutableStateOf(GameMode.ORDER)
+        setLocalizedContent(AppLanguage.ENGLISH) {
+            val state = activeGameState()
+            GameScreen(
+                state = state.copy(gameMode = mode.value, player = state.player.copy(combo = 5)),
+                onNumberClick = {},
+                onFinish = {},
+                preferences = quietPreferences()
+            )
+        }
+
+        composeRule.onNodeWithText("COMBO x2").assertDoesNotExist()
+        composeRule.runOnIdle { mode.value = GameMode.COMBO }
+        composeRule.onNodeWithText("COMBO x2").assertIsDisplayed()
+    }
+
+    @Test
+    fun resultShowsComboOnlyInComboMode() {
+        val mode = mutableStateOf(GameMode.ORDER)
+        setLocalizedContent(AppLanguage.ENGLISH) {
+            ResultScreen(
+                state = finishedGameState().copy(gameMode = mode.value),
+                onRestart = {},
+                onRematch = {},
+                onCancelRematch = {},
+                onDeclineRematch = {},
+                onConnectOpponent = {},
+                onBlockOpponent = {},
+                preferences = quietPreferences()
+            )
+        }
+
+        composeRule.onNodeWithText("Accuracy").performScrollTo().assertIsDisplayed()
+        composeRule.onNodeWithText("Combo").assertDoesNotExist()
+        composeRule.runOnIdle { mode.value = GameMode.COMBO }
+        composeRule.onNodeWithText("Combo").performScrollTo().assertIsDisplayed()
     }
 
     @Test

@@ -114,8 +114,28 @@ class ScheduledTournamentTest {
         assertEquals(TournamentPhase.CANCELLED, fixture.engine.handle(fixture.ids.first(), ClientMessage.LeaveTournament(id)).update().phase)
         assertEquals(1_000, fixture.wallet.gold.getValue(fixture.ids.first()))
         val manual = fixture.engine.handle(fixture.ids.first(), ClientMessage.CreateTournament("Manual cup", ProtocolGameMode.ORDER, 100)).update()
-        fixture.engine.handle(fixture.ids.first(), ClientMessage.LeaveTournament(manual.tournamentId))
+        val manualCancellation = fixture.engine.handle(fixture.ids.first(), ClientMessage.LeaveTournament(manual.tournamentId))
+        assertTrue(manualCancellation.none { it.message is ServerMessage.TournamentRewardResult })
         assertEquals(900, fixture.wallet.gold.getValue(fixture.ids.first()))
+    }
+
+    @Test
+    fun `cancellation refunds all client versions and sends the receipt to compatible clients`() = runTest {
+        val fixture = Fixture()
+        val host = fixture.ids[0]
+        val guest = fixture.ids[1]
+        fixture.engine.connectAccount(AuthenticatedAccount(UUID.fromString(host), host), protocolVersion = 44)
+        fixture.engine.connectAccount(AuthenticatedAccount(UUID.fromString(guest), guest))
+        val tournamentId = fixture.engine.handle(host, fixture.creation()).update().tournamentId
+        fixture.engine.handle(guest, ClientMessage.JoinPublicTournament(tournamentId)).update()
+
+        val deliveries = fixture.engine.handle(host, ClientMessage.LeaveTournament(tournamentId))
+        val receipt = deliveries.single { it.message is ServerMessage.TournamentRewardResult }
+        assertEquals(setOf(guest), receipt.recipients)
+        assertEquals(TournamentRewardType.ENTRY_REFUND, (receipt.message as ServerMessage.TournamentRewardResult).type)
+        assertEquals(TournamentPhase.CANCELLED, deliveries.update().phase)
+        assertEquals(1_000, fixture.wallet.gold.getValue(host))
+        assertEquals(1_000, fixture.wallet.gold.getValue(guest))
     }
 
     @Test
@@ -189,7 +209,7 @@ class ScheduledTournamentTest {
         fixture.engine.handle(fixture.ids[2], ClientMessage.JoinPublicTournament(id))
         fixture.now = fixture.startsAt - 900_000
         assertEquals("TOURNAMENT_REGISTRATION_CLOSED", fixture.engine.handle(fixture.ids[2], ClientMessage.LeaveTournament(id)).errorCode())
-        assertNull(fixture.engine.handle(fixture.ids[1], ClientMessage.CreateTournament("Manual cup", ProtocolGameMode.ORDER)).update().schedule)
+        assertNull(fixture.engine.handle(fixture.ids[1], ClientMessage.CreateTournament("Manual cup", ProtocolGameMode.ORDER, 100)).update().schedule)
     }
 
     @Test

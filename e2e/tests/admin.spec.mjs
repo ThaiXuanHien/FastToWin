@@ -1,6 +1,20 @@
 import { test, expect, login, player, pageOf } from '../support/admin-fixture.mjs';
 import { readFile } from 'node:fs/promises';
 
+for (const [role, width] of [['OWNER', 1440], ['OPERATOR', 360], ['SUPPORT', 360]]) {
+  test(`${role} admin menu omits compensation at ${width}`, async ({ page, fixture }, testInfo) => {
+    fixture.role = role;
+    await page.setViewportSize({ width, height: 1000 });
+    await login(page, fixture);
+
+    const nav = page.getByRole('navigation', { name: 'Quản trị' });
+    await expect(nav.getByRole('button', { name: 'Đền bù', exact: true })).toHaveCount(0);
+    await expect(nav.getByRole('button', { name: 'Thông báo', exact: true })).toBeVisible();
+    await expect(nav.getByRole('button', { name: 'Kiểm duyệt', exact: true })).toBeVisible();
+    await page.screenshot({ path: testInfo.outputPath('admin-menu.png') });
+  });
+}
+
 for (const width of [360, 1440]) test(`search public player code and show it in directory and profile at ${width}`, async ({ page, fixture }) => {
   await page.setViewportSize({ width, height: 1000 }); await login(page, fixture);
   fixture.handlers.set('/admin/api/users', async (call, send) => {

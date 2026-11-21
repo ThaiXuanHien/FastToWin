@@ -4,8 +4,9 @@ import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
 
-const val PROTOCOL_VERSION = 44
+const val PROTOCOL_VERSION = 45
 const val MIN_COMPATIBLE_PROTOCOL_VERSION = 38
+const val TOURNAMENT_REWARD_PROTOCOL_VERSION = 45
 
 fun isCompatibleProtocolVersion(version: Int): Boolean =
     version in MIN_COMPATIBLE_PROTOCOL_VERSION..PROTOCOL_VERSION
@@ -1305,6 +1306,7 @@ sealed class ServerMessage {
     data class TournamentRewardResult(
         val requestId: String,
         val tournamentId: String,
+        @SerialName("rewardType")
         val type: TournamentRewardType,
         val goldGranted: Int
     ) : ServerMessage()

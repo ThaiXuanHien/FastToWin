@@ -28,7 +28,8 @@ class TournamentScheduleProtocolTest {
         assertTrue(isCompatibleProtocolVersion(38))
         assertTrue(isCompatibleProtocolVersion(43))
         assertTrue(isCompatibleProtocolVersion(44))
-        assertFalse(isCompatibleProtocolVersion(45))
+        assertTrue(isCompatibleProtocolVersion(45))
+        assertFalse(isCompatibleProtocolVersion(46))
     }
 
     @Test

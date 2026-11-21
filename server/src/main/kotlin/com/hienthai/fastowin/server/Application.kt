@@ -47,6 +47,7 @@ import com.hienthai.fastowin.protocol.UpgradeGuestRequest
 import com.hienthai.fastowin.protocol.ServerMessage
 import com.hienthai.fastowin.protocol.ServiceStatusResponse
 import com.hienthai.fastowin.protocol.SESSION_REPLACED_CLOSE_REASON
+import com.hienthai.fastowin.protocol.TOURNAMENT_REWARD_PROTOCOL_VERSION
 import io.ktor.http.HttpHeaders
 import io.ktor.http.HttpMethod
 import io.ktor.http.HttpStatusCode
@@ -294,7 +295,10 @@ fun Application.gameModule(
         val suppressions = engine.suppressionsForProjection()
         deliveries.forEach { delivery ->
             val message = sanitizeContent(delivery.message, suppressions)
-            val targets = delivery.recipients?.mapNotNull(connections::get) ?: connections.values.toList()
+            val connectedTargets = delivery.recipients?.mapNotNull(connections::get) ?: connections.values.toList()
+            val targets = if (message is ServerMessage.TournamentRewardResult) {
+                connectedTargets.filter { it.protocolVersion >= TOURNAMENT_REWARD_PROTOCOL_VERSION }
+            } else connectedTargets
             if (targets.isEmpty()) return@forEach
             // SCL-01: encode once per delivery, not once per recipient (a lobby broadcast to N sockets).
             val encoded = ProtocolJson.encodeToString<ServerMessage>(message)
@@ -901,7 +905,7 @@ fun Application.gameModule(
                         }
                         metrics.sessionAuthenticated()
                         playerRateLimitKey = stableRateLimitKey(connected.playerId)
-                        val connection = SocketConnection(this, moderationAware,
+                        val connection = SocketConnection(this, protocolVersion, moderationAware,
                             presenceId = activityConnectionId.takeIf { presenceStore != null })
                         registeredConnection = connection
                         connections.put(connected.playerId, connection)?.closeForReplacement()
@@ -1383,6 +1387,7 @@ private suspend fun ApplicationCall.respondAccountSessions(result: AccountSessio
 
 private class SocketConnection(
     val session: io.ktor.server.websocket.DefaultWebSocketServerSession,
+    val protocolVersion: Int,
     @Volatile var moderationAware: Boolean = false,
     val presenceId: java.util.UUID? = null
 ) {

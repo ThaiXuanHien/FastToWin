@@ -140,9 +140,9 @@ class MaintenanceRecoveryTest {
                 if (batch.newRooms.isNotEmpty() && !delayed) { delayed = true; now += 600_000 }
             }
         }
-        val engine = GameEngine(activeRoomRepository = rooms, tournamentRepository = tournaments, nowMillis = { now })
+        val engine = GameEngine(activeRoomRepository = rooms, tournamentRepository = tournaments, nowMillis = { now }, playerProfileRepository = TournamentTestWallet)
         val players = List(4) { engine.connectAccount(AuthenticatedAccount(UUID.randomUUID(), "p$it")).playerId }
-        val cup = engine.handle(players[0], ClientMessage.CreateTournament("timed", ProtocolGameMode.TIME_ATTACK, 0, 4, TournamentVisibility.PUBLIC))
+        val cup = engine.handle(players[0], ClientMessage.CreateTournament("timed", ProtocolGameMode.TIME_ATTACK, 1, 4, TournamentVisibility.PUBLIC))
             .map { it.message }.filterIsInstance<ServerMessage.TournamentUpdated>().single().tournament
         players.drop(1).forEach { engine.handle(it, ClientMessage.JoinPublicTournament(cup.tournamentId)) }
         val games = engine.handle(players[0], ClientMessage.StartTournament(cup.tournamentId)).map { it.message }.filterIsInstance<ServerMessage.GameStarted>()
@@ -178,12 +178,12 @@ class MaintenanceRecoveryTest {
                 }
             }
         }
-        val profiles = object : PlayerProfileRepository by NoOpPlayerProfileRepository {
+        val profiles = object : PlayerProfileRepository by TournamentTestWallet {
             override suspend fun findByPlayerId(playerId: String) = PlayerProfileSnapshot(userId = playerId, displayName = "player", playerCode = "TEST", progression = PlayerProgressionSnapshot(level = 20))
         }
         val engine = GameEngine(activeRoomRepository = rooms, tournamentRepository = tournaments, nowMillis = { now }, playerProfileRepository = profiles)
         val players = List(8) { engine.connectAccount(AuthenticatedAccount(UUID.randomUUID(), "p$it")).playerId }
-        val tournament = engine.handle(players[0], ClientMessage.CreateTournament("recovery cup", mode, 0, 8, TournamentVisibility.PUBLIC))
+        val tournament = engine.handle(players[0], ClientMessage.CreateTournament("recovery cup", mode, 1, 8, TournamentVisibility.PUBLIC))
             .map { it.message }.filterIsInstance<ServerMessage.TournamentUpdated>().single().tournament
         players.drop(1).forEach { engine.handle(it, ClientMessage.JoinPublicTournament(tournament.tournamentId)) }
         val games = engine.handle(players[0], ClientMessage.StartTournament(tournament.tournamentId))

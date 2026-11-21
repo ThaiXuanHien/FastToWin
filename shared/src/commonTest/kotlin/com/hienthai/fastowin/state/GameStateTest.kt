@@ -60,6 +60,7 @@ import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertNotEquals
+import kotlin.test.assertNotNull
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
@@ -1010,12 +1011,54 @@ class GameStateTest {
     }
 
     @Test
-    fun `scheduled creation serializes its instant and zone and manual stays optional`() = runTest {
+    fun `tournament creation sends the selected fee without a schedule`() = runTest {
         val fixture = publicTournamentFixture()
-        val schedule = TournamentScheduleRequest(2_000_000, "Asia/Bangkok")
-        fixture.controller.createTournament("Scheduled", GameMode.ORDER, schedule = schedule)
+        fixture.controller.createTournament("Manual", GameMode.ORDER, entryFee = 50)
         runCurrent()
-        assertEquals(schedule, fixture.session.sent.filterIsInstance<ClientMessage.CreateTournament>().single().schedule)
+        val command = fixture.session.sent.filterIsInstance<ClientMessage.CreateTournament>().single()
+        assertEquals(50, command.entryFee)
+        assertNull(command.schedule)
+        fixture.controller.close()
+    }
+
+    @Test
+    fun `leaving clears the creation notice before a reply or reconnect`() = runTest {
+        val fixture = publicTournamentFixture()
+        val tournament = scheduledLobby("active")
+        fixture.session.server(ServerMessage.TournamentUpdated(tournament))
+        fixture.session.server(ServerMessage.TournamentNotice("Created", code = "TOURNAMENT_CREATED"))
+        runCurrent()
+        assertNotNull(fixture.controller.uiState.value.tournamentNotice)
+
+        fixture.controller.leaveTournament()
+        runCurrent()
+        assertNull(fixture.controller.uiState.value.tournamentNotice)
+        assertEquals(ClientMessage.LeaveTournament("active"), fixture.session.sent.filterIsInstance<ClientMessage.LeaveTournament>().single())
+        fixture.controller.close()
+    }
+
+    @Test
+    fun `hub refresh and delayed creation notices cannot revive a cancelled tournament notice`() = runTest {
+        val fixture = publicTournamentFixture()
+        val tournament = scheduledLobby("active")
+        val created = ServerMessage.TournamentNotice("Created", code = "TOURNAMENT_CREATED")
+        fixture.session.server(ServerMessage.TournamentUpdated(tournament))
+        fixture.session.server(created)
+        runCurrent()
+        assertNotNull(fixture.controller.uiState.value.tournamentNotice)
+
+        fixture.session.server(ServerMessage.TournamentHubData(TournamentHubSnapshot(
+            recentTournaments = listOf(tournament.copy(phase = TournamentPhase.CANCELLED))
+        )))
+        runCurrent()
+        assertNull(fixture.controller.uiState.value.tournamentNotice)
+        fixture.session.server(created)
+        runCurrent()
+        assertNull(fixture.controller.uiState.value.tournamentNotice)
+        fixture.session.server(ServerMessage.TournamentUpdated(scheduledLobby("replacement")))
+        fixture.session.server(created.copy(messageArgs = mapOf("tournamentId" to "active")))
+        runCurrent()
+        assertNull(fixture.controller.uiState.value.tournamentNotice)
         fixture.controller.close()
     }
 

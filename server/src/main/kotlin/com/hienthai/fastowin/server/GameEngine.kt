@@ -61,6 +61,7 @@ import com.hienthai.fastowin.protocol.TournamentRewardType
 import com.hienthai.fastowin.protocol.TournamentSnapshot
 import com.hienthai.fastowin.protocol.TournamentScheduleSnapshot
 import com.hienthai.fastowin.protocol.PROTOCOL_VERSION
+import com.hienthai.fastowin.protocol.TOURNAMENT_REWARD_PROTOCOL_VERSION
 import com.hienthai.fastowin.protocol.TITLE_CATALOG
 import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.currentCoroutineContext
@@ -1030,6 +1031,9 @@ class GameEngine(
         if (command.maxPlayers !in SUPPORTED_TOURNAMENT_PLAYER_COUNTS) {
             return listOf(error(playerId, "INVALID_TOURNAMENT_SIZE", legacyFallback("Giải đấu chỉ hỗ trợ 4, 8 hoặc 16 người.")))
         }
+        if (command.entryFee <= 0) {
+            return listOf(error(playerId, "INVALID_TOURNAMENT_ENTRY_FEE", legacyFallback("Lệ phí phải từ 1 Vàng trở lên.")))
+        }
         var created = false
         val tournamentId = UUID.randomUUID().toString()
         val deliveries = persistenceMutex.withLock { mutex.withLock {
@@ -1093,7 +1097,7 @@ class GameEngine(
                         ServerMessage.TournamentNotice(
                             message = legacyFallback("Đã tạo giải ${command.maxPlayers} người."),
                             messageKey = TextKey.TournamentCreatedNotice.name,
-                            messageArgs = mapOf("players" to command.maxPlayers.toString()),
+                            messageArgs = mapOf("players" to command.maxPlayers.toString(), "tournamentId" to tournament.id),
                             code = "TOURNAMENT_CREATED"
                         ),
                         setOf(playerId)
@@ -1537,7 +1541,6 @@ class GameEngine(
                 val snapshot = tournament.snapshot()
                 snapshotToSave = snapshot
                 listOf(
-                    *tournamentRewardDeliveries(snapshot, tournament.playerIds()).toTypedArray(),
                     Delivery(ServerMessage.TournamentUpdated(snapshot), tournament.playerIds()),
                     Delivery(ServerMessage.TournamentNotice(
                         legacyFallback("Chủ giải đã hủy giải đấu."),
@@ -3927,7 +3930,7 @@ class GameEngine(
 
     private fun tournamentRewardDeliveries(snapshot: TournamentSnapshot, recipients: Set<String>): List<Delivery> = when (snapshot.phase) {
         TournamentPhase.FINISHED -> snapshot.championPlayerId?.let { championId ->
-            if (championId in recipients && snapshot.prizePool > 0) listOf(
+            if (championId in recipients && snapshot.prizePool > 0 && supportsTournamentReward(championId)) listOf(
                 Delivery(
                     ServerMessage.TournamentRewardResult(
                         requestId = "tournament-prize:${snapshot.tournamentId}",
@@ -3943,6 +3946,7 @@ class GameEngine(
             (snapshot.players + snapshot.recordedPlayers)
                 .map { it.playerId }
                 .distinct()
+                .filter(::supportsTournamentReward)
                 .map { playerId ->
                     Delivery(
                         ServerMessage.TournamentRewardResult(
@@ -3957,6 +3961,9 @@ class GameEngine(
         } else emptyList()
         else -> emptyList()
     }
+
+    private fun supportsTournamentReward(playerId: String): Boolean =
+        (sessionsByPlayerId[playerId]?.protocolVersion ?: 0) >= TOURNAMENT_REWARD_PROTOCOL_VERSION
 
     private suspend fun advanceTournamentAfterMatch(matchId: String): List<Delivery> = persistenceMutex.withLock {
         val stage = mutex.withLock {

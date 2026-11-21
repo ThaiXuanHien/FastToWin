@@ -3,14 +3,14 @@
 const states = { DRAFT: 'Bản nháp', SCHEDULED: 'Đã lên lịch', ACTIVE: 'Đang diễn ra', ENDED: 'Đã kết thúc', CANCELLED: 'Đã hủy' };
 const modes = { CASUAL: 'Đấu thường', RANKED: 'Đấu hạng' };
 const holidays = {
-  lunar: ['Tết Nguyên đán', 'Lunar New Year'],
-  newyear: ['Tết Dương lịch', 'New Year', '01-01', '01-02'],
-  march8: ['Ngày 8 tháng 3', 'March 8', '03-08', '03-09'],
-  october20: ['Ngày 20 tháng 10', 'October 20', '10-20', '10-21'],
-  halloween: ['Halloween', 'Halloween', '10-31', '11-01'],
-  november19: ['Ngày 19 tháng 11', 'November 19', '11-19', '11-20'],
-  november20: ['Ngày Nhà giáo Việt Nam', 'Vietnamese Teachers’ Day', '11-20', '11-21'],
-  christmas: ['Giáng sinh (24–25/12)', 'Christmas (December 24–25)', '12-24', '12-26'],
+  lunar: ['Tết Nguyên đán'],
+  newyear: ['Tết Dương lịch', '01-01', '01-02'],
+  march8: ['Ngày 8 tháng 3', '03-08', '03-09'],
+  october20: ['Ngày 20 tháng 10', '10-20', '10-21'],
+  halloween: ['Halloween', '10-31', '11-01'],
+  november19: ['Ngày 19 tháng 11', '11-19', '11-20'],
+  november20: ['Ngày Nhà giáo Việt Nam', '11-20', '11-21'],
+  christmas: ['Giáng sinh (24–25/12)', '12-24', '12-26'],
 };
 const utcInput = value => new Date(value).toISOString().slice(0, 23).replace(/:00\.000$/, '').replace(/\.000$/, '');
 const timezoneLabel = zone => ['Asia/Bangkok', 'Asia/Ho_Chi_Minh'].includes(zone) ? 'Giờ Việt Nam (UTC+7)' : zone;
@@ -144,13 +144,14 @@ export function openRewardEvents(ui) {
       const suggestions = node('section', null, { class: 'event-suggestions stack', 'aria-label': 'Gợi ý bản nháp' }); form.append(suggestions);
       const preset = select(suggestions, 'Gợi ý ngày lễ', 'event-holiday', { '': 'Tự soạn', ...Object.fromEntries(Object.entries(holidays).map(([key, values]) => [key, values[0]])) });
       const year = field(suggestions, 'Năm ngày lễ', 'event-year', 'number', { min: '1970', max: '9998', step: '1' });
-      suggestions.append(node('p', 'Chọn năm rồi áp dụng gợi ý. Tết Nguyên đán: tự nhập ngày Gregorian cho từng năm; không tính ngày âm lịch. Mọi người đủ điều kiện đều có thể tham gia, không nhắm giới tính hay nghề nghiệp.', { class: 'muted' }));
+      suggestions.append(node('p', 'Tên sự kiện do bạn nhập. Chọn năm để áp dụng gợi ý ngày lễ. Với Tết Nguyên đán, nhập ngày dương lịch (Gregorian) của năm đó.', { class: 'muted' }));
       preset.addEventListener('change', () => { if (preset.value === 'lunar') { start.value = ''; end.value = ''; } });
       suggestions.append(button('Áp dụng gợi ý', () => {
         const suggestion = holidays[preset.value]; if (!suggestion) return;
         if (!/^\d{4}$/.test(year.value) || +year.value < 1970 || +year.value > 9998) { notices.fail(new Error('Nhập năm ngày lễ từ 1970 đến 9998.'), true); return; }
-        nameVi.value = suggestion[0]; nameEn.value = suggestion[1]; contentVi.value = 'Thưởng GOLD và XP cho trận trực tuyến đủ điều kiện.'; contentEn.value = 'GOLD and XP rewards for eligible online matches.';
-        start.value = suggestion[2] ? `${year.value}-${suggestion[2]}T00:00` : ''; end.value = suggestion[3] ? `${year.value}-${suggestion[3]}T00:00` : ''; gold.value = '2'; xp.value = '2'; notices.clear();
+        const [, startDay, endDay] = suggestion;
+        contentVi.value = 'Thưởng GOLD và XP cho trận trực tuyến đủ điều kiện.'; contentEn.value = 'GOLD and XP rewards for eligible online matches.';
+        start.value = startDay ? `${year.value}-${startDay}T00:00` : ''; end.value = endDay ? `${year.value}-${endDay}T00:00` : ''; gold.value = '2'; xp.value = '2'; notices.clear();
       }));
     }
     const timezone = field(form, 'Múi giờ hiển thị (IANA)', 'event-timezone', 'text', { required: '' }); timezone.value = draft?.timezone || 'Asia/Ho_Chi_Minh';
