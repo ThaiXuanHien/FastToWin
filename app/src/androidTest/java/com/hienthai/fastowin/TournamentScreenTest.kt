@@ -126,7 +126,7 @@ class TournamentScreenTest {
         composeRule.onNodeWithTag("tournament_size_4").performScrollTo().performClick()
         composeRule.onNodeWithTag("tournament_name").performScrollTo().performTextInput("Manual Cup")
         composeRule.onNodeWithTag("tournament_fee_50").performScrollTo().performClick()
-        composeRule.onNodeWithText("Giải thưởng cơ bản khi đủ người: 200 Vàng").assertIsDisplayed()
+        composeRule.onNodeWithText("Giải thưởng cơ bản khi đủ người: 200 Vàng").performScrollTo().assertIsDisplayed()
         composeRule.onNodeWithTag("create_tournament").performScrollTo().assertIsEnabled().performClick()
         composeRule.runOnIdle { assertEquals("Manual Cup" to 50, created) }
     }
