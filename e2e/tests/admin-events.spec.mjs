@@ -71,7 +71,7 @@ test('cancel confirmation pending guard and retry preserve payload', async ({ pa
   await open(page, fixture); await detail(page); await page.getByRole('button', { name: 'Hủy sự kiện', exact: true }).click(); await page.getByLabel('Lý do hủy', { exact: true }).fill('Local cancel'); await page.getByRole('button', { name: 'Xác nhận hủy sự kiện', exact: true }).click(); await expect.poll(() => typeof release).toBe('function'); await page.keyboard.press('Escape'); await expect(page.getByRole('dialog')).toBeVisible(); release(); await expect(page.getByRole('alert')).toContainText('Chưa xác nhận');
   fixture.handlers.set(target, async (_, send) => { send(200, eventView({ state: 'CANCELLED', version: 4 })); return true; }); await page.getByRole('button', { name: 'Xác nhận hủy sự kiện', exact: true }).click(); await expect(page.locator('.confirmation')).toContainText('Đã hủy'); const calls = fixture.calls.filter(c => c.route === target); expect(calls[0].body).toEqual(calls[1].body);
 });
-test('holiday suggestions preserve the manually entered event names', async ({ page, fixture }) => {
+test('typed holiday suggestions preserve the manually entered event names', async ({ page, fixture }) => {
   events(fixture); await open(page, fixture); await page.getByRole('button', { name: 'Tạo sự kiện', exact: true }).click();
   const nameVi = page.getByLabel('Tên tiếng Việt', { exact: true });
   const nameEn = page.getByLabel('Tên tiếng Anh', { exact: true });
@@ -79,11 +79,42 @@ test('holiday suggestions preserve the manually entered event names', async ({ p
   await expect(nameEn).toHaveValue('');
   await nameVi.fill('Cuối tuần Vàng');
   await nameEn.fill('Gold Weekend');
-  const preset = page.getByLabel('Gợi ý ngày lễ', { exact: true }); expect(await preset.locator('option').count()).toBe(9);
-  await preset.selectOption('lunar'); await expect(page.getByLabel('Bắt đầu (UTC, bao gồm)', { exact: true })).toHaveValue(''); await expect(page.getByRole('dialog')).toContainText('Gregorian');
-  await preset.selectOption('christmas'); await page.getByLabel('Năm ngày lễ', { exact: true }).fill('2028'); await page.getByRole('button', { name: 'Áp dụng gợi ý', exact: true }).click(); await expect(page.getByLabel('Bắt đầu (UTC, bao gồm)', { exact: true })).toHaveValue('2028-12-24T00:00'); await expect(page.getByLabel('Kết thúc (UTC, không bao gồm)', { exact: true })).toHaveValue('2028-12-26T00:00'); expect(fixture.calls.filter(c => c.method === 'POST' && c.route.startsWith(eventPath))).toHaveLength(0);
+  const holiday = page.getByRole('textbox', { name: 'Gợi ý ngày lễ', exact: true });
+  const apply = page.getByRole('button', { name: 'Áp dụng gợi ý', exact: true });
+  const start = page.getByLabel('Bắt đầu (UTC, bao gồm)', { exact: true });
+  const end = page.getByLabel('Kết thúc (UTC, không bao gồm)', { exact: true });
+  await holiday.fill('Tết Nguyên đán');
+  await apply.click();
+  await expect(start).toHaveValue('');
+  await expect(end).toHaveValue('');
+  await expect(page.getByRole('dialog')).toContainText('ngày dương lịch');
+  await holiday.fill('  GIANG SINH  ');
+  await apply.click();
+  await expect(page.getByRole('alert')).toContainText('Nhập năm ngày lễ');
+  await page.getByLabel('Năm ngày lễ', { exact: true }).fill('2028');
+  await apply.click();
+  await expect(start).toHaveValue('2028-12-24T00:00');
+  await expect(end).toHaveValue('2028-12-26T00:00');
+  expect(fixture.calls.filter(c => c.method === 'POST' && c.route.startsWith(eventPath))).toHaveLength(0);
   await expect(nameVi).toHaveValue('Cuối tuần Vàng');
   await expect(nameEn).toHaveValue('Gold Weekend');
+});
+test('a custom holiday can start a draft with manually entered dates', async ({ page, fixture }) => {
+  events(fixture); await open(page, fixture); await page.getByRole('button', { name: 'Tạo sự kiện', exact: true }).click();
+  await fillDraft(page);
+  const nameVi = page.getByLabel('Tên tiếng Việt', { exact: true });
+  await nameVi.fill('');
+  await page.getByRole('textbox', { name: 'Gợi ý ngày lễ', exact: true }).fill('  Ngày hội cộng đồng  ');
+  await page.getByRole('button', { name: 'Áp dụng gợi ý', exact: true }).click();
+  await expect(nameVi).toHaveValue('Ngày hội cộng đồng');
+  await page.getByRole('button', { name: 'Lưu bản nháp', exact: true }).click();
+  await expect(page.getByRole('dialog')).toHaveCount(0);
+  const saved = fixture.calls.find(call => call.route === eventPath && call.method === 'POST');
+  expect(saved.body.draft).toMatchObject({
+    nameVi: 'Ngày hội cộng đồng', nameEn: 'Sample event', contentVi: 'Trận trực tuyến', contentEn: 'Online matches',
+    startsAtEpochMillis: Date.parse('2026-10-31T12:00Z'), endsAtEpochMillis: Date.parse('2026-11-01T12:00Z'),
+    goldMultiplier: 1, xpMultiplier: 1,
+  });
 });
 for (const exit of ['view', 'logout', 'role', 'expiry']) test(`late API/session fence ${exit}`, async ({ page, fixture }) => {
   events(fixture); await open(page, fixture); await expect(page.locator('.event-row')).toBeVisible(); let release;
@@ -119,6 +150,9 @@ for (const width of [360, 768, 1024, 1440]) test(`responsive events ${width}`, a
   events(fixture); await page.setViewportSize({ width, height: 1000 }); await page.emulateMedia({ reducedMotion: 'reduce' }); await open(page, fixture); await expect(page.locator('.event-row')).toBeVisible();
   expect(await page.evaluate(() => [...document.querySelectorAll('body *')].filter(el => el.getBoundingClientRect().right > innerWidth + 1).map(el => [el.tagName, el.className?.baseVal ?? el.className, el.getBoundingClientRect().right]))).toEqual([]); await page.screenshot({ path: `${artifacts}/events-${width}-list.png`, fullPage: true });
   const opener = page.getByRole('button', { name: 'Tạo sự kiện', exact: true }); await opener.click(); await expect(page.getByLabel('Tên tiếng Việt', { exact: true })).toBeFocused(); await page.screenshot({ path: `${artifacts}/events-${width}-form.png` });
+  await page.getByRole('region', { name: 'Gợi ý bản nháp', exact: true }).scrollIntoViewIfNeeded();
+  await expect(page.getByRole('textbox', { name: 'Gợi ý ngày lễ', exact: true })).toBeInViewport();
+  await page.screenshot({ path: `${artifacts}/events-${width}-holiday.png` });
   await page.getByLabel('Lý do thay đổi', { exact: true }).scrollIntoViewIfNeeded(); await page.screenshot({ path: `${artifacts}/events-${width}-form-end.png` });
   expect(await page.getByRole('button', { name: 'Đóng hộp thoại', exact: true }).evaluate(el => { const box = el.getBoundingClientRect(), hit = document.elementFromPoint(box.x + box.width / 2, box.y + box.height / 2); return box.top >= 0 && box.bottom <= innerHeight && el.contains(hit); })).toBe(true);
   expect(await page.locator('dialog .icon-button').evaluateAll(nodes => nodes.every(n => n.getBoundingClientRect().width >= 48 && n.getBoundingClientRect().height >= 48))).toBe(true);
