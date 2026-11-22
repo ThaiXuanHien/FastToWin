@@ -476,9 +476,11 @@ class TournamentScreenTest {
         ) } }
 
         composeRule.onNodeWithTag("open_create_tournament").performScrollTo().performClick()
-        composeRule.onNodeWithTag("tournament_name").performScrollTo().performTextInput("Paid Cup")
+        // Select the fee before focusing a text field, which changes the dialog viewport as the IME opens.
         composeRule.onNodeWithTag("tournament_fee_custom").performScrollTo().performClick()
         val feeInput = composeRule.onNodeWithTag("tournament_custom_fee_input")
+        feeInput.assertExists()
+        composeRule.onNodeWithTag("tournament_name").performScrollTo().performTextInput("Paid Cup")
         val submit = composeRule.onNodeWithTag("create_tournament")
         feeInput.performScrollTo().performTextInput("0")
         composeRule.onNodeWithText("Giải thưởng cơ bản khi đủ người:", substring = true).assertDoesNotExist()
