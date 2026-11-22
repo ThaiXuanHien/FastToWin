@@ -43,7 +43,8 @@ class MaintenanceRoutesTest {
         val expectedStatus = ServiceStatusResponse(
             maintenance = false, message = "Bảo trì", pollAfterSeconds = 5,
             state = MaintenanceState.ANNOUNCING, mode = MaintenanceMode.PLANNED, version = 7,
-            messageVi = "Bảo trì", messageEn = "Maintenance", transitionAtEpochMillis = start + 60_000
+            messageVi = "Bảo trì", messageEn = "Maintenance", transitionAtEpochMillis = start + 60_000,
+            serverTimeEpochMillis = start
         )
         assertEquals(expectedPolicy, service.effectivePolicy())
         assertEquals(expectedStatus, runtime.publicStatus())
@@ -77,6 +78,7 @@ class MaintenanceRoutesTest {
             val status = ProtocolJson.decodeFromString<ServiceStatusResponse>(response.bodyAsText())
             assertEquals(MaintenanceState.MAINTENANCE, status.state)
             assertEquals(9, status.version)
+            assertEquals(start + 60_000, status.serverTimeEpochMillis)
             assertTrue(status.maintenance)
         }
     }
