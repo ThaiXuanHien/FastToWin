@@ -7,6 +7,7 @@ import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlin.time.TimeSource
 
 data class GiftMailboxState(
     val isOpen: Boolean = false,
@@ -19,17 +20,24 @@ data class GiftMailboxState(
     val itemErrors: Map<String, String> = emptyMap(),
     val loadError: String? = null,
     val lastClaimedGift: GiftClaimResult? = null,
-    val lastClaimedBatch: List<GiftClaimResult> = emptyList()
+    val lastClaimedBatch: List<GiftClaimResult> = emptyList(),
+    val serverClock: ServerClock? = null
 ) {
     val hasMore: Boolean get() = items.size < total
     val hasAvailable: Boolean get() = items.any { it.state == GiftState.AVAILABLE }
     val canClaimAll: Boolean get() = hasAvailable || hasMore
 }
 
+internal fun MailboxGift.stateAt(serverNowMillis: Long?): GiftState =
+    if (state == GiftState.AVAILABLE && serverNowMillis != null && serverNowMillis >= expiresAtEpochMillis) {
+        GiftState.EXPIRED
+    } else state
+
 class GiftMailboxController(
     private val gateway: GiftGateway,
     private val refreshProfile: () -> Unit,
-    private val pageSize: Int = 25
+    private val pageSize: Int = 25,
+    private val timeSource: TimeSource = TimeSource.Monotonic
 ) {
     private val _state = MutableStateFlow(GiftMailboxState())
     val state: StateFlow<GiftMailboxState> = _state.asStateFlow()
@@ -107,7 +115,8 @@ class GiftMailboxController(
                 total = page.total,
                 availableCount = if (version == countVersion && activeClaimIds.isEmpty())
                     page.availableCount.coerceAtLeast(0) else _state.value.availableCount,
-                isLoading = false
+                isLoading = false,
+                serverClock = clockFor(page)
             )
         } catch (cancelled: CancellationException) {
             throw cancelled
@@ -118,8 +127,9 @@ class GiftMailboxController(
 
     suspend fun claim(id: String) {
         val current = _state.value
+        val now = current.serverClock?.now()
         if (closed || !current.isOpen || claimAllInFlight || id in activeClaimIds ||
-            current.items.none { it.campaignId == id && it.state == GiftState.AVAILABLE }) return
+            current.items.none { it.campaignId == id && it.stateAt(now) == GiftState.AVAILABLE }) return
         val fence = generation
         countVersion++
         activeClaimIds += id
@@ -165,6 +175,7 @@ class GiftMailboxController(
                 val response = gateway.page(page++, pageSize)
                 if (fence != generation) return
                 availableCount = response.availableCount.coerceAtLeast(0)
+                _state.value = _state.value.copy(serverClock = clockFor(response))
                 response.items.forEach { all[it.campaignId] = it }
                 if (response.items.isEmpty()) break
             } while (all.size < response.total)
@@ -172,17 +183,20 @@ class GiftMailboxController(
             val available = all.values.filter { it.state == GiftState.AVAILABLE }.map { it.campaignId }
             for (batch in available.chunked(100)) {
                 if (fence != generation) return
-                _state.value = _state.value.copy(pendingIds = batch.toSet())
+                val now = _state.value.serverClock?.now()
+                val liveBatch = batch.filter { all.getValue(it).stateAt(now) == GiftState.AVAILABLE }
+                if (liveBatch.isEmpty()) continue
+                _state.value = _state.value.copy(pendingIds = liveBatch.toSet())
                 try {
-                    val results = gateway.claimAll(batch).items.associateBy { it.campaignId }
+                    val results = gateway.claimAll(liveBatch).items.associateBy { it.campaignId }
                     if (closed) return
-                    val accepted = batch.mapNotNull { id ->
+                    val accepted = liveBatch.mapNotNull { id ->
                         results[id]?.result?.takeIf { receipt ->
                             all[id]?.clanRace?.let { validRaceReceipt(id, it, receipt) } ?: true
                         }
                     }.associateBy { it.gift.campaignId }
                     if (accepted.isNotEmpty()) refreshProfile()
-                    for (id in batch) {
+                    for (id in liveBatch) {
                         val item = results[id]
                         val receipt = accepted[id]
                         if (receipt != null) {
@@ -196,7 +210,7 @@ class GiftMailboxController(
                     throw cancelled
                 } catch (error: Exception) {
                     if (fence != generation) return
-                    batch.forEach { markError(it, error.code()) }
+                    liveBatch.forEach { markError(it, error.code()) }
                 }
             }
             if (fence == generation && claimedReceipts.isNotEmpty()) {
@@ -238,6 +252,12 @@ class GiftMailboxController(
 
     fun dismissLastClaimedGift() {
         _state.value = _state.value.copy(lastClaimedGift = null, lastClaimedBatch = emptyList())
+    }
+
+    private fun clockFor(page: GiftMailboxPage): ServerClock? {
+        val previous = _state.value.serverClock
+        val now = page.serverNowEpochMillis ?: return previous
+        return ServerClock(maxOf(now, previous?.now() ?: now), timeSource.markNow())
     }
 
     private fun applyReceipt(receipt: GiftClaimResult, updateItems: Boolean = true): Boolean {

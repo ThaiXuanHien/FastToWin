@@ -5,7 +5,7 @@ const artifacts = '../.artifacts/admin-reward-events-delivery/task4';
 async function open(page, fixture) { await login(page, fixture); await page.getByRole('button', { name: 'Sự kiện thưởng', exact: true }).click(); await expect(page.getByRole('heading', { name: 'Sự kiện thưởng', exact: true })).toBeVisible(); }
 async function detail(page) { await page.getByRole('button', { name: /^Xem sự kiện / }).click(); await expect(page.getByRole('heading', { name: 'Cuối tuần nhân đôi', level: 1 })).toBeVisible(); }
 async function fillDraft(page) {
-  for (const [label, value] of [['Tên tiếng Việt', 'Sự kiện mẫu'], ['Tên tiếng Anh', 'Sample event'], ['Nội dung tiếng Việt', 'Trận trực tuyến'], ['Nội dung tiếng Anh', 'Online matches'], ['Múi giờ hiển thị (IANA)', 'America/New_York'], ['Bắt đầu (UTC, bao gồm)', '2026-10-31T12:00'], ['Kết thúc (UTC, không bao gồm)', '2026-11-01T12:00'], ['Lý do thay đổi', 'Local fixture verification']]) await page.getByLabel(label, { exact: true }).fill(value);
+  for (const [label, value] of [['Tên tiếng Việt', 'Sự kiện mẫu'], ['Tên tiếng Anh', 'Sample event'], ['Nội dung tiếng Việt', 'Trận trực tuyến'], ['Nội dung tiếng Anh', 'Online matches'], ['Múi giờ sự kiện (IANA)', 'America/New_York'], ['Bắt đầu (bao gồm)', '2026-10-31T08:00'], ['Kết thúc (không bao gồm)', '2026-11-01T07:00'], ['Lý do thay đổi', 'Local fixture verification']]) await page.getByLabel(label, { exact: true }).fill(value);
 }
 test('event navigation lists drafts and server filters / pagination', async ({ page, fixture }) => {
   events(fixture); await open(page, fixture); await expect(page.locator('.event-row')).toContainText('Cuối tuần nhân đôi');
@@ -26,10 +26,85 @@ for (const role of ['OPERATOR', 'SUPPORT']) test(`permissions ${role}`, async ({
   await page.getByRole('button', { name: 'Sự kiện thưởng', exact: true }).click(); await detail(page); await page.getByRole('button', { name: 'Xem trước', exact: true }).click();
   await expect(page.getByRole('dialog').getByRole('img', { name: 'Vàng (GOLD) ×2', exact: true }).first()).toBeVisible(); await expect(page.getByRole('button', { name: 'Tiếp tục lên lịch', exact: true })).toHaveCount(0); await expect(page.getByRole('button', { name: 'Hủy sự kiện', exact: true })).toHaveCount(0);
 });
-test('UTC entries remain exact with non-Bangkok display timezone and PUT current version', async ({ page, fixture }) => {
+test('creating a draft displays the same Vietnam times entered in the form', async ({ page, fixture }) => {
+  events(fixture); await open(page, fixture);
+  await page.getByRole('button', { name: 'Tạo sự kiện', exact: true }).click();
+  await expect(page.getByLabel('Múi giờ sự kiện (IANA)', { exact: true })).toHaveValue('Asia/Ho_Chi_Minh');
+  await fillDraft(page);
+  await page.locator('#field-event-timezone').fill('Asia/Ho_Chi_Minh');
+  await page.locator('#field-event-start').fill('2026-11-22T10:00');
+  await page.locator('#field-event-end').fill('2026-11-22T12:30:01.125');
+  await page.getByRole('button', { name: 'Lưu bản nháp', exact: true }).click();
+  await expect(page.locator('main')).toContainText('10:00:00,000 22/11/2026');
+  await expect(page.locator('main')).toContainText('12:30:01,125 22/11/2026');
+  const saved = fixture.calls.find(call => call.route === eventPath && call.method === 'POST');
+  expect(saved.body.draft.startsAtEpochMillis).toBe(Date.parse('2026-11-22T03:00Z'));
+  expect(saved.body.draft.endsAtEpochMillis).toBe(Date.parse('2026-11-22T05:30:01.125Z'));
+  await page.getByRole('button', { name: 'Sửa bản nháp', exact: true }).click();
+  await expect(page.locator('#field-event-start')).toHaveValue('2026-11-22T10:00');
+  await expect(page.locator('#field-event-end')).toHaveValue('2026-11-22T12:30:01.125');
+});
+test('editing uses the event timezone across a clock change and sends the current version', async ({ page, fixture }) => {
   events(fixture); await open(page, fixture); await detail(page); await page.getByRole('button', { name: 'Sửa bản nháp', exact: true }).click();
-  await expect(page.getByLabel('Bắt đầu (UTC, bao gồm)', { exact: true })).toHaveValue('2026-10-31T12:00'); await fillDraft(page); await page.getByRole('button', { name: 'Lưu bản nháp', exact: true }).click();
-  await expect(page.getByRole('dialog')).toHaveCount(0); const call = fixture.calls.find(c => c.method === 'PUT'); expect(call.route).toMatch(/\/draft$/); expect(call.body.expectedVersion).toBe(3); expect(call.body.draft.startsAtEpochMillis).toBe(Date.parse('2026-10-31T12:00:00Z')); expect(call.body.draft.timezone).toBe('America/New_York'); expect(call.headers['x-admin-csrf']).toBe('fixture-csrf');
+  await expect(page.getByLabel('Bắt đầu (bao gồm)', { exact: true })).toHaveValue('2026-10-31T08:00');
+  await expect(page.getByLabel('Kết thúc (không bao gồm)', { exact: true })).toHaveValue('2026-11-01T07:00');
+  await fillDraft(page); await page.getByRole('button', { name: 'Lưu bản nháp', exact: true }).click();
+  await expect(page.getByRole('dialog')).toHaveCount(0); const call = fixture.calls.find(c => c.method === 'PUT'); expect(call.route).toMatch(/\/draft$/); expect(call.body.expectedVersion).toBe(3); expect(call.body.draft.startsAtEpochMillis).toBe(Date.parse('2026-10-31T12:00:00Z')); expect(call.body.draft.endsAtEpochMillis).toBe(Date.parse('2026-11-01T12:00:00Z')); expect(call.body.draft.timezone).toBe('America/New_York'); expect(call.headers['x-admin-csrf']).toBe('fixture-csrf');
+});
+test('changing the event zone preserves saved and edited instants across a repeated local time', async ({ page, fixture }, testInfo) => {
+  const initial = eventView();
+  initial.draft.startsAtEpochMillis = Date.parse('2026-11-01T05:30:00.125Z');
+  initial.draft.endsAtEpochMillis = Date.parse('2026-11-01T06:30:00.125Z');
+  events(fixture, initial); await open(page, fixture); await detail(page);
+  await expect(page.locator('main')).toContainText('UTC−04:00');
+  await expect(page.locator('main')).toContainText('UTC−05:00');
+  await page.getByRole('button', { name: 'Sửa bản nháp', exact: true }).click();
+  const dialog = page.getByRole('dialog');
+  const zone = dialog.getByLabel('Múi giờ sự kiện (IANA)', { exact: true });
+  const start = dialog.getByLabel('Bắt đầu (bao gồm)', { exact: true });
+  const end = dialog.getByLabel('Kết thúc (không bao gồm)', { exact: true });
+  await expect(start).toHaveValue('2026-11-01T01:30:00.125');
+  await expect(end).toHaveValue('2026-11-01T01:30:00.125');
+  await zone.fill('Asia/Ho_');
+  await expect(start).toHaveValue('2026-11-01T01:30:00.125');
+  await zone.fill('UTC');
+  await expect(start).toHaveValue('2026-11-01T05:30:00.125');
+  await expect(end).toHaveValue('2026-11-01T06:30:00.125');
+  await end.fill('2026-11-01T06:45:00.125');
+  await zone.fill('America/New_York');
+  await expect(start).toHaveValue('2026-11-01T01:30:00.125');
+  await expect(end).toHaveValue('2026-11-01T01:45:00.125');
+  await end.fill('2026-11-01T01:46:00.125');
+  await zone.fill('UTC');
+  await expect(end).toHaveValue('2026-11-01T01:46:00.125');
+  await expect(end).toHaveAccessibleDescription(/Giờ nhập · America\/New_York.*Kết thúc: giờ này xảy ra hai lần/);
+  await end.fill('2026-11-01T01:45:00.125');
+  await end.press('Tab');
+  await expect(end).toHaveValue('2026-11-01T06:45:00.125');
+  await zone.fill('America/New_York');
+  for (const width of [360, 1440]) {
+    await page.setViewportSize({ width, height: 900 });
+    await start.scrollIntoViewIfNeeded();
+    expect(await dialog.evaluate(el => el.scrollWidth <= el.clientWidth)).toBe(true);
+    await page.screenshot({ path: testInfo.outputPath(`event-zone-${width}.png`), animations: 'disabled' });
+  }
+  await dialog.getByLabel('Lý do thay đổi', { exact: true }).fill('Verify zone conversion');
+  await dialog.getByRole('button', { name: 'Lưu bản nháp', exact: true }).click();
+  await expect(dialog).toHaveCount(0);
+  const { draft } = fixture.calls.find(call => call.method === 'PUT').body;
+  expect(draft).toMatchObject({ timezone: 'America/New_York', startsAtEpochMillis: initial.draft.startsAtEpochMillis, endsAtEpochMillis: Date.parse('2026-11-01T06:45:00.125Z') });
+});
+test('a new draft rejects missing or repeated times during clock changes', async ({ page, fixture }) => {
+  events(fixture); await open(page, fixture);
+  await page.getByRole('button', { name: 'Tạo sự kiện', exact: true }).click(); await fillDraft(page);
+  const dialog = page.getByRole('dialog');
+  const start = dialog.getByLabel('Bắt đầu (bao gồm)', { exact: true });
+  const save = dialog.getByRole('button', { name: 'Lưu bản nháp', exact: true });
+  await start.fill('2026-03-08T02:30'); await save.click();
+  await expect(dialog.getByRole('alert')).toContainText('giờ này không tồn tại');
+  await start.fill('2026-11-01T01:30'); await save.click();
+  await expect(dialog.getByRole('alert')).toContainText('giờ này xảy ra hai lần');
+  expect(fixture.calls.filter(call => call.method === 'POST' && call.route === eventPath)).toHaveLength(0);
 });
 for (const timezone of ['Asia/Bangkok', 'Asia/Ho_Chi_Minh']) test(`Vietnam time display preserves saved IANA zone ${timezone}`, async ({ page, fixture }) => {
   const initial = eventView(); initial.draft.timezone = timezone; events(fixture, initial);
@@ -40,8 +115,8 @@ for (const timezone of ['Asia/Bangkok', 'Asia/Ho_Chi_Minh']) test(`Vietnam time 
   await expect(facts.locator('div').filter({ has: page.locator('dt', { hasText: 'Bắt đầu (bao gồm)' }) }).locator('dd')).toHaveText('19:00:00,000 31/10/2026 · Giờ Việt Nam (UTC+7)');
   await page.screenshot({ path: `.artifacts/report-pwa-cleanup-20261025/event-time-${width}.png`, fullPage: true });
   await page.getByRole('button', { name: 'Sửa bản nháp', exact: true }).click();
-  await expect(page.getByLabel('Múi giờ hiển thị (IANA)', { exact: true })).toHaveValue(timezone);
-  await expect(page.getByLabel('Bắt đầu (UTC, bao gồm)', { exact: true })).toHaveValue('2026-10-31T12:00');
+  await expect(page.getByLabel('Múi giờ sự kiện (IANA)', { exact: true })).toHaveValue(timezone);
+  await expect(page.getByLabel('Bắt đầu (bao gồm)', { exact: true })).toHaveValue('2026-10-31T19:00');
   await page.getByLabel('Lý do thay đổi', { exact: true }).fill('Verify saved timezone');
   await page.getByRole('button', { name: 'Lưu bản nháp', exact: true }).click(); await expect(page.getByRole('dialog')).toHaveCount(0);
   const saved = fixture.calls.find(call => call.method === 'PUT'); expect(saved.body.draft).toEqual(initial.draft);
@@ -81,8 +156,8 @@ test('typed holiday suggestions preserve the manually entered event names', asyn
   await nameEn.fill('Gold Weekend');
   const holiday = page.getByRole('textbox', { name: 'Gợi ý ngày lễ', exact: true });
   const apply = page.getByRole('button', { name: 'Áp dụng gợi ý', exact: true });
-  const start = page.getByLabel('Bắt đầu (UTC, bao gồm)', { exact: true });
-  const end = page.getByLabel('Kết thúc (UTC, không bao gồm)', { exact: true });
+  const start = page.getByLabel('Bắt đầu (bao gồm)', { exact: true });
+  const end = page.getByLabel('Kết thúc (không bao gồm)', { exact: true });
   await holiday.fill('Tết Nguyên đán');
   await apply.click();
   await expect(start).toHaveValue('');
@@ -153,6 +228,10 @@ for (const width of [360, 768, 1024, 1440]) test(`responsive events ${width}`, a
   await page.getByRole('region', { name: 'Gợi ý bản nháp', exact: true }).scrollIntoViewIfNeeded();
   await expect(page.getByRole('textbox', { name: 'Gợi ý ngày lễ', exact: true })).toBeInViewport();
   await page.screenshot({ path: `${artifacts}/events-${width}-holiday.png` });
+  const startTime = page.getByLabel('Bắt đầu (bao gồm)', { exact: true });
+  await startTime.scrollIntoViewIfNeeded();
+  await expect(startTime).toHaveAccessibleDescription('Giờ nhập · Giờ Việt Nam (UTC+7)');
+  await page.screenshot({ path: `${artifacts}/events-${width}-time.png` });
   await page.getByLabel('Lý do thay đổi', { exact: true }).scrollIntoViewIfNeeded(); await page.screenshot({ path: `${artifacts}/events-${width}-form-end.png` });
   expect(await page.getByRole('button', { name: 'Đóng hộp thoại', exact: true }).evaluate(el => { const box = el.getBoundingClientRect(), hit = document.elementFromPoint(box.x + box.width / 2, box.y + box.height / 2); return box.top >= 0 && box.bottom <= innerHeight && el.contains(hit); })).toBe(true);
   expect(await page.locator('dialog .icon-button').evaluateAll(nodes => nodes.every(n => n.getBoundingClientRect().width >= 48 && n.getBoundingClientRect().height >= 48))).toBe(true);

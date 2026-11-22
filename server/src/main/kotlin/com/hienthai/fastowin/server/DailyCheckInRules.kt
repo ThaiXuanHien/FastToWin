@@ -3,7 +3,16 @@ package com.hienthai.fastowin.server
 import com.hienthai.fastowin.protocol.DAILY_CHECK_IN_REWARDS_XP
 import com.hienthai.fastowin.protocol.DAILY_CHECK_IN_REWARDS_GOLD
 import com.hienthai.fastowin.protocol.DAILY_CHECK_IN_REWARDS_GEMS
+import java.time.Instant
 import java.time.LocalDate
+import java.time.ZoneId
+
+internal val DAILY_CHECK_IN_ZONE: ZoneId = ZoneId.of("Asia/Bangkok")
+
+internal fun dailyCheckInDate(at: Instant): LocalDate = at.atZone(DAILY_CHECK_IN_ZONE).toLocalDate()
+
+internal fun nextDailyCheckInReset(today: LocalDate): Long =
+    today.plusDays(1).atStartOfDay(DAILY_CHECK_IN_ZONE).toInstant().toEpochMilli()
 
 internal data class DailyCheckInDecision(
     val claimedToday: Boolean,

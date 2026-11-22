@@ -3,9 +3,12 @@
 const states = { DRAFT: 'Bản nháp', PUBLISHED: 'Đã công bố', CANCELLED: 'Đã hủy' };
 const audiences = { ALL_REGISTERED: 'Tất cả tài khoản đã đăng ký', SINGLE_PLAYER: 'Một người chơi', USER_IDS: 'Danh sách UUID (nâng cao)', REGISTERED_BETWEEN: 'Đăng ký trong khoảng thời gian' };
 const DAY = 86400000, BANGKOK = 7 * 3600000;
-const localDate = value => new Date(value + BANGKOK).toISOString().slice(0, 23).replace(/:00\.000$/, '').replace(/\.000$/, '');
-const epoch = value => Date.parse(value + '+07:00');
-const date = value => value == null ? 'Chưa có dữ liệu' : new Intl.DateTimeFormat('vi-VN', { timeZone: 'Asia/Bangkok', dateStyle: 'short', timeStyle: 'short' }).format(value) + ' · Giờ Việt Nam (UTC+7)';
+const epoch = control => control.valueAsNumber - BANGKOK;
+const dateFormat = new Intl.DateTimeFormat('vi-VN', {
+  timeZone: 'Asia/Bangkok', year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit',
+  second: '2-digit', fractionalSecondDigits: 3, hourCycle: 'h23',
+});
+const date = value => value == null ? 'Chưa có dữ liệu' : dateFormat.format(value) + ' · Giờ Việt Nam (UTC+7)';
 
 // One explicit adapter owns auth, session fencing, network policy and shared UI.
 // Campaign state exists only in this view's closures; view/session changes remove it.
@@ -178,13 +181,13 @@ export function openGiftCampaigns(ui) {
     for (const [key, input] of Object.entries(values)) input.value = draft?.[key] ?? (key === 'audience' ? 'ALL_REGISTERED' : ['gold', 'xp', 'gems', 'plays'].includes(key) ? '0' : '');
     if (draft && isIndividual(draft)) audience.value = 'SINGLE_PLAYER';
     ids.value = draft?.userIds?.join('\n') ?? '';
-    from.value = draft?.registeredFromEpochMillis == null ? '' : localDate(draft.registeredFromEpochMillis);
-    until.value = draft?.registeredUntilEpochMillis == null ? '' : localDate(draft.registeredUntilEpochMillis);
-    available.value = localDate(draft?.availableAtEpochMillis ?? Math.ceil(Date.now() / 60000) * 60000);
-    expires.value = localDate(draft?.expiresAtEpochMillis ?? epoch(available.value) + 30 * DAY);
+    if (draft?.registeredFromEpochMillis != null) from.valueAsNumber = draft.registeredFromEpochMillis + BANGKOK;
+    if (draft?.registeredUntilEpochMillis != null) until.valueAsNumber = draft.registeredUntilEpochMillis + BANGKOK;
+    available.valueAsNumber = (draft?.availableAtEpochMillis ?? Math.ceil(Date.now() / 60000) * 60000) + BANGKOK;
+    expires.valueAsNumber = draft?.expiresAtEpochMillis == null ? available.valueAsNumber + 30 * DAY : draft.expiresAtEpochMillis + BANGKOK;
     let customExpiry = Boolean(draft);
     expires.addEventListener('input', () => { customExpiry = true; });
-    available.addEventListener('input', () => { if (!customExpiry && Number.isFinite(epoch(available.value))) expires.value = localDate(epoch(available.value) + 30 * DAY); });
+    available.addEventListener('input', () => { if (!customExpiry && Number.isFinite(available.valueAsNumber)) expires.valueAsNumber = available.valueAsNumber + 30 * DAY; });
     function audienceChanged() { clearRecipient(); individual.hidden = audience.value !== 'SINGLE_PLAYER'; activityHelp.hidden = !individual.hidden; reference.required = !individual.hidden; idsGroup.hidden = audience.value !== 'USER_IDS'; bounds.hidden = audience.value !== 'REGISTERED_BETWEEN'; ids.required = !idsGroup.hidden; from.required = until.required = !bounds.hidden; }
     audience.addEventListener('change', audienceChanged); audienceChanged();
     const notices = feedback(form), submit = node('button', 'Lưu bản nháp', { type: 'submit', class: 'primary' });
@@ -202,10 +205,10 @@ export function openGiftCampaigns(ui) {
       if (body.userIds.length > 10000) throw new Error('Danh sách vượt giới hạn 10.000 ID. Có thể gửi cho một người bằng lựa chọn “Một người chơi”.');
       if (body.audience === 'USER_IDS' && !body.userIds.length) throw new Error('Nhập ít nhất một UUID hoặc chọn “Một người chơi” để dùng mã game hoặc email.');
       if (body.userIds.some(id => !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id))) throw new Error('Danh sách nâng cao chỉ nhận UUID nội bộ. Để nhập mã game hoặc email, chọn “Một người chơi”.');
-      body.registeredFromEpochMillis = body.audience === 'REGISTERED_BETWEEN' ? epoch(from.value) : null;
-      body.registeredUntilEpochMillis = body.audience === 'REGISTERED_BETWEEN' ? epoch(until.value) : null;
+      body.registeredFromEpochMillis = body.audience === 'REGISTERED_BETWEEN' ? epoch(from) : null;
+      body.registeredUntilEpochMillis = body.audience === 'REGISTERED_BETWEEN' ? epoch(until) : null;
       if (body.audience === 'REGISTERED_BETWEEN' && !(body.registeredFromEpochMillis >= 0 && body.registeredUntilEpochMillis > body.registeredFromEpochMillis)) throw new Error('Khoảng đăng ký cần có mốc kết thúc sau mốc bắt đầu.');
-      body.availableAtEpochMillis = epoch(available.value); body.expiresAtEpochMillis = epoch(expires.value);
+      body.availableAtEpochMillis = epoch(available); body.expiresAtEpochMillis = epoch(expires);
       if (!(body.availableAtEpochMillis >= 0 && body.expiresAtEpochMillis > body.availableAtEpochMillis && body.expiresAtEpochMillis <= 253402300799999)) throw new Error('Hết hạn cần sau thời gian phát; kiểm tra lại các mốc theo Giờ Việt Nam (UTC+7).');
       if (campaign) body.expectedVersion = campaign.version; return body;
     }, result => { surface.finish(); detail(result.campaign.id, 'Đã lưu bản nháp.'); }, campaign ? 'PUT' : 'POST', () => { surface.finish(); detail(campaign.id, '', 'Bản nháp đã thay đổi. Kiểm tra dữ liệu mới trước khi sửa lại.'); });

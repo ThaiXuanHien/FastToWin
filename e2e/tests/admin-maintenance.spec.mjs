@@ -71,6 +71,7 @@ test('maintenance audit actions and refund source have Vietnamese labels', async
   fixture.handlers.set('/admin/api/users/' + player.id + '/wallet', async (_, send) => { send(200, pageOf([{ id: 'refund', sourceType: 'TOURNAMENT_MAINTENANCE_REFUND', sourceId: 'cup', goldDelta: 100, gemsDelta: 0, xpDelta: 0, createdAtEpochMillis: 1791000000000 }])); return true; });
   await login(page, fixture); await page.getByRole('button', { name: 'Nhật ký kiểm toán', exact: true }).click();
   for (const label of ['Xem trạng thái bảo trì', 'Cập nhật bảo trì', 'Chuyển giai đoạn bảo trì']) await expect(page.getByText(label, { exact: true })).toBeVisible();
+  await expect(page.locator('.history-row').first()).toContainText(new Date(1791000000000).toISOString().replace('T', ' ').replace('Z', ' UTC'));
   await page.getByRole('button', { name: 'Người chơi', exact: true }).click(); await page.getByRole('button', { name: 'Xem người chơi' }).first().click();
   await page.getByRole('button', { name: 'Ví', exact: true }).click(); await expect(page.getByText('Hoàn phí giải do bảo trì', { exact: true })).toBeVisible();
 });
@@ -94,13 +95,15 @@ test('Owner planned, emergency and disable submit exact versioned DTOs and show 
   await expect(page.getByText('3 trận', { exact: true })).toBeVisible();
   await expect(page.getByText(/Chưa xác nhận tất cả kết nối đã đóng/)).toBeVisible();
   await edit(page); await fillMaintenance(page);
-  await page.getByLabel('Kết thúc dự kiến · Giờ Việt Nam (UTC+7)').fill('2026-10-04T16:30');
-  await review(page); await save(page);
+  await page.getByLabel('Kết thúc dự kiến · Giờ Việt Nam (UTC+7)').fill('2026-10-04T16:30:01.125');
+  await review(page);
+  await expect(page.getByRole('dialog')).toContainText('16:30:01,125');
+  await save(page);
   await expect(page.getByRole('dialog')).toHaveCount(0);
   const first = fixture.calls.find(c => c.method === 'POST' && c.route === maintenancePath);
   expect(first.body).toEqual({ enabled: true, expectedVersion: 7, requestId: expect.any(String), mode: 'PLANNED', cause: 'UPDATE',
     messageVi: 'Cập nhật máy chủ', messageEn: 'Server update', reason: 'Kiểm thử cục bộ', warningMinutes: 5, drainMinutes: 15,
-    expectedEndEpochMillis: Date.parse('2026-10-04T16:30:00+07:00') });
+    expectedEndEpochMillis: Date.parse('2026-10-04T16:30:01.125+07:00') });
   expect(first.headers['x-admin-csrf']).toBe('fixture-csrf');
   await edit(page); await page.getByLabel('Chế độ').selectOption('EMERGENCY'); await review(page);
   await expect(page.getByRole('dialog').getByText(/Trận chưa hoàn tất sẽ dừng/)).toBeVisible(); await save(page);

@@ -5,6 +5,16 @@ async function draft(page) { await page.getByRole('button', { name: 'Tạo chi�
 async function preview(page) { await page.getByRole('button', { name: 'Xem trước', exact: true }).click(); await expect(page.getByRole('dialog', { name: 'Xem trước chiến dịch' }).getByText('Tổng Vàng', { exact: true })).toBeVisible(); }
 async function confirm(page) { await page.getByRole('button', { name: 'Tiếp tục công bố', exact: true }).click(); await expect(page.getByRole('dialog', { name: 'Xác nhận công bố' })).toBeVisible(); }
 
+test('gift publication shows the exact Vietnam schedule approved by the admin', async ({ page, fixture }) => {
+  gifts(fixture); await open(page, fixture);
+  await page.getByRole('button', { name: 'Tạo chiến dịch quà', exact: true }).click(); await fillGift(page);
+  await page.getByLabel('Thời gian phát · Giờ Việt Nam (UTC+7)', { exact: true }).fill('2026-10-02T12:00:01.125');
+  await page.getByRole('button', { name: 'Lưu bản nháp', exact: true }).click();
+  await expect(page.getByRole('dialog')).toHaveCount(0);
+  await preview(page); await expect(page.getByRole('dialog')).toContainText('12:00:01,125');
+  await confirm(page); await expect(page.getByRole('dialog')).toContainText('12:00:01,125');
+});
+
 test('UUID list accepts one ID and reports format separately from maximum count', async ({ page, fixture }) => {
   const state = gifts(fixture); await open(page, fixture);
   await page.getByRole('button', { name: 'Tạo chiến dịch quà', exact: true }).click(); await fillGift(page);

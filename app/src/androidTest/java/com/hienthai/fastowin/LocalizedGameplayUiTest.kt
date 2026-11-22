@@ -12,17 +12,28 @@ import com.hienthai.fastowin.data.preferences.AppPreferences
 import com.hienthai.fastowin.localization.AppLanguage
 import com.hienthai.fastowin.localization.ProvideLocalization
 import com.hienthai.fastowin.navigation.GameMode
+import com.hienthai.fastowin.protocol.GiftState
+import com.hienthai.fastowin.protocol.MailboxGift
+import com.hienthai.fastowin.protocol.MatchType
+import com.hienthai.fastowin.protocol.RewardEventPublicView
+import com.hienthai.fastowin.protocol.RewardEventState
 import com.hienthai.fastowin.state.AvailableRoom
 import com.hienthai.fastowin.state.ConnectionStatus
 import com.hienthai.fastowin.state.GameState
+import com.hienthai.fastowin.state.GiftMailboxState
 import com.hienthai.fastowin.state.LobbyStage
 import com.hienthai.fastowin.state.PlayerState
+import com.hienthai.fastowin.state.RewardEventLoad
+import com.hienthai.fastowin.state.RewardEventUiState
 import com.hienthai.fastowin.state.createPracticeChallenge
 import com.hienthai.fastowin.ui.screens.GameScreen
+import com.hienthai.fastowin.ui.screens.GiftMailboxScreen
 import com.hienthai.fastowin.ui.screens.LobbyScreen
 import com.hienthai.fastowin.ui.screens.PracticeScreen
 import com.hienthai.fastowin.ui.screens.ResultScreen
+import com.hienthai.fastowin.ui.screens.RewardEventDetailsScreen
 import com.hienthai.fastowin.ui.theme.FastToWinTheme
+import kotlin.time.Instant
 import org.junit.Rule
 import org.junit.Test
 
@@ -48,6 +59,63 @@ class LocalizedGameplayUiTest {
 
         composeRule.onNodeWithText("PHÒNG CÔNG KHAI").assertIsDisplayed()
         composeRule.onNodeWithText("Tạo phòng", ignoreCase = true).performScrollTo().assertIsDisplayed()
+    }
+
+    @Test
+    fun rewardEventListAndDetailShowTheConfiguredTimeZone() {
+        val event = RewardEventPublicView(
+            "reward", 1, RewardEventState.SCHEDULED, "Ngày đặc biệt", "Special day",
+            "Nhân đôi Vàng và XP", "Double Gold and XP", "Asia/Ho_Chi_Minh",
+            Instant.parse("2026-11-22T10:44:44.061Z").toEpochMilliseconds(),
+            Instant.parse("2026-11-29T10:44:48.374Z").toEpochMilliseconds(),
+            2, 2, setOf(MatchType.CASUAL, MatchType.RANKED)
+        )
+        val selected = mutableStateOf<RewardEventPublicView?>(null)
+        setLocalizedContent(AppLanguage.VIETNAMESE) {
+            RewardEventDetailsScreen(
+                state = RewardEventUiState(load = RewardEventLoad.READY, items = listOf(event), selected = selected.value),
+                onBack = {}, onRefresh = {}, onSelect = { selected.value = event }, onMore = {}
+            )
+        }
+
+        fun assertBounds(start: String, end: String, zone: String) {
+            val bounds = "Bắt đầu: $start\nKết thúc: $end\nMúi giờ: $zone"
+            composeRule.onNodeWithText(bounds, substring = true).performScrollTo().assertIsDisplayed()
+        }
+        assertBounds("22/11/2026 17:44:44.061", "29/11/2026 17:44:48.374", "Giờ Việt Nam (UTC+7)")
+        composeRule.onNodeWithText("Xem sự kiện").performScrollTo().performClick()
+        assertBounds("22/11/2026 17:44:44.061", "29/11/2026 17:44:48.374", "Giờ Việt Nam (UTC+7)")
+        composeRule.runOnIdle {
+            selected.value = event.copy(
+                timezone = "America/New_York",
+                startsAtEpochMillis = Instant.parse("2026-11-01T05:30:00Z").toEpochMilliseconds(),
+                endsAtEpochMillis = Instant.parse("2026-11-01T06:30:00Z").toEpochMilliseconds()
+            )
+        }
+        assertBounds("01/11/2026 01:30:00.000 (UTC-04:00)", "01/11/2026 01:30:00.000 (UTC-05:00)", "America/New_York")
+        composeRule.runOnIdle { selected.value = event.copy(timezone = "Unknown/Zone") }
+        assertBounds("22/11/2026 10:44:44.061", "29/11/2026 10:44:48.374", "UTC")
+    }
+
+    @Test
+    fun giftMailboxHidesClaimActionsAtTheServerDeadline() {
+        val expiresAt = 2_000L
+        val serverNow = mutableStateOf(expiresAt - 1)
+        val gift = MailboxGift("gift", "Quà thử", "Test gift", "Chúc mừng", "Congrats", 10, 5,
+            1_000L, expiresAt, GiftState.AVAILABLE)
+        setLocalizedContent(AppLanguage.VIETNAMESE) {
+            GiftMailboxScreen(
+                state = GiftMailboxState(isOpen = true, items = listOf(gift), total = 1),
+                isGuest = false, onBack = {}, onRefresh = {}, onLoadMore = {}, onClaim = {},
+                onClaimAll = {}, onDismissClaimedGift = {}, nowMillis = serverNow.value
+            )
+        }
+        composeRule.onNodeWithText("Nhận").performScrollTo().assertIsDisplayed()
+        composeRule.onNodeWithTag("gift_claim_all").assertExists()
+        composeRule.runOnIdle { serverNow.value = expiresAt }
+        composeRule.onNodeWithText("Đã hết hạn").performScrollTo().assertIsDisplayed()
+        composeRule.onNodeWithText("Nhận").assertDoesNotExist()
+        composeRule.onNodeWithTag("gift_claim_all").assertDoesNotExist()
     }
 
     @Test

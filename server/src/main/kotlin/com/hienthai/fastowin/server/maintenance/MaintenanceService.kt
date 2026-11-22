@@ -126,7 +126,8 @@ class MaintenanceService(
         return ServiceStatusResponse(maintenance=policy.isFullyClosed,message=policy.messageVi?:policy.messageEn,
             pollAfterSeconds=if(policy.state==MaintenanceState.ACTIVE) 30 else 5,
             state=policy.state,mode=policy.mode,version=policy.version,messageVi=policy.messageVi,messageEn=policy.messageEn,
-            transitionAtEpochMillis=policy.transitionAtEpochMillis,expectedEndEpochMillis=policy.expectedEndEpochMillis)
+            transitionAtEpochMillis=policy.transitionAtEpochMillis,expectedEndEpochMillis=policy.expectedEndEpochMillis,
+            serverTimeEpochMillis=nowMillis())
     }
     private fun MaintenanceSnapshot.policy()=MaintenancePolicy(state,mode,version,messageVi,messageEn,transitionAtEpochMillis,expectedEndEpochMillis)
     private suspend fun <T> storage(block:suspend ()->T):T=try { block() }

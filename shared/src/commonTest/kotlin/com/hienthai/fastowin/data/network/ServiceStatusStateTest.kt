@@ -3,6 +3,8 @@ package com.hienthai.fastowin.data.network
 import com.hienthai.fastowin.protocol.*
 import com.hienthai.fastowin.localization.AppLanguage
 import kotlin.test.*
+import kotlin.time.Duration.Companion.seconds
+import kotlin.time.TestTimeSource
 
 class ServiceStatusStateTest {
     @Test fun `drain preserves game while disabling new intent and unknown never becomes active`() {
@@ -33,6 +35,16 @@ class ServiceStatusStateTest {
         assertEquals(false, failed.reachable)
         assertEquals(MaintenanceState.ACTIVE, failed.received(ServiceStatusResponse(false)).status?.state)
         assertNull(ServiceStatusState().received(null).status)
+    }
+    @Test fun `maintenance countdown starts at server time and advances through a failed recheck`() {
+        val elapsed = TestTimeSource()
+        val sample = ServiceStatusResponse(state = MaintenanceState.ANNOUNCING,
+            transitionAtEpochMillis = 60_000, serverTimeEpochMillis = 30_000)
+        val view = ServiceStatusState().received(sample, elapsed.markNow())
+        assertEquals(30, maintenanceCountdownSeconds(sample.transitionAtEpochMillis, view.serverClock!!.now()))
+        elapsed += 5.seconds
+        val failed = view.received(null)
+        assertEquals(25, maintenanceCountdownSeconds(sample.transitionAtEpochMillis, failed.serverClock!!.now()))
     }
     @Test fun `advertised five second maintenance polling is honored with safe bounds`() {
         assertEquals(5, ServiceStatusState().received(ServiceStatusResponse(true, pollAfterSeconds = 5)).pollSeconds)

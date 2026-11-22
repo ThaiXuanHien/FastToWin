@@ -148,7 +148,8 @@ class PostgresGiftRepositoryTest {
     } }
     @Test fun `gift code reads and mutations require current owner access and protected mutation context`() = runTest { database {
         val input = GiftCodePublishRequest("PRIVATECODE", GiftCodeReward(plays = 2), now + 1000, null, "Fixture", "publish-code-auth")
-        gifts.publishGiftCode(owner, input)
+        val published = gifts.publishGiftCode(owner, input)
+        assertEquals(GiftCodePage(listOf(published), 0, PageRequest().pageSize, 1L, now), gifts.listGiftCodes(owner, PageRequest()))
         val stop = GiftCodeStopRequest("Stop", "stop-code-auth")
         for (context in listOf(operator, support)) {
             error(403) { gifts.listGiftCodes(context, PageRequest()) }

@@ -67,9 +67,9 @@ import com.hienthai.fastowin.protocol.TournamentMatchSnapshot
 import com.hienthai.fastowin.protocol.TournamentPhase
 import com.hienthai.fastowin.protocol.TournamentSnapshot
 import com.hienthai.fastowin.state.TournamentScheduleStage
+import com.hienthai.fastowin.state.ServerClock
 import com.hienthai.fastowin.state.stageAt
-import com.hienthai.fastowin.platform.epochMillis
-import kotlinx.coroutines.delay
+import com.hienthai.fastowin.ui.components.rememberClockMillis
 import com.hienthai.fastowin.state.GameState
 import com.hienthai.fastowin.state.PublicTournamentFilters
 import com.hienthai.fastowin.state.ConnectionStatus
@@ -149,14 +149,7 @@ fun TournamentScreen(
     SystemBackHandler(onBack = onBack)
 
     val tournament = state.tournamentHub.activeTournament
-    var localNow by remember { mutableStateOf(epochMillis()) }
-    LaunchedEffect(nowEpochMillis) {
-        if (nowEpochMillis == null) while (true) {
-            localNow = epochMillis()
-            delay(1_000)
-        }
-    }
-    val now = nowEpochMillis ?: state.tournamentServerClock?.now(localNow) ?: localNow
+    val now = rememberClockMillis(state.tournamentServerClock, nowEpochMillis)
     Scaffold(
         modifier = modifier.fillMaxSize().testTag("tournament_screen"),
         containerColor = Color.Transparent,
@@ -275,17 +268,10 @@ fun TournamentInvitationDialog(
     invitation: TournamentInvitationSnapshot,
     onRespond: (Boolean) -> Unit,
     onDefer: () -> Unit,
-    serverClock: com.hienthai.fastowin.state.TournamentServerClock? = null,
+    serverClock: ServerClock? = null,
     nowEpochMillis: Long? = null
 ) {
-    var localNow by remember { mutableStateOf(epochMillis()) }
-    LaunchedEffect(nowEpochMillis) {
-        if (nowEpochMillis == null) while (true) {
-            localNow = epochMillis()
-            delay(1_000)
-        }
-    }
-    val now = nowEpochMillis ?: serverClock?.now(localNow) ?: localNow
+    val now = rememberClockMillis(serverClock, nowEpochMillis)
     ArcadeDialog(
         title = localized(TextKey.TournamentInvitationTitle),
         subtitle = localized(TextKey.TournamentInvitationDescription, "host" to invitation.hostDisplayName, "tournament" to invitation.tournamentName, "mode" to invitation.gameMode.title(), "players" to invitation.maxPlayers),

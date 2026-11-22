@@ -2,6 +2,8 @@
 
 Đặc tả gốc: https://github.com/ThaiXuanHien/FastToWin/issues/13. Người dùng đã duyệt tự bắt đầu đúng giờ, mở check-in trước 15 phút, loại người vắng trước khi chia nhánh, hủy và hoàn phí nếu thiếu người.
 
+Từ bản cập nhật ngày 21/11/2026, màn hình tạo giải trên Android, iOS và Web chỉ tạo giải thủ công. Server vẫn đọc và xử lý giải có lịch qua protocol tương thích. Người chơi vẫn thấy mốc đăng ký, check-in và bắt đầu theo múi giờ đã lưu. Với múi giờ đổi theo mùa, mỗi mốc hiển thị offset UTC của chính thời điểm đó. Phần dưới mô tả đặc tả gốc, gồm biểu mẫu tạo lịch của các client trước đây.
+
 ## Hành vi
 
 - Giữ giải thủ công hiện có; lịch là tùy chọn khi tạo giải, dùng được cho giải công khai và riêng tư.

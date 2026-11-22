@@ -32,9 +32,9 @@ export function createModerationSubmission({ send, role, current, uuid = () => c
 }
 
 export function openModeration(ui) {
-  const { node, append, button, iconButton, field, modal, feedback, shell, channel, api, role } = ui;
+  const { node, append, button, iconButton, field, modal, feedback, shell, channel, api, role, utcDate } = ui;
   const base = '/moderation', path = id => `${base}/reports/${encodeURIComponent(id)}`;
-  const time = value => value == null ? '—' : new Date(value).toLocaleString('vi-VN');
+  const time = value => utcDate(value, '—');
   const count = value => new Intl.NumberFormat('vi-VN').format(BigInt(value));
   function select(parent, label, values, initial) {
     const id = 'moderation-' + crypto.randomUUID(), wrapper = node('div', null, { class: 'field' }), control = node('select', null, { id });

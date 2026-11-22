@@ -13,10 +13,42 @@ const holidays = [
   ['Giáng sinh', '12-24', '12-26'],
 ];
 const normalizeHolidayName = name => name.toLowerCase().normalize('NFD').replace(/\p{M}/gu, '').replaceAll('đ', 'd').replace(/\s+/g, ' ');
-const utcInput = value => new Date(value).toISOString().slice(0, 23).replace(/:00\.000$/, '').replace(/\.000$/, '');
+const dayMillis = 86400000;
+const maxEventTimestamp = 253402300799999;
 const timezoneLabel = zone => ['Asia/Bangkok', 'Asia/Ho_Chi_Minh'].includes(zone) ? 'Giờ Việt Nam (UTC+7)' : zone;
+const zoneError = 'Nhập múi giờ IANA hợp lệ, ví dụ Asia/Ho_Chi_Minh hoặc UTC.';
 const policy = 'Mỗi loại thưởng lấy hệ số cao nhất riêng biệt; không cộng dồn hay nhân các sự kiện (không ×4).';
 const exclusions = 'Chỉ trận trực tuyến đấu thường / đấu hạng đủ điều kiện. Rời trận có chủ đích nhận 0. Không áp dụng Gem, Elo, giải đấu, ngoại tuyến, nhiệm vụ, điểm danh, thành tích hoặc quà admin. Quà admin là chiến dịch riêng.';
+
+function eventDateFormatter(zone) {
+  return new Intl.DateTimeFormat('vi-VN', {
+    timeZone: zone, year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit',
+    second: '2-digit', fractionalSecondDigits: 3, hourCycle: 'h23',
+  });
+}
+
+function eventInputValue(epochMillis, formatter) {
+  const parts = Object.fromEntries(formatter.formatToParts(epochMillis).map(({ type, value }) => [type, value]));
+  return Date.UTC(+parts.year, +parts.month - 1, +parts.day, +parts.hour, +parts.minute, +parts.second, +parts.fractionalSecond);
+}
+
+function eventTimestamp(inputValue, formatter, previous, label) {
+  if (!Number.isFinite(inputValue) || inputValue < -dayMillis || inputValue > maxEventTimestamp + dayMillis) {
+    throw new Error(`${label}: ngày giờ nằm ngoài phạm vi hỗ trợ.`);
+  }
+  // A saved draft may refer to either occurrence of a repeated local time.
+  if (previous != null && eventInputValue(previous, formatter) === inputValue) return previous;
+  // Check offsets on both sides of a possible clock change and round-trip each candidate.
+  const offsets = new Set([-dayMillis, 0, dayMillis].map(delta => {
+    const instant = inputValue + delta;
+    return eventInputValue(instant, formatter) - instant;
+  }));
+  const matches = [...offsets].map(offset => inputValue - offset)
+    .filter(instant => eventInputValue(instant, formatter) === inputValue);
+  if (!matches.length) throw new Error(`${label}: giờ này không tồn tại trong múi giờ đã chọn. Hãy chọn giờ khác.`);
+  if (matches.length > 1) throw new Error(`${label}: giờ này xảy ra hai lần trong múi giờ đã chọn. Hãy chọn giờ khác.`);
+  return matches[0];
+}
 
 // Auth, CSRF, service worker and shared navigation fences stay in admin.js.
 export function openRewardEvents(ui) {
@@ -42,8 +74,11 @@ export function openRewardEvents(ui) {
     } parent.append(summary);
   }
   function date(value, zone) {
-    const label = timezoneLabel(zone);
-    return new Intl.DateTimeFormat('vi-VN', { timeZone: zone, year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', second: '2-digit', fractionalSecondDigits: 3, hourCycle: 'h23' }).format(value) + (label === zone ? ` (${zone})` : ` · ${label}`);
+    const offset = new Intl.DateTimeFormat('en', { timeZone: zone, timeZoneName: 'longOffset' })
+      .formatToParts(value).find(part => part.type === 'timeZoneName').value.replace('GMT', 'UTC').replace('-', '−');
+    const vietnam = timezoneLabel(zone);
+    const label = vietnam !== zone && offset === 'UTC+07:00' ? vietnam : zone === offset ? zone : `${zone} · ${offset}`;
+    return `${eventDateFormatter(zone).format(value)} · ${label}`;
   }
   function definition(parent, draft) {
     const languages = node('div', null, { class: 'event-languages' });
@@ -136,7 +171,7 @@ export function openRewardEvents(ui) {
   function edit(event) {
     if (!permitted() || (event && event.state !== 'DRAFT')) return;
     const draft = event?.draft, surface = eventModal(event ? 'Sửa bản nháp sự kiện' : 'Tạo sự kiện thưởng'), form = node('form', null, { class: 'stack modal-form' }); surface.dialog.append(form);
-    form.append(node('p', 'Giờ nhập luôn là UTC (không theo múi giờ máy). Múi giờ IANA chỉ dùng hiển thị. Bản nháp không tự lên lịch hay lặp hằng năm.', { class: 'muted' }));
+    form.append(node('p', 'Giờ nhập theo múi giờ sự kiện. Khi đổi múi giờ, lịch hiện tại được quy đổi sang giờ mới.', { class: 'muted' }));
     const nameVi = field(form, 'Tên tiếng Việt', 'event-name-vi', 'text', { required: '', maxlength: '400' });
     const contentVi = field(form, 'Nội dung tiếng Việt', 'event-content-vi', 'textarea', { required: '', maxlength: '4000' });
     const nameEn = field(form, 'Tên tiếng Anh', 'event-name-en', 'text', { required: '', maxlength: '400', lang: 'en' });
@@ -170,9 +205,55 @@ export function openRewardEvents(ui) {
         notices.clear();
       }));
     }
-    const timezone = field(form, 'Múi giờ hiển thị (IANA)', 'event-timezone', 'text', { required: '' }); timezone.value = draft?.timezone || 'Asia/Ho_Chi_Minh';
-    const start = field(form, 'Bắt đầu (UTC, bao gồm)', 'event-start', 'datetime-local', { required: '', min: '1970-01-01T00:00', max: '9999-12-31T23:59:59.999', step: '0.001' });
-    const end = field(form, 'Kết thúc (UTC, không bao gồm)', 'event-end', 'datetime-local', { required: '', min: '1970-01-01T00:00', max: '9999-12-31T23:59:59.999', step: '0.001' });
+    const timezone = field(form, 'Múi giờ sự kiện (IANA)', 'event-timezone', 'text', { required: '', 'aria-describedby': 'event-time-help' });
+    timezone.value = draft?.timezone || 'Asia/Ho_Chi_Minh';
+    const timeHelp = node('p', '', { class: 'muted', id: 'event-time-help' });
+    form.append(timeHelp);
+    const timeAttributes = { required: '', step: '0.001', 'aria-describedby': 'event-time-help' };
+    const start = field(form, 'Bắt đầu (bao gồm)', 'event-start', 'datetime-local', timeAttributes);
+    const end = field(form, 'Kết thúc (không bao gồm)', 'event-end', 'datetime-local', timeAttributes);
+    const boundaries = [
+      { control: start, label: 'Bắt đầu', epoch: draft?.startsAtEpochMillis },
+      { control: end, label: 'Kết thúc', epoch: draft?.endsAtEpochMillis },
+    ];
+    let activeZone = timezone.value;
+    let activeFormatter = eventDateFormatter(activeZone);
+    const inputZoneLabel = () => `Giờ nhập · ${timezoneLabel(activeZone)}`;
+    timeHelp.textContent = inputZoneLabel();
+    function applyTimeZone() {
+      const zone = timezone.value.trim();
+      if (zone !== activeZone) {
+        let formatter;
+        try {
+          if (!zone || /^[+-]/.test(zone)) throw new Error();
+          formatter = eventDateFormatter(zone);
+        } catch {
+          throw new Error(zoneError);
+        }
+        const instants = boundaries.map(({ control, epoch, label }) => {
+          if (control.validity.badInput) throw new Error(`${label}: nhập đầy đủ ngày và giờ trước khi đổi múi giờ.`);
+          return control.value ? eventTimestamp(control.valueAsNumber, activeFormatter, epoch, label) : null;
+        });
+        for (const [i, boundary] of boundaries.entries()) {
+          const instant = instants[i];
+          boundary.epoch = instant;
+          if (instant != null) boundary.control.valueAsNumber = eventInputValue(instant, formatter);
+        }
+        activeFormatter = formatter;
+        activeZone = zone;
+      }
+      timezone.removeAttribute('aria-invalid');
+      timeHelp.textContent = inputZoneLabel();
+    }
+    function updateTimeZone() {
+      try { applyTimeZone(); }
+      catch (error) {
+        timezone.setAttribute('aria-invalid', 'true');
+        timeHelp.textContent = `${inputZoneLabel()}. ${error.message}`;
+      }
+    }
+    timezone.addEventListener('input', updateTimeZone);
+    for (const { control } of boundaries) control.addEventListener('change', updateTimeZone);
     const pair = node('div', null, { class: 'event-field-pair' }); form.append(pair);
     const gold = select(pair, 'Hệ số GOLD', 'event-gold', { 1: '×1 (cơ bản)', 2: '×2' }); const xp = select(pair, 'Hệ số XP', 'event-xp', { 1: '×1 (cơ bản)', 2: '×2' });
     const group = node('fieldset', null, { class: 'stack' }); group.append(node('legend', 'Chế độ trận')); form.append(group);
@@ -181,14 +262,18 @@ export function openRewardEvents(ui) {
     const reason = field(form, 'Lý do thay đổi', 'event-reason', 'textarea', { required: '', maxlength: '500' });
     const notices = feedback(form), submit = node('button', 'Lưu bản nháp', { type: 'submit', class: 'primary' }); append(form, append(node('div', null, { class: 'modal-actions' }), surface.cancel, submit));
     nameVi.value = draft?.nameVi || ''; nameEn.value = draft?.nameEn || ''; contentVi.value = draft?.contentVi || ''; contentEn.value = draft?.contentEn || '';
-    start.value = draft ? utcInput(draft.startsAtEpochMillis) : ''; end.value = draft ? utcInput(draft.endsAtEpochMillis) : ''; gold.value = draft?.goldMultiplier || '1'; xp.value = draft?.xpMultiplier || '1'; casual.checked = draft ? draft.matchTypes.includes('CASUAL') : true; ranked.checked = draft ? draft.matchTypes.includes('RANKED') : true;
+    if (draft) {
+      for (const { control, epoch } of boundaries) control.valueAsNumber = eventInputValue(epoch, activeFormatter);
+    }
+    gold.value = draft?.goldMultiplier || '1'; xp.value = draft?.xpMultiplier || '1'; casual.checked = draft ? draft.matchTypes.includes('CASUAL') : true; ranked.checked = draft ? draft.matchTypes.includes('RANKED') : true;
     mutation(form, submit, notices, surface, event ? path(event.id) + '/draft' : base, () => {
       const text = (value, max, label) => { if (!value.trim() || Array.from(value).length > max || /[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]/.test(value)) throw new Error(`${label}: nội dung bắt buộc, tối đa ${max} ký tự.`); return value; };
-      const zone = timezone.value.trim(); try { if (/^[+-]/.test(zone)) throw new Error(); new Intl.DateTimeFormat('vi', { timeZone: zone }); } catch { throw new Error('Nhập múi giờ IANA hợp lệ, ví dụ America/New_York hoặc UTC.'); }
-      const from = Date.parse(start.value + 'Z'), until = Date.parse(end.value + 'Z');
-      if (!Number.isSafeInteger(from) || !Number.isSafeInteger(until) || from < 0 || until > 253402300799999 || from >= until) throw new Error('Khoảng UTC phải có bắt đầu trước kết thúc.');
+      applyTimeZone();
+      const [from, until] = boundaries.map(({ control, epoch, label }) => eventTimestamp(control.valueAsNumber, activeFormatter, epoch, label));
+      if (from < 0 || until > maxEventTimestamp) throw new Error('Ngày giờ nằm ngoài phạm vi hỗ trợ.');
+      if (from >= until) throw new Error('Giờ bắt đầu phải trước giờ kết thúc.');
       const matchTypes = [casual.checked ? 'CASUAL' : null, ranked.checked ? 'RANKED' : null].filter(Boolean); if (!matchTypes.length) throw new Error('Chọn ít nhất một chế độ trận.');
-      return { expectedVersion: event?.version || 0, reason: reason.value.trim(), draft: { nameVi: text(nameVi.value, 200, 'Tên tiếng Việt'), nameEn: text(nameEn.value, 200, 'Tên tiếng Anh'), contentVi: text(contentVi.value, 2000, 'Nội dung tiếng Việt'), contentEn: text(contentEn.value, 2000, 'Nội dung tiếng Anh'), timezone: zone, startsAtEpochMillis: from, endsAtEpochMillis: until, goldMultiplier: +gold.value, xpMultiplier: +xp.value, matchTypes } };
+      return { expectedVersion: event?.version || 0, reason: reason.value.trim(), draft: { nameVi: text(nameVi.value, 200, 'Tên tiếng Việt'), nameEn: text(nameEn.value, 200, 'Tên tiếng Anh'), contentVi: text(contentVi.value, 2000, 'Nội dung tiếng Việt'), contentEn: text(contentEn.value, 2000, 'Nội dung tiếng Anh'), timezone: activeZone, startsAtEpochMillis: from, endsAtEpochMillis: until, goldMultiplier: +gold.value, xpMultiplier: +xp.value, matchTypes } };
     }, saved => { surface.finish(); detail(saved.id, 'Đã lưu bản nháp. Chưa công bố.'); }, event ? 'PUT' : 'POST'); surface.show(nameVi);
   }
   async function preview(event, opener) {

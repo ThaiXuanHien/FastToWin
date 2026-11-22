@@ -6,6 +6,7 @@ import com.hienthai.fastowin.protocol.PlayerProfileSnapshot
 import kotlinx.coroutines.test.runTest
 import java.time.Clock
 import java.time.Instant
+import java.time.LocalDate
 import java.time.ZoneId
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -48,6 +49,35 @@ class PushReminderServiceTest {
 
         assertEquals(0, service.sendDueReminders())
         assertEquals(0, sent.size)
+    }
+
+    @Test
+    fun `daily reminder uses the Bangkok check-in date with a UTC delivery schedule`() = runTest {
+        val checkInDate = LocalDate.of(2026, 9, 3)
+        val playerLastCheckIn = checkInDate.minusDays(1)
+        val datesQueried = mutableListOf<String>()
+        val deliveredKeys = mutableSetOf<String>()
+        val baseRepository = reminderRepository(deliveredKeys)
+        val repository = object : PlayerProfileRepository by baseRepository {
+            override suspend fun loadDailyPushReminderTargets(reminderDate: String, limit: Int): List<PushReminderTarget> {
+                datesQueried += reminderDate
+                if (playerLastCheckIn >= LocalDate.parse(reminderDate)) return emptyList()
+                return baseRepository.loadDailyPushReminderTargets(reminderDate, limit)
+            }
+        }
+        val sent = mutableListOf<RecordedPush>()
+        val utc = ZoneId.of("UTC")
+
+        suspend fun runAt(time: String): Int = DailyPushReminderService(
+            repository, recordingPushService(sent), utc, 19, Clock.fixed(Instant.parse(time), utc)
+        ).sendDueReminders()
+
+        assertEquals(0, runAt("2026-09-02T18:59:00Z"))
+        assertEquals(1, runAt("2026-09-02T19:00:00Z"))
+        assertEquals(0, runAt("2026-09-02T20:00:00Z"))
+        assertEquals(List(2) { checkInDate.toString() }, datesQueried)
+        assertEquals(setOf("daily-check-in:$checkInDate"), deliveredKeys)
+        assertEquals(1, sent.size)
     }
 
     @Test

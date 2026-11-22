@@ -1,6 +1,7 @@
 package com.hienthai.fastowin.server
 
 import java.time.LocalDate
+import java.time.Instant
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
@@ -8,6 +9,14 @@ import kotlin.test.assertTrue
 
 class DailyCheckInRulesTest {
     private val today = LocalDate.of(2026, 8, 17)
+
+    @Test
+    fun `daily reset moves at Bangkok midnight even with a UTC source clock`() {
+        val midnight = Instant.parse("2026-11-21T17:00:00Z")
+        assertEquals(LocalDate.of(2026, 11, 21), dailyCheckInDate(midnight.minusMillis(1)))
+        assertEquals(midnight.toEpochMilli(), nextDailyCheckInReset(dailyCheckInDate(midnight.minusMillis(1))))
+        assertEquals(LocalDate.of(2026, 11, 22), dailyCheckInDate(midnight))
+    }
 
     @Test
     fun `first check in starts day one with gold and xp`() {

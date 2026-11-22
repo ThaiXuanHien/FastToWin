@@ -2333,6 +2333,7 @@ class GameEngineTest {
 
         val requested = engine.handle(host.playerId, ClientMessage.RespondRematch(room.roomId, accept = true))
             .map(Delivery::message).filterIsInstance<ServerMessage.RematchStatus>().single()
+        assertEquals(now, requested.game.serverTimeEpochMillis)
         assertEquals(11_000L, requested.game.rematchExpiresAtEpochMillis)
 
         now = 11_001L

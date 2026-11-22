@@ -19,7 +19,14 @@ import kotlinx.serialization.Serializable
     val clanRace: ClanRaceMailboxContext? = null,
     val plays: Int = 0
 )
-@Serializable data class GiftMailboxPage(val items: List<MailboxGift>, val page: Int, val pageSize: Int, val total: Long, val availableCount: Long = 0)
+@Serializable data class GiftMailboxPage(
+    val items: List<MailboxGift>,
+    val page: Int,
+    val pageSize: Int,
+    val total: Long,
+    val availableCount: Long = 0,
+    val serverNowEpochMillis: Long? = null
+)
 @Serializable data class GiftClaimResult(val gift: MailboxGift, val awardedGold: Int, val awardedXp: Int, val gold: Int, val xp: Int, val awardedGems: Int = 0, val gems: Int = 0)
 @Serializable data class GiftClaimAllRequest(val campaignIds: List<String>)
 @Serializable data class GiftError(val code: String, val message: String)

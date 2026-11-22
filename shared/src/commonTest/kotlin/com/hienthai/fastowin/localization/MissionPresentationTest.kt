@@ -24,7 +24,8 @@ class MissionPresentationTest {
             "MissionActionWIN",mapOf("target" to "350"),MatchType.RANKED)
         assertEquals("Ongoing clan mission",LocalizationService(AppLanguage.ENGLISH).missionPeriod(legacy))
         val regular=legacy.copy(code="CUSTOM",periodStart="2026-10-19",periodEndExclusive="2026-10-26")
-        assertEquals("2026-10-19 → before 2026-10-26",LocalizationService(AppLanguage.ENGLISH).missionPeriod(regular))
+        assertEquals("2026-10-19 → before 2026-10-26 · 00:00 Vietnam time (UTC+7)",
+            LocalizationService(AppLanguage.ENGLISH).missionPeriod(regular))
     }
     @Test fun `imported clan wins keep ranked eligibility even when historical DTO omits match type`() {
         val legacy=MissionInstanceView("legacy-instance","LEGACY_CLAN_QUEST",MissionScope.CLAN,MissionAction.WIN,MissionCadence.WEEKLY,

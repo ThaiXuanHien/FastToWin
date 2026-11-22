@@ -9,12 +9,96 @@ import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.test.runTest
 import org.flywaydb.core.Flyway
+import java.time.Instant
+import java.time.OffsetDateTime
+import java.time.ZoneOffset
 import java.util.UUID
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertTrue
 
 class PostgresSeasonLifecycleRepositoryTest {
+    @Test
+    fun `new season calculations use UTC and keep stored boundaries on a non UTC session`() = runTest {
+        val url = System.getenv("TEST_DATABASE_URL") ?: return@runTest
+        val schema = "season_test_${UUID.randomUUID().toString().replace("-", "").take(12)}"
+        adminDataSource(url).use { admin ->
+            admin.connection.use { connection ->
+                connection.createStatement().use { it.execute("CREATE SCHEMA $schema") }
+            }
+            try {
+                schemaDataSource(url, schema, "America/Los_Angeles").use { dataSource ->
+                    Flyway.configure()
+                        .dataSource(dataSource)
+                        .locations("classpath:db/migration")
+                        .defaultSchema(schema)
+                        .load()
+                        .migrate()
+                    val repository = PostgresSeasonLifecycleRepository(dataSource)
+                    dataSource.connection.use { connection ->
+                        connection.createStatement().use { it.executeUpdate("DELETE FROM seasons") }
+                    }
+
+                    // It is still October in the database session when the UTC month begins.
+                    assertEquals(
+                        SeasonLifecycleResult(createdSeasons = 1),
+                        repository.maintain(Instant.parse("2026-11-01T03:00:00Z").toEpochMilli())
+                    )
+                    assertEquals(
+                        listOf(Instant.parse("2026-11-01T00:00:00Z") to Instant.parse("2027-02-01T00:00:00Z")),
+                        seasonBoundaries(dataSource)
+                    )
+
+                    val historicStart = Instant.parse("2026-05-02T15:30:00Z")
+                    val historicEnd = Instant.parse("2026-08-02T15:30:00Z")
+                    dataSource.connection.use { connection ->
+                        connection.createStatement().use { it.executeUpdate("DELETE FROM seasons") }
+                        connection.prepareStatement(
+                            """
+                            INSERT INTO seasons (id, season_number, name, starts_at, ends_at, reward_description)
+                            VALUES (?, 1, 'Historic season', ?, ?, 'Rewards')
+                            """.trimIndent()
+                        ).use { statement ->
+                            statement.setObject(1, UUID.randomUUID())
+                            statement.setObject(2, historicStart.atOffset(ZoneOffset.UTC))
+                            statement.setObject(3, historicEnd.atOffset(ZoneOffset.UTC))
+                            statement.executeUpdate()
+                        }
+                    }
+
+                    // The next three months cross the session zone's autumn DST change.
+                    assertEquals(
+                        SeasonLifecycleResult(archivedSeasons = 1, createdSeasons = 1),
+                        repository.maintain(historicEnd.toEpochMilli())
+                    )
+                    assertEquals(
+                        listOf(historicStart to historicEnd, historicEnd to Instant.parse("2026-11-02T15:30:00Z")),
+                        seasonBoundaries(dataSource)
+                    )
+                }
+            } finally {
+                admin.connection.use { connection ->
+                    connection.createStatement().use { it.execute("DROP SCHEMA $schema CASCADE") }
+                }
+            }
+        }
+    }
+
+    private fun seasonBoundaries(dataSource: HikariDataSource): List<Pair<Instant, Instant>> =
+        dataSource.connection.use { connection ->
+            connection.createStatement().use { statement ->
+                statement.executeQuery("SELECT starts_at, ends_at FROM seasons ORDER BY season_number").use { result ->
+                    buildList {
+                        while (result.next()) {
+                            val startsAt = result.getObject("starts_at", OffsetDateTime::class.java).toInstant()
+                            val endsAt = result.getObject("ends_at", OffsetDateTime::class.java).toInstant()
+                            add(startsAt to endsAt)
+                        }
+                    }
+                }
+            }
+        }
+
     @Test
     fun `season rollover is atomic and creates only one next season`() = runTest {
         val url = System.getenv("TEST_DATABASE_URL") ?: return@runTest
@@ -183,11 +267,11 @@ class PostgresSeasonLifecycleRepositoryTest {
         maximumPoolSize = 2
     })
 
-    private fun schemaDataSource(url: String, schema: String) = HikariDataSource(HikariConfig().apply {
+    private fun schemaDataSource(url: String, schema: String, zone: String? = null) = HikariDataSource(HikariConfig().apply {
         jdbcUrl = url
         username = System.getenv("TEST_DATABASE_USER") ?: "fasttowin"
         password = System.getenv("TEST_DATABASE_PASSWORD") ?: "fasttowin"
         maximumPoolSize = 3
-        connectionInitSql = "SET search_path TO $schema"
+        connectionInitSql = "SET search_path TO $schema" + zone?.let { "; SET TIME ZONE '$it'" }.orEmpty()
     })
 }

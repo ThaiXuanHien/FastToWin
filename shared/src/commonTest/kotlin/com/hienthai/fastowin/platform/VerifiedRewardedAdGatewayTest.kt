@@ -184,6 +184,17 @@ class VerifiedRewardedAdGatewayTest {
             gateway.close()
         }
     }
+
+    @Test fun `server clock accepts an eligible prepare when the device clock is ahead`() = runTest {
+        val api = Api().apply { preparedView = pending.copy(serverNowEpochMillis = 900_000L) }
+        val driver = Driver()
+        val gateway = VerifiedRewardedAdGateway(api, driver, Store(), backgroundScope, nowMillis = { 2_000_000L })
+        gateway.configure(RewardedAdAvailability.MOBILE_PRODUCTION)
+        gateway.show("owner")
+        runCurrent()
+        assertEquals(1, driver.shown)
+        gateway.close()
+    }
     @Test fun `granted status missing authoritative quota or transaction cannot emit receipt`() = runTest {
         for (view in listOf(pending.copy(status = RewardedAdSessionStatus.GRANTED), pending.copy(status = RewardedAdSessionStatus.GRANTED, providerTransactionId = "tx"))) {
             val api = Api().apply { next = view }; val store = Store().apply { write("owner", "session_1") }

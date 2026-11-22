@@ -422,7 +422,9 @@ data class DailyCheckInSnapshot(
     val totalCheckIns: Int = 0,
     val lastCheckInDate: String? = null,
     val todayDate: String? = null,
-    val historyDates: List<String> = emptyList()
+    val historyDates: List<String> = emptyList(),
+    val nextResetAtEpochMillis: Long? = null,
+    val serverTimeEpochMillis: Long? = null
 )
 
 @Serializable
@@ -730,7 +732,8 @@ data class GameSnapshot(
     val tournamentRound: Int? = null,
     val eventRewards: MatchRewardEventSnapshot? = null,
     val rewardBreakdowns: Map<String, MatchRewardBreakdown> = emptyMap(),
-    val forfeit: MatchForfeitSnapshot? = null
+    val forfeit: MatchForfeitSnapshot? = null,
+    val serverTimeEpochMillis: Long? = null
 )
 
 @Serializable

@@ -343,10 +343,10 @@ class DailyPushReminderService(
     private val clock: Clock = Clock.systemUTC()
 ) : PushReminderService {
     override suspend fun sendDueReminders(): Int {
-        val localNow = clock.instant().atZone(zoneId)
-        if (localNow.hour < reminderHour) return 0
+        val now = clock.instant()
+        if (now.atZone(zoneId).hour < reminderHour) return 0
 
-        val reminderDate = localNow.toLocalDate()
+        val reminderDate = dailyCheckInDate(now)
         val reminderKey = "daily-check-in:$reminderDate"
         var delivered = 0
         val content = LocalizedPushContent(titleKey = TextKey.PushDailyCheckInTitle, bodyKey = TextKey.PushDailyCheckInMessage)

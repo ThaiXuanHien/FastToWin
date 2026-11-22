@@ -2282,6 +2282,16 @@ dd {
     padding: 0;
     margin: 0 0 6px;
   }
+  .field > input[type="datetime-local"] { padding-inline: 8px; }
+  input[type="datetime-local"]::-webkit-datetime-edit-text,
+  input[type="datetime-local"]::-webkit-datetime-edit-month-field,
+  input[type="datetime-local"]::-webkit-datetime-edit-day-field,
+  input[type="datetime-local"]::-webkit-datetime-edit-year-field,
+  input[type="datetime-local"]::-webkit-datetime-edit-hour-field,
+  input[type="datetime-local"]::-webkit-datetime-edit-minute-field,
+  input[type="datetime-local"]::-webkit-datetime-edit-second-field,
+  input[type="datetime-local"]::-webkit-datetime-edit-millisecond-field,
+  input[type="datetime-local"]::-webkit-datetime-edit-ampm-field { padding-inline: 1px; }
 }
 
 @media (prefers-reduced-motion: reduce) {

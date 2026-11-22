@@ -31,6 +31,11 @@ import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.testTag
@@ -49,6 +54,7 @@ import com.hienthai.fastowin.protocol.MailboxGift
 import com.hienthai.fastowin.ui.components.RewardReceiptAmounts
 import com.hienthai.fastowin.ui.components.RewardReceiptDialog
 import com.hienthai.fastowin.state.GiftMailboxState
+import com.hienthai.fastowin.state.stateAt
 import com.hienthai.fastowin.ui.components.ArcadeActionButton
 import com.hienthai.fastowin.ui.components.ArcadeActionStyle
 import com.hienthai.fastowin.ui.components.ArcadeHeaderIconButton
@@ -59,6 +65,7 @@ import com.hienthai.fastowin.ui.components.GoldColor
 import com.hienthai.fastowin.ui.components.SystemBackHandler
 import com.hienthai.fastowin.ui.layout.ResponsiveScreen
 import com.hienthai.fastowin.ui.theme.ArcadePalette
+import kotlinx.coroutines.delay
 
 @Composable
 fun GiftMailboxScreen(
@@ -71,10 +78,25 @@ fun GiftMailboxScreen(
     onClaimAll: () -> Unit,
     onDismissClaimedGift: () -> Unit = {},
     onUpgradeGuest: () -> Unit = {},
-    nowMillis: Long = epochMillis(),
+    nowMillis: Long? = null,
     modifier: Modifier = Modifier
 ) {
     SystemBackHandler(onBack = onBack)
+    val serverClock = state.serverClock
+    var observedTime by remember(serverClock) { mutableStateOf(serverClock?.now()) }
+    LaunchedEffect(serverClock, state.items, nowMillis) {
+        if (serverClock == null || nowMillis != null) return@LaunchedEffect
+        while (true) {
+            val now = serverClock.now()
+            observedTime = now
+            val nextExpiry = state.items.asSequence()
+                .filter { it.stateAt(now) == GiftState.AVAILABLE }
+                .minOfOrNull { it.expiresAtEpochMillis } ?: break
+            delay(minOf(nextExpiry - now, 60_000L))
+        }
+    }
+    val deadlineClock = nowMillis ?: observedTime
+    val displayNow = deadlineClock ?: epochMillis()
     val claimedReward = when {
         state.lastClaimedBatch.isNotEmpty() -> RewardReceiptAmounts(
             gold = state.lastClaimedBatch.sumOf { it.awardedGold.toLong() },
@@ -157,7 +179,7 @@ fun GiftMailboxScreen(
                         }
                     }
                 } else {
-                    if (state.canClaimAll) {
+                    if (state.hasMore || state.items.any { it.stateAt(deadlineClock) == GiftState.AVAILABLE }) {
                         item(key = "gift_claim_all") {
                             ArcadeActionButton(
                                 label = localized(if (state.isClaimingAll) TextKey.GiftClaiming else TextKey.GiftClaimAll),
@@ -182,10 +204,11 @@ fun GiftMailboxScreen(
                     items(state.items, key = MailboxGift::campaignId) { gift ->
                         GiftCard(
                             gift = gift,
+                            displayState = gift.stateAt(deadlineClock),
                             errorCode = state.itemErrors[gift.campaignId],
                             isPending = gift.campaignId in state.pendingIds || state.isClaimingAll,
                             onClaim = { onClaim(gift.campaignId) },
-                            nowMillis = nowMillis
+                            nowMillis = displayNow
                         )
                     }
                     if (state.isLoading) {
@@ -212,7 +235,14 @@ fun GiftMailboxScreen(
 }
 
 @Composable
-private fun GiftCard(gift: MailboxGift, errorCode: String?, isPending: Boolean, onClaim: () -> Unit, nowMillis: Long) {
+private fun GiftCard(
+    gift: MailboxGift,
+    displayState: GiftState,
+    errorCode: String?,
+    isPending: Boolean,
+    onClaim: () -> Unit,
+    nowMillis: Long
+) {
     val language = LocalLocalization.current.language
     val isVietnamese = language == AppLanguage.VIETNAMESE
     ArcadePanel(modifier = Modifier.fillMaxWidth().testTag("gift_${gift.campaignId}"), accent = ArcadePalette.Gold500) {
@@ -246,19 +276,22 @@ private fun GiftCard(gift: MailboxGift, errorCode: String?, isPending: Boolean, 
                 GiftRewardAmounts(gift.gold, gift.xp, gift.gems, gift.plays)
                 Text(if (isVietnamese) gift.bodyVi else gift.bodyEn, color = MaterialTheme.colorScheme.onSurface)
             }
-            val status = when (gift.state) {
+            val status = when (displayState) {
                 GiftState.AVAILABLE -> {
                     val hours = (((race?.expiresAtEpochMillis ?: gift.expiresAtEpochMillis) - nowMillis).coerceAtLeast(0) + 3_599_999) / 3_600_000
-                    if (hours > 48) localized(TextKey.GiftExpiresInDays, "count" to ((hours + 23) / 24))
-                    else localized(TextKey.GiftExpiresInHours, "count" to hours)
+                    when {
+                        hours > 48 -> localized(TextKey.GiftExpiresInDays, "count" to ((hours + 23) / 24))
+                        hours > 0 -> localized(TextKey.GiftExpiresInHours, "count" to hours)
+                        else -> null
+                    }
                 }
                 GiftState.CLAIMED -> localized(TextKey.GiftClaimed)
                 GiftState.EXPIRED -> localized(TextKey.GiftExpired)
                 GiftState.CANCELLED -> localized(TextKey.GiftCancelled)
             }
-            Text(status, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            status?.let { Text(it, color = MaterialTheme.colorScheme.onSurfaceVariant) }
             errorCode?.let { Text(localized(giftErrorTextKey(it)), color = MaterialTheme.colorScheme.error) }
-            if (gift.state == GiftState.AVAILABLE) {
+            if (displayState == GiftState.AVAILABLE) {
                 ArcadeActionButton(
                     label = localized(if (isPending) TextKey.GiftClaiming else TextKey.GiftClaim),
                     onClick = onClaim,

@@ -14,6 +14,15 @@ data class GiftCode(
 )
 
 @Serializable
+data class GiftCodePage(
+    val items: List<GiftCode>,
+    val page: Int,
+    val pageSize: Int,
+    val total: Long,
+    val serverNowEpochMillis: Long,
+)
+
+@Serializable
 data class GiftCodePublishRequest(
     val code: String,
     val reward: GiftCodeReward,

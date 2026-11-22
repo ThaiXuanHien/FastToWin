@@ -11,5 +11,6 @@ import kotlinx.serialization.Serializable
     val expiresAtEpochMillis: Long,
     val status: RewardedAdSessionStatus,
     val providerTransactionId: String? = null,
-    val quota: PlayQuotaSnapshot? = null
+    val quota: PlayQuotaSnapshot? = null,
+    val serverNowEpochMillis: Long? = null
 )

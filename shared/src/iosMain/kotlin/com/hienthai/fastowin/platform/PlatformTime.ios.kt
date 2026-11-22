@@ -1,7 +1,5 @@
 package com.hienthai.fastowin.platform
 
-import kotlinx.cinterop.ExperimentalForeignApi
-import platform.posix.time
+import kotlin.time.Clock
 
-@OptIn(ExperimentalForeignApi::class)
-actual fun epochMillis(): Long = time(null) * 1_000L
+actual fun epochMillis(): Long = Clock.System.now().toEpochMilliseconds()

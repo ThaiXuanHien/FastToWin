@@ -161,6 +161,7 @@ data class GameState(
     val isRematchRequestedByOpponent: Boolean = false,
     val isRematchActionPending: Boolean = false,
     val rematchExpiresAtEpochMillis: Long? = null,
+    val rematchServerClock: ServerClock? = null,
     val rematchNotice: String? = null,
     val rematchNoticeErrorCode: String? = null,
     val lastMatchDurationMillis: Long? = null,
@@ -199,6 +200,7 @@ data class GameState(
     val missionRewardResult: ServerMessage.MissionRewardResult? = null,
     val profileSaveError: String? = null,
     val profile: PlayerProfileSnapshot? = null,
+    val profileServerClock: ServerClock? = null,
     val avatarRevision: Long = 0L,
     val suppressedAvatarIds: Set<String> = emptySet(),
     val invalidatedAvatarIds: Set<String> = emptySet(),
@@ -232,7 +234,7 @@ data class GameState(
     val isTournamentOpen: Boolean = false,
     val isTournamentLoading: Boolean = false,
     val tournamentHub: TournamentHubSnapshot = TournamentHubSnapshot(),
-    val tournamentServerClock: TournamentServerClock? = null,
+    val tournamentServerClock: ServerClock? = null,
     val publicTournaments: List<PublicTournamentSummary> = emptyList(),
     val publicTournamentFilters: PublicTournamentFilters = PublicTournamentFilters(),
     val isPublicTournamentsLoading: Boolean = false,
@@ -303,7 +305,7 @@ internal fun GameState.canApplyGameSnapshot(roomId: String, sequence: Long): Boo
     currentRoomId != roomId || sequence >= latestGameSequence
 
 /** Copies the complete match view owned by the server; no optimistic match data survives. */
-internal fun GameState.applyAuthoritativeSnapshot(game: GameSnapshot, playerId: String): GameState {
+internal fun GameState.applyAuthoritativeSnapshot(game: GameSnapshot, playerId: String, snapshotClock: ServerClock? = null): GameState {
     val meSnapshot = game.players.firstOrNull { it.id == playerId }
         ?: game.spectators.firstOrNull { it.id == playerId }
     val myTeamId = meSnapshot?.teamId
@@ -357,6 +359,12 @@ internal fun GameState.applyAuthoritativeSnapshot(game: GameSnapshot, playerId: 
         isRematchRequestedByOpponent = game.rematchRequestedPlayerIds.any { it != playerId },
         isRematchActionPending = false,
         rematchExpiresAtEpochMillis = game.rematchExpiresAtEpochMillis,
+        rematchServerClock = when {
+            game.rematchExpiresAtEpochMillis == null -> null
+            snapshotClock != null -> snapshotClock
+            game.rematchExpiresAtEpochMillis == rematchExpiresAtEpochMillis -> rematchServerClock
+            else -> null
+        },
         rematchNotice = null,
         rematchNoticeErrorCode = null,
         lastMatchDurationMillis = if (finished) {

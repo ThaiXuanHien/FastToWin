@@ -15,7 +15,8 @@ data class ServiceStatusResponse(
     val messageVi: String? = null,
     val messageEn: String? = null,
     val transitionAtEpochMillis: Long? = null,
-    val expectedEndEpochMillis: Long? = null
+    val expectedEndEpochMillis: Long? = null,
+    val serverTimeEpochMillis: Long? = null
 )
 
 @Serializable

@@ -145,15 +145,18 @@ class PostgresSeasonLifecycleRepository(
                 INSERT INTO seasons (
                     id, season_number, name, starts_at, ends_at, reward_description
                 ) VALUES (
-                    ?, ?, ?, date_trunc('month', ?::timestamptz),
-                    date_trunc('month', ?::timestamptz) + INTERVAL '3 months', ?
+                    ?, ?, ?, date_trunc('month', ?::timestamptz AT TIME ZONE 'UTC') AT TIME ZONE 'UTC',
+                    (date_trunc('month', ?::timestamptz AT TIME ZONE 'UTC') + INTERVAL '3 months') AT TIME ZONE 'UTC', ?
                 )
                 """.trimIndent()
             } else {
                 """
                 INSERT INTO seasons (
                     id, season_number, name, starts_at, ends_at, reward_description
-                ) VALUES (?, ?, ?, ?::timestamptz, ?::timestamptz + INTERVAL '3 months', ?)
+                ) VALUES (
+                    ?, ?, ?, ?::timestamptz,
+                    ((?::timestamptz AT TIME ZONE 'UTC') + INTERVAL '3 months') AT TIME ZONE 'UTC', ?
+                )
                 """.trimIndent()
             }
         ).use { statement ->

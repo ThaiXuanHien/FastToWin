@@ -31,7 +31,6 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -47,7 +46,6 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.hienthai.fastowin.data.preferences.AppPreferences
 import com.hienthai.fastowin.platform.GameFeedbackEffect
-import com.hienthai.fastowin.platform.epochMillis
 import com.hienthai.fastowin.platform.playFeedbackSound
 import com.hienthai.fastowin.platform.ResultShareContent
 import com.hienthai.fastowin.platform.rememberResultImageSharer
@@ -79,7 +77,7 @@ import com.hienthai.fastowin.ui.components.RewardAmounts
 import com.hienthai.fastowin.ui.theme.FastToWinTheme
 import com.hienthai.fastowin.ui.components.SystemBackHandler
 import com.hienthai.fastowin.ui.theme.ArcadePalette
-import kotlinx.coroutines.delay
+import com.hienthai.fastowin.ui.components.rememberClockMillis
 import kotlin.math.ceil
 
 @Composable
@@ -739,16 +737,9 @@ private fun RematchCard(
         }
         return
     }
-    var nowMillis by remember { mutableLongStateOf(epochMillis()) }
-    val expiresAt = state.rematchExpiresAtEpochMillis
-    LaunchedEffect(expiresAt) {
-        while (expiresAt != null && nowMillis < expiresAt) {
-            delay(250)
-            nowMillis = epochMillis()
-        }
-    }
-    val remainingSeconds = expiresAt?.let {
-        ceil(((it - nowMillis).coerceAtLeast(0L)) / 1_000.0).toInt()
+    val remainingSeconds = state.rematchExpiresAtEpochMillis?.let { expiresAt ->
+        val now = rememberClockMillis(state.rematchServerClock, tickMillis = 250, deadlineMillis = expiresAt)
+        ceil((expiresAt - now).coerceAtLeast(0L) / 1_000.0).toInt()
     }
 
     ArcadePanel(modifier = Modifier.fillMaxWidth(), accent = ArcadePalette.Violet600) {

@@ -269,7 +269,8 @@ function roleField(form, label, name) {
   for (const [value, text] of Object.entries(roles)) input.append(node('option', text, { value }));
   append(wrapper, node('label', label, { for: input.id }), input); form.append(wrapper); return input;
 }
-const date = value => value == null ? 'Chưa có dữ liệu' : new Date(value).toLocaleString('vi-VN');
+const utcDate = (value, missing = 'Chưa có dữ liệu') => value == null
+  ? missing : new Date(value).toISOString().replace('T', ' ').replace('Z', ' UTC');
 const amount = value => new Intl.NumberFormat('vi-VN').format(value);
 
 // A channel fences success, errors and finally callbacks from older requests.
@@ -474,7 +475,7 @@ async function moderation() {
   try {
     const { openModeration } = await import('./admin-moderation.js');
     if (!task.current() || !session) return;
-    openModeration({ node, append, button, iconButton, field, modal, feedback, shell, channel,
+    openModeration({ node, append, button, iconButton, field, modal, feedback, shell, channel, utcDate,
       role: () => session?.admin.role,
       api: (path, request, payload, method) => api(path, request, payload, session?.csrfToken, method),
     });
@@ -985,7 +986,7 @@ function detail(id) {
         ['Tỉ lệ thắng', percentLabel(percentage(user.wins, user.totalMatches))], ['Tổng số trận', user.totalMatches ?? '—'], ['Thời gian chơi', 'Chưa có nguồn dữ liệu']
       ]) append(metrics, append(node('div', null, { class: 'metric' }), node('dt', label), node('dd', formatMetric(value))));
       const facts = node('dl', null, { class: 'facts' });
-      for (const [name, value] of [['Loại tài khoản', label(user.accountType)], ['Trạng thái', label(user.status)], ['Ngày tạo', date(user.createdAtEpochMillis)], ['Hoạt động gần nhất', date(user.lastActivityAtEpochMillis)], ['Bang', user.clanName ?? 'Không có bang'], ['ID bang', user.clanId ?? '—']]) append(facts, append(node('div'), node('dt', name), node('dd', value)));
+      for (const [name, value] of [['Loại tài khoản', label(user.accountType)], ['Trạng thái', label(user.status)], ['Ngày tạo', utcDate(user.createdAtEpochMillis)], ['Hoạt động gần nhất', utcDate(user.lastActivityAtEpochMillis)], ['Bang', user.clanName ?? 'Không có bang'], ['ID bang', user.clanId ?? '—']]) append(facts, append(node('div'), node('dt', name), node('dd', value)));
       append(content, metrics, facts); histories(content, id);
     } catch (error) { if (task.current() && error.name !== 'AbortError') notices.fail(error); }
   }
@@ -1011,13 +1012,13 @@ function histories(parent, id) {
       if (!data.items.length) results.append(node('p', 'Chưa có lịch sử.', { class: 'muted' }));
       for (const entry of data.items) {
         const row = node('article', null, { class: 'history-row' });
-        if (type === 'matches') append(row, node('strong', label(entry.matchType)), node('p', `${label(entry.outcome)} · Điểm: ${amount(entry.score)}`), node('p', date(entry.finishedAtEpochMillis), { class: 'muted' }));
+        if (type === 'matches') append(row, node('strong', label(entry.matchType)), node('p', `${label(entry.outcome)} · Điểm: ${amount(entry.score)}`), node('p', utcDate(entry.finishedAtEpochMillis), { class: 'muted' }));
         else {
           const deltas = [`Vàng: ${amount(entry.goldDelta)}`, `Gem: ${amount(entry.gemsDelta)}`, `XP: ${amount(entry.xpDelta)}`];
           if (entry.playCreditDelta) deltas.push(`Lượt tích lũy: ${amount(entry.playCreditDelta)}`);
           append(row, node('strong', label(entry.sourceType)),
             node('p', 'Nguồn: ' + entry.sourceId, { class: 'mono' }), node('p', deltas.join(' · ')),
-            node('p', date(entry.createdAtEpochMillis), { class: 'muted' }));
+            node('p', utcDate(entry.createdAtEpochMillis), { class: 'muted' }));
         }
         row.append(node('p', entry.id, { class: 'mono muted' })); results.append(row);
       }
@@ -1147,7 +1148,7 @@ function audit() {
       if (!data.items.length) results.append(node('p', 'Chưa có nhật ký kiểm toán.'));
       for (const entry of data.items) {
         const row = node('article', null, { class: 'history-row' });
-        append(row, node('strong', label(entry.action)), node('p', date(entry.createdAtEpochMillis), { class: 'muted' }));
+        append(row, node('strong', label(entry.action)), node('p', utcDate(entry.createdAtEpochMillis), { class: 'muted' }));
         for (const [label, value] of [['Người thực hiện', entry.actorId], ['Đối tượng', entry.targetId], ['Mã yêu cầu', entry.requestId], ['Lý do', entry.reason], ['Trước', entry.beforeSummary], ['Sau', entry.afterSummary]]) row.append(node('p', `${label}: ${value ?? '—'}`));
         row.append(node('p', entry.id, { class: 'mono muted' })); results.append(row);
       }

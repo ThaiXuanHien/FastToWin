@@ -4261,6 +4261,7 @@ class GameEngine(
                     .thenBy { it }
             ).firstOrNull()
         }
+        val snapshotTime = nowMillis()
         return GameSnapshot(
             roomId = id,
             matchId = matchId,
@@ -4301,7 +4302,7 @@ class GameEngine(
                         combo = combos[id] ?: 0,
                         lives = lives[id] ?: SURVIVAL_STARTING_LIVES,
                         timeLeftMillis = deadlinesAtEpochMillis[id]
-                            ?.let { (it - nowMillis()).coerceAtLeast(0L) }
+                            ?.let { (it - snapshotTime).coerceAtLeast(0L) }
                             ?: 0L,
                         isFinished = id in finishedPlayerIds,
                         fastestSegmentStart = fastestSegment?.start ?: 0,
@@ -4343,7 +4344,8 @@ class GameEngine(
             forfeit = if (phase == RoomPhase.FINISHED) {
                 disconnectedForfeitPlayerId?.let { MatchForfeitSnapshot(it, MatchForfeitReason.DISCONNECT_TIMEOUT) }
                     ?: intentionalLeavePlayerIds.singleOrNull()?.let { MatchForfeitSnapshot(it, MatchForfeitReason.VOLUNTARY_LEAVE) }
-            } else null
+            } else null,
+            serverTimeEpochMillis = snapshotTime.takeIf { rematchExpiresAtEpochMillis != null }
         )
     }
 

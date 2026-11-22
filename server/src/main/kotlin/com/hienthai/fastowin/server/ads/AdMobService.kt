@@ -39,6 +39,7 @@ class AdMobService(
         session.id, session.customData, session.adUnitId, session.expiresAt,
         if (session.transactionId != null) RewardedAdSessionStatus.GRANTED else if (now >= session.expiresAt) RewardedAdSessionStatus.EXPIRED else RewardedAdSessionStatus.PENDING,
         session.transactionId,
-        if (session.transactionId != null) quota.getSnapshot(session.userId, now).copy(rewardedAdAvailability = rewardedAdAvailability) else null
+        if (session.transactionId != null) quota.getSnapshot(session.userId, now).copy(rewardedAdAvailability = rewardedAdAvailability) else null,
+        serverNowEpochMillis = now
     )
 }

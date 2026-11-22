@@ -296,7 +296,8 @@ fun FastToWinApp(
             ) {
             com.hienthai.fastowin.ui.components.MaintenanceRoot(
                 bannerStatus = serviceStatus.takeIf { serviceObservation.showBanner },
-                reachable = serviceReachable == true
+                reachable = serviceReachable == true,
+                serverClock = serviceObservation.serverClock
             ) {
             if (serviceObservation.fullyClosed) {
                 ArcadeBackdrop(modifier = Modifier.fillMaxSize()) {

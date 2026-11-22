@@ -22,11 +22,10 @@ import com.hienthai.fastowin.data.network.*
 import com.hienthai.fastowin.localization.LocalLocalization
 import com.hienthai.fastowin.localization.TextKey
 import com.hienthai.fastowin.localization.localized
-import com.hienthai.fastowin.platform.epochMillis
 import com.hienthai.fastowin.protocol.MaintenanceState
 import com.hienthai.fastowin.protocol.ServiceStatusResponse
+import com.hienthai.fastowin.state.ServerClock
 import com.hienthai.fastowin.ui.theme.ArcadePalette
-import kotlinx.coroutines.delay
 
 /** UI affordance only. The server remains authoritative for every admitted action. */
 val LocalNewOnlineIntentAllowed = staticCompositionLocalOf { true }
@@ -37,12 +36,13 @@ fun MaintenanceBanner(
     reachable: Boolean,
     modifier: Modifier = Modifier,
     nowMillis: Long? = null,
-    contentWindowInsets: WindowInsets = WindowInsets(0, 0, 0, 0)
+    contentWindowInsets: WindowInsets = WindowInsets(0, 0, 0, 0),
+    serverClock: ServerClock? = null
 ) {
-    var clock by remember { mutableLongStateOf(nowMillis ?: epochMillis()) }
-    LaunchedEffect(nowMillis) { if (nowMillis == null) while (true) { clock = epochMillis(); delay(1000) } }
     val draining = status.state == MaintenanceState.DRAINING
-    val seconds = maintenanceCountdownSeconds(status.transitionAtEpochMillis, nowMillis ?: clock)
+    val seconds = status.transitionAtEpochMillis?.let {
+        maintenanceCountdownSeconds(it, rememberClockMillis(serverClock, nowMillis, deadlineMillis = it))
+    }
     val title = localized(if (draining) TextKey.MaintenanceDraining else TextKey.MaintenanceAnnouncing)
     var showDetails by remember { mutableStateOf(false) }
     if (showDetails) MaintenanceNoticeDialog(status, reachable, seconds, onDismiss = { showDetails = false })

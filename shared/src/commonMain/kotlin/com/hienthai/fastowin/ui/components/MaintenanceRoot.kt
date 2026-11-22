@@ -4,6 +4,7 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import com.hienthai.fastowin.protocol.ServiceStatusResponse
+import com.hienthai.fastowin.state.ServerClock
 
 /** Root notice and the admitted screen share ownership of the safe drawing area. */
 @Composable
@@ -13,11 +14,12 @@ fun MaintenanceRoot(
     modifier: Modifier = Modifier,
     safeDrawingInsets: WindowInsets = WindowInsets.safeDrawing,
     nowMillis: Long? = null,
+    serverClock: ServerClock? = null,
     content: @Composable () -> Unit
 ) {
     Column(modifier.fillMaxSize()) {
         if (bannerStatus != null) MaintenanceBanner(
-            bannerStatus, reachable, nowMillis = nowMillis,
+            bannerStatus, reachable, nowMillis = nowMillis, serverClock = serverClock,
             contentWindowInsets = safeDrawingInsets.only(WindowInsetsSides.Top + WindowInsetsSides.Horizontal)
         )
         // Only top was occupied above the screen. Preserve horizontal/bottom

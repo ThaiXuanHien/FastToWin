@@ -3,6 +3,9 @@ package com.hienthai.fastowin.data.network
 import com.hienthai.fastowin.protocol.ServiceStatusResponse
 import com.hienthai.fastowin.protocol.MaintenanceState
 import com.hienthai.fastowin.localization.AppLanguage
+import com.hienthai.fastowin.state.ServerClock
+import kotlin.time.TimeMark
+import kotlin.time.TimeSource
 
 /**
  * Latest reachability and last policy are deliberately distinct. One failed poll is not "offline":
@@ -13,13 +16,14 @@ import com.hienthai.fastowin.localization.AppLanguage
 data class ServiceStatusState(
     val status: ServiceStatusResponse? = null,
     val reachable: Boolean? = null,
-    val consecutiveFailures: Int = 0
+    val consecutiveFailures: Int = 0,
+    val serverClock: ServerClock? = null
 ) {
-    fun received(value: ServiceStatusResponse?): ServiceStatusState = if (value != null) {
-        ServiceStatusState(value, true, 0)
+    fun received(value: ServiceStatusResponse?, receivedAt: TimeMark = TimeSource.Monotonic.markNow()): ServiceStatusState = if (value != null) {
+        ServiceStatusState(value, true, 0, value.serverTimeEpochMillis?.let { ServerClock(it, receivedAt) })
     } else {
         val failures = consecutiveFailures + 1
-        ServiceStatusState(status, if (failures >= OFFLINE_AFTER_FAILURES) false else reachable, failures)
+        copy(reachable = if (failures >= OFFLINE_AFTER_FAILURES) false else reachable, consecutiveFailures = failures)
     }
     val pollSeconds: Int get() = when {
         consecutiveFailures in 1 until OFFLINE_AFTER_FAILURES -> RECHECK_AFTER_FAILURE_SECONDS

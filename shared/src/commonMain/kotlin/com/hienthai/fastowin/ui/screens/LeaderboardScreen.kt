@@ -365,7 +365,7 @@ private fun PlayerLeaderboard(
         }
         if (selectedMetric == PlayerLeaderboardMetric.ELO && selectedPeriod == LeaderboardPeriod.CURRENT_SEASON) {
             state.profile?.progression?.season?.let { season ->
-                item(key = "season_progress") { SeasonProgressCard(season) }
+                item(key = "season_progress") { SeasonProgressCard(season, serverClock = state.profileServerClock) }
             }
         }
         if (selectedMetric == PlayerLeaderboardMetric.ELO) {

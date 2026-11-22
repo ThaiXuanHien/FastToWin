@@ -13,8 +13,33 @@ import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
+import kotlin.time.Duration.Companion.milliseconds
+import kotlin.time.TestTimeSource
 
 class GiftMailboxControllerTest {
+    @Test fun `mailbox blocks a gift exactly at its server deadline without another response`() = runTest {
+        val timedGift = gift("timed").copy(expiresAtEpochMillis = 2000L)
+        val timeSource = TestTimeSource()
+        var claims = 0
+        val gateway = object : GiftGateway {
+            override suspend fun page(page: Int, pageSize: Int) =
+                GiftMailboxPage(listOf(timedGift), page, pageSize, 1, 1, serverNowEpochMillis = 1000L)
+            override suspend fun claim(id: String): GiftClaimResult {
+                claims++
+                error("expired gift reached the server")
+            }
+            override suspend fun claimAll(ids: List<String>): GiftClaimAllResult = error("unused")
+        }
+        val controller = GiftMailboxController(gateway, {}, timeSource = timeSource)
+        controller.open()
+        val clock = controller.state.value.serverClock!!
+        timeSource += 999.milliseconds
+        assertEquals(GiftState.AVAILABLE, timedGift.stateAt(clock.now()))
+        timeSource += 1.milliseconds
+        assertEquals(GiftState.EXPIRED, timedGift.stateAt(clock.now()))
+        controller.claim(timedGift.campaignId)
+        assertEquals(0, claims)
+    }
     @Test fun `race batch rejects an unconfirmed receipt and retries through the same mailbox endpoint`() = runTest {
         val race = ClanRaceMailboxContext("entitlement", "2026-10-26", 1, 9, "clan", "Frozen clan", 2,
             "1", "0.000001", true, 9, 10, 10000, ClanRaceReward(7, 8, 9), "CLAN_WEEKLY_RACE")

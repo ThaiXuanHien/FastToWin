@@ -50,8 +50,10 @@ class GiftProtocolTest {
         val page=ProtocolJson.decodeFromString<GiftMailboxPage>(payload)
         assertEquals("Quà",page.items.single().titleVi); assertNull(page.items.single().claimedAtEpochMillis)
         assertNull(page.items.single().compensation)
+        assertNull(page.serverNowEpochMillis)
         assertEquals(0, page.items.single().gems); assertEquals(0L, page.availableCount)
-        assertEquals(page,ProtocolJson.decodeFromString<GiftMailboxPage>(ProtocolJson.encodeToString(page)))
+        val timedPage = page.copy(serverNowEpochMillis = 1500L)
+        assertEquals(timedPage, ProtocolJson.decodeFromString<GiftMailboxPage>(ProtocolJson.encodeToString(timedPage)))
         assertFalse(ProtocolJson.encodeToString(page).contains("actorId"))
     }
     @Serializable private data class LegacyGift(val campaignId: String, val gold: Int, val xp: Int)

@@ -50,11 +50,8 @@ import java.sql.Date
 import java.sql.Connection
 import java.time.Clock
 import java.time.LocalDate
-import java.time.ZoneId
 import java.util.UUID
 import javax.sql.DataSource
-
-private val DAILY_CHECK_IN_ZONE: ZoneId = ZoneId.of("Asia/Bangkok")
 
 class PostgresPlayerProfileRepository(
     private val dataSource: DataSource,
@@ -330,7 +327,8 @@ class PostgresPlayerProfileRepository(
                     }
                 }
             }
-            val today = currentCheckInDate()
+            val checkInTime = clock.instant()
+            val today = dailyCheckInDate(checkInTime)
             // Use this connection: nesting a repository connection can starve a busy pool during profile reads.
             connection.autoCommit = false
             val activeMissions = try {
@@ -757,7 +755,9 @@ class PostgresPlayerProfileRepository(
                         totalCheckIns = progressionRow.totalDailyCheckIns,
                         lastCheckInDate = progressionRow.lastDailyCheckInDate?.toString(),
                         todayDate = today.toString(),
-                        historyDates = recentCheckInDates
+                        historyDates = recentCheckInDates,
+                        nextResetAtEpochMillis = nextDailyCheckInReset(today),
+                        serverTimeEpochMillis = checkInTime.toEpochMilli()
                     ),
                     cosmetics = cosmetics,
                     season = season,
@@ -1236,7 +1236,7 @@ class PostgresPlayerProfileRepository(
 
     private fun ratingTier(rating: Int): String = rankedTierFor(rating).displayName
 
-    private fun currentCheckInDate(): LocalDate = LocalDate.now(clock)
+    private fun currentCheckInDate(): LocalDate = dailyCheckInDate(clock.instant())
 
     private companion object {
         const val PLACEMENT_MATCHES_REQUIRED = 5

@@ -24,9 +24,7 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -37,7 +35,6 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
-import com.hienthai.fastowin.platform.epochMillis
 import com.hienthai.fastowin.protocol.RankedTier
 import com.hienthai.fastowin.protocol.CosmeticType
 import com.hienthai.fastowin.protocol.SeasonCosmeticRewardSnapshot
@@ -51,22 +48,18 @@ import com.hienthai.fastowin.localization.localizedRankedTierName
 import com.hienthai.fastowin.localization.localizedNetworkText
 import com.hienthai.fastowin.localization.AppLanguage
 import com.hienthai.fastowin.localization.LocalizationService
+import com.hienthai.fastowin.state.ServerClock
 import com.hienthai.fastowin.ui.theme.ArcadePalette
-import kotlinx.coroutines.delay
 
 @Composable
 fun SeasonProgressCard(
     season: SeasonSnapshot,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    serverClock: ServerClock? = null
 ) {
     var rewardsExpanded by remember(season.name) { mutableStateOf(false) }
-    var nowMillis by remember(season.endsAtEpochMillis) { mutableLongStateOf(epochMillis()) }
-    LaunchedEffect(season.endsAtEpochMillis) {
-        while (true) {
-            delay(SEASON_TIMER_REFRESH_MILLIS)
-            nowMillis = epochMillis()
-        }
-    }
+    val nowMillis = rememberClockMillis(serverClock, tickMillis = SEASON_TIMER_REFRESH_MILLIS,
+        deadlineMillis = season.endsAtEpochMillis)
 
     val isPlacement = season.placementMatchesPlayed < season.placementMatchesRequired
     val currentTier = rankedTierFor(season.rating)

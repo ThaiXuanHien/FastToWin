@@ -5,6 +5,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.Schedule
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.testTag
@@ -29,17 +30,18 @@ internal fun TournamentSchedulePanel(
     showCountdown: Boolean = true
 ) {
     val stage = schedule.stageAt(now)
+    val zone = remember(schedule.timeZoneId) { tournamentDisplayZone(schedule.timeZoneId) }
     ArcadePanel(Modifier.fillMaxWidth().testTag("tournament_schedule_panel"), accent = ArcadePalette.Blue300) {
         Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 Icon(Icons.Rounded.Schedule, contentDescription = null, tint = ArcadePalette.Blue300, modifier = Modifier.size(24.dp))
-                Text(LocalLocalization.current.timeZoneDisplayLabel(schedule.timeZoneId), style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold)
+                Text(LocalLocalization.current.timeZoneDisplayLabel(zone.id), style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold)
             }
-            Text(localized(TextKey.TournamentStartDeadline, "time" to tournamentLocalDateTime(schedule.startsAtEpochMillis, schedule.timeZoneId)),
+            Text(localized(TextKey.TournamentStartDeadline, "time" to tournamentLocalDateTime(schedule.startsAtEpochMillis, zone)),
                 fontWeight = FontWeight.Bold)
             if (!compact) {
-                Text(localized(TextKey.TournamentRegistrationDeadline, "time" to tournamentLocalDateTime(schedule.registrationClosesAtEpochMillis, schedule.timeZoneId)))
-                Text(localized(TextKey.TournamentCheckInDeadline, "time" to tournamentLocalDateTime(schedule.checkInOpensAtEpochMillis, schedule.timeZoneId)))
+                Text(localized(TextKey.TournamentRegistrationDeadline, "time" to tournamentLocalDateTime(schedule.registrationClosesAtEpochMillis, zone)))
+                Text(localized(TextKey.TournamentCheckInDeadline, "time" to tournamentLocalDateTime(schedule.checkInOpensAtEpochMillis, zone)))
             }
             if (showCountdown) Text(
                 when (stage) {

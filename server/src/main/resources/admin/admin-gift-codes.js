@@ -1,8 +1,16 @@
 const path = '/gift-codes';
 const rewardFields = { gold: 'Vàng', xp: 'XP', gems: 'Gem', plays: 'Lượt tích lũy' };
-const formatter = new Intl.DateTimeFormat('vi-VN', {
-  timeZone: 'Asia/Bangkok', dateStyle: 'short', timeStyle: 'short',
+const timeZone = 'Asia/Bangkok';
+const minuteFormat = new Intl.DateTimeFormat('vi-VN', { timeZone, dateStyle: 'short', timeStyle: 'short' });
+const secondFormat = new Intl.DateTimeFormat('vi-VN', { timeZone, dateStyle: 'short', timeStyle: 'medium' });
+const millisecondFormat = new Intl.DateTimeFormat('vi-VN', {
+  timeZone, year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit',
+  second: '2-digit', fractionalSecondDigits: 3, hourCycle: 'h23',
 });
+function expiryLabel(value) {
+  const formatter = value % 1000 ? millisecondFormat : value % 60000 ? secondFormat : minuteFormat;
+  return `${formatter.format(value)} · Giờ Việt Nam (UTC+7)`;
+}
 
 function rewardLabel(reward) {
   return Object.entries(rewardFields)
@@ -27,17 +35,18 @@ export function openGiftCodes(ui) {
     try {
       const response = await api(`${path}?page=${page}`, task);
       if (!task.current()) return;
+      const now = response.serverNowEpochMillis ?? Date.now();
       notices.clear();
       list.replaceChildren();
       for (const item of response.items) {
-        const status = item.stopped ? 'Đã ngừng' : item.expiresAt <= Date.now()
+        const status = item.stopped ? 'Đã ngừng' : item.expiresAt <= now
           ? 'Hết hạn' : item.maximumClaims != null && item.claims >= item.maximumClaims
             ? 'Hết lượt' : 'Đang hoạt động';
         const row = append(node('article', null, { class: 'gift-code-row' }),
           append(node('div', null, { class: 'row-info' }),
             node('strong', item.code),
             node('p', rewardLabel(item.reward)),
-            node('p', `${status} · ${item.claims}/${item.maximumClaims ?? '∞'} lượt · ${formatter.format(item.expiresAt)}`)));
+            node('p', `${status} · ${item.claims}/${item.maximumClaims ?? '∞'} lượt · Hết hạn ${expiryLabel(item.expiresAt)}`)));
         if (status === 'Đang hoạt động') {
           const stop = button('Ngừng mã', () => stopCode(item, stop, page));
           row.append(stop);
@@ -56,7 +65,7 @@ export function openGiftCodes(ui) {
     surface.dialog.classList.add('gift-modal');
     const form = node('form', null, { class: 'stack' });
     const code = field(form, 'Mã quà tặng', 'gift-code', 'text', { required: '', minlength: '4', maxlength: '24', pattern: '[A-Za-z0-9_\\-]{4,24}' });
-    const expiry = field(form, 'Hết hạn (giờ Việt Nam)', 'gift-code-expiry', 'datetime-local', { required: '' });
+    const expiry = field(form, 'Hết hạn (giờ Việt Nam)', 'gift-code-expiry', 'datetime-local', { required: '', step: '0.001' });
     const limit = field(form, 'Tổng lượt nhận (tùy chọn)', 'gift-code-limit', 'number', { min: '1', max: '2147483647' });
     const grid = node('div', null, { class: 'gift-field-pair gift-reward-fields' });
     form.append(grid);
@@ -75,9 +84,9 @@ export function openGiftCodes(ui) {
     form.addEventListener('submit', event => {
       event.preventDefault();
       const reward = Object.fromEntries(Object.entries(rewards).map(([key, input]) => [key, Number(input.value)]));
-      const expiresAt = Date.parse(expiry.value + '+07:00');
-      if (!Object.values(reward).some(value => value > 0) || !Number.isFinite(expiresAt) || expiresAt <= Date.now()) {
-        errors.fail(new Error('Chọn ít nhất một phần thưởng và ngày hết hạn trong tương lai.'), true);
+      const expiresAt = expiry.valueAsNumber - 7 * 3600000;
+      if (!Object.values(reward).some(value => value > 0) || !Number.isFinite(expiresAt)) {
+        errors.fail(new Error('Chọn ít nhất một phần thưởng và nhập thời gian hết hạn.'), true);
         return;
       }
       const payload = {
@@ -98,7 +107,7 @@ export function openGiftCodes(ui) {
         finally { back.disabled = false; }
       }, { class: 'primary' });
       preview.replaceChildren(node('h3', payload.code), node('p', rewardLabel(reward)),
-        node('p', `Hết hạn ${formatter.format(expiresAt)} · ${payload.maximumClaims ?? 'Không giới hạn'} lượt`),
+        node('p', `Hết hạn ${expiryLabel(expiresAt)} · ${payload.maximumClaims ?? 'Không giới hạn'} lượt`),
         publish, back);
       back.focus();
     });

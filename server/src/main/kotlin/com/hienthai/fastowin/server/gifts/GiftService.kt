@@ -23,9 +23,10 @@ class GiftService(val repository: GiftRepository, private val admins: AdminServi
         AdminOk()
     }
 
-    suspend fun listGiftCodes(context: GiftAdminContext, page: PageRequest): AdminPage<GiftCode> = repository.transaction(true) {
+    suspend fun listGiftCodes(context: GiftAdminContext, page: PageRequest): GiftCodePage = repository.transaction(true) {
         authorize(context, owner = true)
-        listCodes(page)
+        val result = listCodes(page)
+        GiftCodePage(result.items, result.page, result.pageSize, result.total, serverNowEpochMillis = nowMillis())
     }
 
     suspend fun publishGiftCode(context: GiftAdminContext, request: GiftCodePublishRequest): GiftCode {
@@ -240,7 +241,8 @@ class GiftService(val repository: GiftRepository, private val admins: AdminServi
     suspend fun mailbox(userId: String, page: PageRequest): GiftMailboxPage = repository.transaction {
         uuid(userId); if (!activePlayer(userId)) unauthorized()
         val now = nowMillis(); val (rows, total) = mailbox(userId, now, page)
-        GiftMailboxPage(rows.map { (c, r) -> gift(c, r, now) }, page.page, page.pageSize, total, mailboxAvailableCount(userId, now))
+        GiftMailboxPage(rows.map { (c, r) -> gift(c, r, now) }, page.page, page.pageSize, total,
+            mailboxAvailableCount(userId, now), serverNowEpochMillis = now)
     }
     suspend fun claim(userId: String, campaignId: String, receivedAt: Long = nowMillis()): GiftClaimResult = repository.transaction {
         uuid(userId); uuid(campaignId)

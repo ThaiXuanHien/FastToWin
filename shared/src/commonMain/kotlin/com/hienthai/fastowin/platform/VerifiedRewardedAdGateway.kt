@@ -101,7 +101,8 @@ class VerifiedRewardedAdGateway(
                 if (!driver.load()) { fail(TextKey.RewardedAdUnavailable); return@launch }
                 val session = api.prepare(Random.nextLong().toULong().toString(16) + Random.nextLong().toULong().toString(16))
                 currentCoroutineContext().ensureActive()
-                if (!current(fence) || (driver.adUnitId != null && session.adUnitId != driver.adUnitId) || session.expiresAtEpochMillis <= nowMillis()) {
+                val serverNow = session.serverNowEpochMillis ?: nowMillis()
+                if (!current(fence) || (driver.adUnitId != null && session.adUnitId != driver.adUnitId) || session.expiresAtEpochMillis <= serverNow) {
                     fail(TextKey.RewardedAdUnavailable); return@launch
                 }
                 if (session.status != RewardedAdSessionStatus.PENDING) { fail(TextKey.RewardedAdUnavailable); return@launch }

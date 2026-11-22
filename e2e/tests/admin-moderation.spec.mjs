@@ -5,8 +5,10 @@ async function open(page, fixture) {
   await page.getByRole('button', { name: 'Xem báo cáo ' + reportId }).click();
 }
 for (const role of ['OWNER', 'OPERATOR', 'SUPPORT']) test(`moderation ${role} shows evidence as text and grants only appropriate actions`, async ({ page, fixture }) => {
-  moderation(fixture); fixture.role = role; await open(page, fixture);
+  const createdAtEpochMillis = Date.parse('2026-10-20T00:00:00.125Z');
+  moderation(fixture, { createdAtEpochMillis }); fixture.role = role; await open(page, fixture);
   const dialog = page.getByRole('dialog');
+  await expect(dialog).toContainText('2026-10-20 00:00:00.125 UTC');
   await expect(dialog.getByText('<img src=x onerror=alert(1)>', { exact: true })).toBeVisible();
   await expect(dialog.locator('img')).toHaveCount(0);
   await expect(dialog.getByRole('button', { name: 'Khóa tài khoản', exact: true })).toHaveCount(role === 'SUPPORT' ? 0 : 1);

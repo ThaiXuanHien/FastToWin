@@ -17,6 +17,7 @@ import com.hienthai.fastowin.protocol.FriendPresence
 import com.hienthai.fastowin.protocol.ClanDonationCurrency
 import com.hienthai.fastowin.protocol.ClanDonationStatus
 import com.hienthai.fastowin.protocol.CosmeticType
+import com.hienthai.fastowin.protocol.DailyCheckInSnapshot
 import com.hienthai.fastowin.protocol.GameSnapshot
 import com.hienthai.fastowin.protocol.MatchForfeitReason
 import com.hienthai.fastowin.protocol.GoldExchangeStatus
@@ -47,6 +48,8 @@ import kotlinx.coroutines.isActive
 import kotlin.io.encoding.Base64
 import kotlin.io.encoding.ExperimentalEncodingApi
 import kotlin.random.Random
+import kotlin.time.TimeMark
+import kotlin.time.TimeSource
 
 class GameController private constructor(
     serverUrl: String,
@@ -151,6 +154,7 @@ class GameController private constructor(
     private var messageJob: Job? = null
     private var connectionJob: Job? = null
     private var timerJob: Job? = null
+    private var dailyCheckInRefreshJob: Job? = null
     private var countdownJob: Job? = null
     private var latencyJob: Job? = null
     private var publicTournamentFilterJob: Job? = null
@@ -554,6 +558,23 @@ class GameController private constructor(
         sendMessage(ClientMessage.GetProfile)
     }
 
+    private fun scheduleDailyCheckInRefresh(checkIn: DailyCheckInSnapshot, clock: ServerClock?) {
+        dailyCheckInRefreshJob?.cancel()
+        val resetAt = checkIn.nextResetAtEpochMillis ?: return
+        if (clock == null || clock.serverEpochMillis >= resetAt) return
+        dailyCheckInRefreshJob = scope.launch {
+            var remaining = resetAt - clock.now()
+            while (remaining > 0) {
+                delay(remaining)
+                remaining = resetAt - clock.now()
+            }
+            if (_uiState.value.connectionStatus == ConnectionStatus.CONNECTED) {
+                requestProfileRefresh()
+                requestPlayQuota()
+            }
+        }
+    }
+
     private fun interruptEditorProfileSave() {
         if (editorProfileSave != null) {
             editorProfileSaveFailure = editorProfileSaveFailure ?: messageMapper.text(TextKey.ConnectionDisconnected)
@@ -783,7 +804,7 @@ class GameController private constructor(
         val state = _uiState.value
         val tournament = state.tournamentHub.activeTournament ?: return
         val schedule = tournament.schedule ?: return
-        val now = state.tournamentServerClock?.now(epochMillis()) ?: epochMillis()
+        val now = state.tournamentServerClock?.now() ?: epochMillis()
         if (state.connectionStatus != ConnectionStatus.CONNECTED || state.isTournamentLoading ||
             state.currentRoomId != null || state.isSearching || state.isMatchmaking ||
             tournament.phase != com.hienthai.fastowin.protocol.TournamentPhase.LOBBY ||
@@ -1388,6 +1409,9 @@ class GameController private constructor(
             }
 
             is ServerMessage.ProfileData -> {
+                val checkIn = message.profile.progression.dailyCheckIn
+                val profileClock = checkIn.serverTimeEpochMillis?.let { ServerClock(it) }
+                scheduleDailyCheckInRefresh(checkIn, profileClock)
                 val save = editorProfileSave
                 val refreshResponse = !message.isBackgroundRefresh && pendingProfileRefreshes > 0
                 if (refreshResponse) pendingProfileRefreshes--
@@ -1415,6 +1439,7 @@ class GameController private constructor(
                     }
                     state.copy(
                         profile = message.profile,
+                        profileServerClock = profileClock,
                         currentClan = state.currentClan?.takeUnless {
                             previousClanId != message.profile.clanId && it.id == previousClanId
                         },
@@ -1675,7 +1700,7 @@ class GameController private constructor(
                         },
                         tournamentServerClock = (message.hub.activeTournament?.serverTimeEpochMillis
                             ?: message.hub.invitations.mapNotNull { it.serverTimeEpochMillis }.maxOrNull())?.let {
-                            TournamentServerClock(it, epochMillis())
+                            ServerClock(it)
                         } ?: state.tournamentServerClock,
                         tournamentInvitationPrompt = state.tournamentInvitationPrompt?.takeIf {
                             it.invitationId in invitationIds
@@ -1690,7 +1715,7 @@ class GameController private constructor(
                 _uiState.update {
                     it.copy(publicTournaments = message.tournaments, isPublicTournamentsLoading = false,
                         tournamentServerClock = message.tournaments.mapNotNull { item -> item.serverTimeEpochMillis }
-                            .maxOrNull()?.let { server -> TournamentServerClock(server, epochMillis()) } ?: it.tournamentServerClock)
+                            .maxOrNull()?.let { server -> ServerClock(server) } ?: it.tournamentServerClock)
                 }
             }
 
@@ -1704,7 +1729,7 @@ class GameController private constructor(
                         state.tournamentHub.activeTournament?.tournamentId != message.tournament.tournamentId
                     state.copy(
                         tournamentServerClock = message.tournament.serverTimeEpochMillis?.takeUnless { unrelatedCompletion }?.let {
-                            TournamentServerClock(it, epochMillis())
+                            ServerClock(it)
                         } ?: state.tournamentServerClock,
                         tournamentHub = state.tournamentHub.copy(
                             activeTournament = if (unrelatedCompletion) state.tournamentHub.activeTournament
@@ -1730,7 +1755,7 @@ class GameController private constructor(
                         .filterNot { it.invitationId == message.invitation.invitationId } + message.invitation
                     state.copy(
                         tournamentServerClock = message.invitation.serverTimeEpochMillis?.let {
-                            TournamentServerClock(it, epochMillis())
+                            ServerClock(it)
                         } ?: state.tournamentServerClock,
                         tournamentHub = state.tournamentHub.copy(invitations = invitations),
                         tournamentInvitationPrompt = state.tournamentInvitationPrompt ?: message.invitation,
@@ -1986,6 +2011,7 @@ class GameController private constructor(
 
     private fun startMatchCountdown(game: GameSnapshot) {
         if (gameStarted && _uiState.value.currentRoomId == game.roomId) return
+        val receivedAt = TimeSource.Monotonic.markNow()
         gameStarted = true
         _uiState.update { it.prepareForMatchStart() }
         countdownJob?.cancel()
@@ -1997,17 +2023,17 @@ class GameController private constructor(
                 _uiState.update { it.copy(countdown = count) }
                 delay(1_000)
             }
-            startGameWithSnapshot(game)
+            startGameWithSnapshot(game, receivedAt)
         }
     }
 
-    private fun startGameWithSnapshot(game: GameSnapshot) {
+    private fun startGameWithSnapshot(game: GameSnapshot, receivedAt: TimeMark = TimeSource.Monotonic.markNow()) {
         countdownJob?.cancel()
         gameStarted = game.phase == RoomPhase.PLAYING
-        applyGameSnapshot(game)
+        applyGameSnapshot(game, receivedAt)
     }
 
-    private fun applyGameSnapshot(game: GameSnapshot): Boolean {
+    private fun applyGameSnapshot(game: GameSnapshot, receivedAt: TimeMark = TimeSource.Monotonic.markNow()): Boolean {
         val currentState = _uiState.value
         if (!currentState.canApplyGameSnapshot(game.roomId, game.sequence)) return false
         val finished = game.phase == RoomPhase.FINISHED
@@ -2015,12 +2041,13 @@ class GameController private constructor(
         val disconnectLoss = finished && game.forfeit?.let {
             it.playerId == localPlayerId && it.reason == MatchForfeitReason.DISCONNECT_TIMEOUT
         } == true
+        val snapshotClock = game.serverTimeEpochMillis?.let { ServerClock(it, receivedAt) }
         _uiState.update { state ->
-            val result = state.applyAuthoritativeSnapshot(game, localPlayerId)
+            val result = state.applyAuthoritativeSnapshot(game, localPlayerId, snapshotClock)
             if (disconnectLoss) result.copy(message = messageMapper.text(TextKey.MatchExpiredOfficialLoss)) else result
         }
         if (game.phase == RoomPhase.PLAYING && game.gameMode.isTimed()) {
-            startTimer(_uiState.value.timeLeftMillis)
+            startTimer(_uiState.value.timeLeftMillis, receivedAt)
         } else if (!finished) {
             timerJob?.cancel()
             _uiState.update { it.copy(timeLeftMillis = 0L) }
@@ -2185,12 +2212,11 @@ class GameController private constructor(
         _uiState.update { it.copy(playFlowRejection = null, error = null) }
     }
 
-    private fun startTimer(initialRemainingMillis: Long) {
+    private fun startTimer(initialRemainingMillis: Long, receivedAt: TimeMark) {
         timerJob?.cancel()
-        val deadline = epochMillis() + initialRemainingMillis
         timerJob = scope.launch {
             while (gameStarted) {
-                val remaining = (deadline - epochMillis()).coerceAtLeast(0L)
+                val remaining = (initialRemainingMillis - receivedAt.elapsedNow().inWholeMilliseconds).coerceAtLeast(0L)
                 _uiState.update { it.copy(timeLeftMillis = remaining) }
                 if (remaining == 0L) {
                     _uiState.update { it.copy(message = messageMapper.text(TextKey.WaitingForServerResult)) }
@@ -2234,6 +2260,7 @@ class GameController private constructor(
         val displayName = accountDisplayName ?: _uiState.value.player.name
         val activeSession = sessionJob
         timerJob?.cancel()
+        dailyCheckInRefreshJob?.cancel()
         countdownJob?.cancel()
         gameStarted = false
         _uiState.value = GameState(player = PlayerState(displayName),
@@ -2291,6 +2318,7 @@ class GameController private constructor(
         profileRefreshAfterGiftPending = false
         publicTournamentFilterJob?.cancel()
         timerJob?.cancel()
+        dailyCheckInRefreshJob?.cancel()
         countdownJob?.cancel()
         latencyJob?.cancel()
         messageJob?.cancel()
