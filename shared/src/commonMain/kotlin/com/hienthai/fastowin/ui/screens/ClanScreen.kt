@@ -993,7 +993,7 @@ private fun ClanJoinRequestCard(
                 horizontalArrangement = Arrangement.spacedBy(12.dp)
             ) {
                 ClanLogoMark(logoId = "shield", modifier = Modifier.size(48.dp))
-                Column(modifier = Modifier.weight(1f)) {
+                Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
                     Text(request.displayName, fontWeight = FontWeight.Black)
                     Text(
                         localized(TextKey.PlayerCodeShort, "code" to request.playerCode),
@@ -1041,7 +1041,7 @@ private fun ClanMemberCard(
             horizontalArrangement = Arrangement.spacedBy(12.dp)
         ) {
             PlayerAvatar(member.displayName, member.avatarId, member.userId, member.frameId)
-            Column(modifier = Modifier.weight(1f)) {
+            Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
                 Text(member.displayName, fontWeight = FontWeight.Black, maxLines = 2, overflow = TextOverflow.Ellipsis)
                 Text(
                     localized(TextKey.ClanMemberSummary, "role" to member.role.localizedName(), "trophies" to formatNumber(member.trophies)),
@@ -1102,7 +1102,7 @@ fun ClanLogoDialog(
             horizontalArrangement = Arrangement.spacedBy(12.dp)
         ) {
             ClanLogoMark(currentLogoId, Modifier.size(48.dp))
-            Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+            Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
                 Text(
                     "${localized(TextKey.ClanLogoCurrent)} · ${currentLogoId.clanLogoLabel()}",
                     style = MaterialTheme.typography.titleSmall,

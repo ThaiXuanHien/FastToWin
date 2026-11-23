@@ -311,7 +311,7 @@ fun FriendsScreen(
                                                 userId = request.userId,
                                                 frameId = request.frameId
                                             )
-                                            Column(modifier = Modifier.weight(1f)) {
+                                            Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
                                                 Text(request.displayName, fontWeight = FontWeight.Black)
                                                 Text(
                                                     localized(TextKey.PlayerCodeShort, "code" to request.playerCode),
@@ -442,7 +442,7 @@ fun FriendsScreen(
                                             userId = request.userId,
                                             frameId = request.frameId
                                         )
-                                        Column(modifier = Modifier.weight(1f)) {
+                                        Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
                                             Text(request.displayName, fontWeight = FontWeight.Black)
                                             Text(
                                                 localized(TextKey.SentFriendInvitation, "code" to request.playerCode),
@@ -496,7 +496,7 @@ fun FriendsScreen(
                                             userId = player.userId,
                                             frameId = player.frameId
                                         )
-                                        Column(modifier = Modifier.weight(1f)) {
+                                        Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
                                             Text(player.displayName, fontWeight = FontWeight.Black)
                                             Text(
                                                 localized(TextKey.PlayerCodeShort, "code" to player.playerCode),
@@ -681,7 +681,7 @@ private fun FriendCard(
                     userId = friend.userId,
                     frameId = friend.frameId
                 )
-                Column(modifier = Modifier.weight(1f)) {
+                Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
                     Text(friend.displayName, fontWeight = FontWeight.Black)
                     Row(
                         verticalAlignment = Alignment.CenterVertically,
@@ -796,7 +796,7 @@ fun FriendRequestDialog(
                 userId = request.userId,
                 frameId = request.frameId
             )
-            Column(modifier = Modifier.weight(1f)) {
+            Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
                 Text(request.displayName, fontWeight = FontWeight.Black)
                 Text(
                     localized(TextKey.PlayerCodeShort, "code" to request.playerCode),

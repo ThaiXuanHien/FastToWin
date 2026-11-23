@@ -194,7 +194,7 @@ fun ClanRaceScreen(
             snapshot.standings.forEach { row ->
                 Row(horizontalArrangement = Arrangement.spacedBy(12.dp), verticalAlignment = Alignment.CenterVertically) {
                     ClanLogoMark(row.logoId, Modifier.size(40.dp))
-                    Column(Modifier.weight(1f)) {
+                    Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
                         Text(row.name, fontWeight = FontWeight.Bold)
                         Text(localized(TextKey.Level, "level" to row.level))
                         Text(localized(TextKey.ClanRaceRankPoints, "rank" to row.rank, "points" to row.points))

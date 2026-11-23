@@ -119,10 +119,8 @@ class ProfileSectionsUiTest {
             .performSemanticsAction(SemanticsActions.OnClick)
         composeRule.runOnIdle { assertEquals(ProfileSection.WALLET, openedSection) }
 
-        composeRule.onNodeWithTag("profile_section_missions")
-            .performScrollTo()
-            .performSemanticsAction(SemanticsActions.OnClick)
-        composeRule.runOnIdle { assertEquals(ProfileSection.MISSIONS, openedSection) }
+        composeRule.onNodeWithTag("profile_section_missions").assertDoesNotExist()
+        composeRule.onNodeWithTag("profile_section_daily_check_in").assertDoesNotExist()
 
         composeRule.onNodeWithTag("profile_section_collection")
             .performScrollTo()
@@ -587,6 +585,34 @@ class ProfileSectionsUiTest {
         assertTrue(bounds[0].top < bounds[1].top && bounds[1].top < bounds[2].top)
         assertTrue(bounds[3].left > bounds[0].left)
         assertTrue(kotlin.math.abs(bounds[3].top - bounds[0].top) <= 1f)
+    }
+
+    @Test
+    fun collectionFramesAcceptHorizontalScroll() {
+        val profile = profileFixture()
+
+        setAdaptiveContent(320.dp, 640.dp) {
+            ProfileSectionScreen(
+                state = GameState(profile = profile),
+                profile = profile,
+                section = ProfileSection.COLLECTION,
+                isExternalProfile = false,
+                canEdit = true,
+                onBack = {},
+                onRefresh = {},
+                onOpenMatchDetail = {},
+                onCloseMatchDetail = {},
+                onEquipCosmetics = { _, _ -> },
+                onClaimMissionReward = {},
+                onSave = { _, _ -> },
+                onOpenNotifications = {}
+            )
+        }
+
+        composeRule.onNodeWithTag("collection_frames")
+            .performSemanticsAction(SemanticsActions.ScrollBy) { scrollBy ->
+                scrollBy(240f, 0f)
+            }
     }
 
     @Test

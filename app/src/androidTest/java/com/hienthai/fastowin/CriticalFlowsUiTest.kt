@@ -1,6 +1,7 @@
 package com.hienthai.fastowin
 
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.compose.ui.test.DeviceConfigurationOverride
 import androidx.compose.ui.test.ExperimentalTestApi
 import androidx.compose.ui.test.FontScale
@@ -10,8 +11,11 @@ import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertIsEnabled
 import androidx.compose.ui.test.assertIsSelected
 import androidx.compose.ui.test.assertIsNotEnabled
+import androidx.compose.ui.test.SemanticsMatcher
+import androidx.compose.ui.test.assert
 import androidx.compose.ui.test.junit4.v2.createComposeRule
 import androidx.compose.ui.test.onNodeWithTag
+import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.onAllNodesWithTag
 import androidx.compose.ui.test.performClick
@@ -142,22 +146,37 @@ class CriticalFlowsUiTest {
     }
 
     @Test
-    fun home_dailyCheckInShowsSevenDayRewardsAndClaimsToday() {
+    fun home_showsMissionsAndMonthlyCheckInAndClaimsToday() {
         var claims = 0
+        var missionOpens = 0
+        var openedMonth: String? = null
         composeRule.setContent {
             FastToWinTheme {
                 TestLobby(
                     state = homeState(),
-                    onClaimDailyCheckIn = { claims++ }
+                    onClaimDailyCheckIn = { claims++ },
+                    onOpenMissions = { missionOpens++ },
+                    claimableMissionCount = 3,
+                    onOpenCheckInDetails = { openedMonth = it }
                 )
             }
         }
 
-        composeRule.onNodeWithTag("daily_check_in_card").performScrollTo().assertIsDisplayed()
-        composeRule.onNodeWithText("Điểm danh 7 ngày").assertIsDisplayed()
-        composeRule.onNodeWithTag("daily_check_in_claim").performClick()
+        composeRule.onNodeWithTag("home_missions").performScrollTo()
+            .assert(SemanticsMatcher.expectValue(SemanticsProperties.StateDescription, "3 nhiệm vụ đã hoàn thành chưa nhận thưởng"))
+            .performClick()
+        composeRule.onNodeWithTag("daily_check_in_reward:31").assertDoesNotExist()
+        composeRule.onNodeWithTag("daily_check_in_details").performScrollTo().performClick()
+        composeRule.onNodeWithContentDescription("Tháng trước").performScrollTo().performClick()
+        composeRule.onNodeWithTag("daily_check_in_details").performScrollTo().performClick()
+        composeRule.onNodeWithTag("daily_check_in_claim").performScrollTo().performClick()
+        composeRule.onNodeWithTag("daily_check_in_calendar").assertExists()
 
-        composeRule.runOnIdle { assertEquals(1, claims) }
+        composeRule.runOnIdle {
+            assertEquals(1, claims)
+            assertEquals(1, missionOpens)
+            assertEquals("2026-07", openedMonth)
+        }
     }
 
     @Test
@@ -312,7 +331,8 @@ class CriticalFlowsUiTest {
         assertTrue(composeRule.onAllNodesWithTag("daily_check_in_milestones").fetchSemanticsNodes().isEmpty())
         assertTrue(composeRule.onAllNodesWithTag("daily_check_in_calendar").fetchSemanticsNodes().isEmpty())
         assertTrue(composeRule.onAllNodesWithTag("profile_daily_check_in_strip").fetchSemanticsNodes().isEmpty())
-        composeRule.onNodeWithTag("profile_section_missions").performScrollTo().assertIsDisplayed()
+        composeRule.onNodeWithTag("profile_section_missions").assertDoesNotExist()
+        composeRule.onNodeWithTag("profile_section_daily_check_in").assertDoesNotExist()
     }
 
     @Test
@@ -925,7 +945,8 @@ class CriticalFlowsUiTest {
                 dailyCheckIn = DailyCheckInSnapshot(
                     claimedToday = false,
                     cycleDay = 1,
-                    todayRewardXp = 5
+                    todayRewardXp = 5,
+                    todayDate = "2026-08-17"
                 )
             )
         )
@@ -1047,6 +1068,9 @@ private fun TestLobby(
     onCreateRoom: (String, String) -> Unit = { _, _ -> },
     onJoinRoom: (String, String) -> Unit = { _, _ -> },
     onClaimDailyCheckIn: () -> Unit = {},
+    onOpenMissions: () -> Unit = {},
+    claimableMissionCount: Int = 0,
+    onOpenCheckInDetails: (String) -> Unit = {},
     onShareRoom: (String, String) -> Result<Unit> = { _, _ -> Result.success(Unit) },
     onResolveRoomLink: (String?) -> Unit = {}
 ) {
@@ -1077,6 +1101,9 @@ private fun TestLobby(
         onOpenShop = {},
         onShareRoom = onShareRoom,
         onResolveRoomLink = onResolveRoomLink,
-        onClaimDailyCheckIn = onClaimDailyCheckIn
+        onClaimDailyCheckIn = onClaimDailyCheckIn,
+        onOpenMissions = onOpenMissions,
+        claimableMissionCount = claimableMissionCount,
+        onOpenCheckInDetails = onOpenCheckInDetails
     )
 }

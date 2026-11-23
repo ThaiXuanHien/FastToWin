@@ -51,17 +51,17 @@ fun MaintenanceBanner(
             Modifier.windowInsetsPadding(contentWindowInsets).padding(horizontal = 16.dp, vertical = 4.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            Column(Modifier.weight(1f)) {
-            Text(title,
-                color = ArcadePalette.Gold500, fontWeight = FontWeight.Bold, style = MaterialTheme.typography.titleSmall,
-                maxLines = 1, overflow = TextOverflow.Ellipsis,
-                modifier = Modifier.semantics { liveRegion = LiveRegionMode.Polite })
-            if (seconds != null) {
-                val countdownDescription = localized(TextKey.MaintenanceCountdown, "seconds" to seconds)
-                Text(localized(TextKey.MaintenanceCountdownCompact, "seconds" to seconds),
-                    style = MaterialTheme.typography.labelMedium,
-                    modifier = Modifier.semantics { contentDescription = countdownDescription })
-            }
+            Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                Text(title,
+                    color = ArcadePalette.Gold500, fontWeight = FontWeight.Bold, style = MaterialTheme.typography.titleSmall,
+                    maxLines = 1, overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.semantics { liveRegion = LiveRegionMode.Polite })
+                if (seconds != null) {
+                    val countdownDescription = localized(TextKey.MaintenanceCountdown, "seconds" to seconds)
+                    Text(localized(TextKey.MaintenanceCountdownCompact, "seconds" to seconds),
+                        style = MaterialTheme.typography.labelMedium,
+                        modifier = Modifier.semantics { contentDescription = countdownDescription })
+                }
             }
             TextButton(onClick = { showDetails = true }, modifier = Modifier.heightIn(min = 48.dp)) {
                 Text(localized(TextKey.MaintenanceDetails), color = ArcadePalette.Blue100)

@@ -177,6 +177,8 @@ ClanRaceTitle, ClanRacePrizes, ClanRacePerMember, ClanRaceEligibility, ClanRaceW
     RevokeOtherDeviceDescription, UnknownDevice, JustNow, MinutesAgo, HoursAgo,
     DaysAgo, SessionExpiresInDays, ActivityTime, CheckIn, StreakDays,
     CheckInCalendarDescription, PreviousMonth, NextMonth, MonthYear, CheckedIn,
+    CheckInMonthlyRewards, CheckInForecast, CheckInMissed, CheckInRewardUnavailable, CheckInToday,
+    CheckInDetails, ClaimableMissionCount,
     CheckInMilestones, CheckInSummary, ConsecutiveDays, TotalCheckIns,
     SteadyStartAchievement, DiligentTitle, PersistentFrame,
     SeasonHistoryTitle, RankedJourney, SeasonsPlayed, SeasonHistoryDescription,

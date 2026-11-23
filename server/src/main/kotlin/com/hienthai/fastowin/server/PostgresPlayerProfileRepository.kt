@@ -21,6 +21,7 @@ import com.hienthai.fastowin.protocol.MatchDetailSnapshot
 import com.hienthai.fastowin.protocol.MatchEventSnapshot
 import com.hienthai.fastowin.protocol.CosmeticSnapshot
 import com.hienthai.fastowin.protocol.CosmeticType
+import com.hienthai.fastowin.protocol.DailyCheckInRewardSnapshot
 import com.hienthai.fastowin.protocol.DailyCheckInSnapshot
 import com.hienthai.fastowin.protocol.DAILY_CHECK_IN_AVATAR_ID
 import com.hienthai.fastowin.protocol.DAILY_CHECK_IN_AVATAR_TARGET
@@ -342,9 +343,9 @@ class PostgresPlayerProfileRepository(
             } finally { connection.autoCommit = true }
             val activeDailyMissions = activeMissions.filter { it.period == MissionPeriod.DAILY }
             val activeWeeklyMissions = activeMissions.filter { it.period == MissionPeriod.WEEKLY }
-            val recentCheckInDates = connection.prepareStatement(
+            val recentCheckInRewards = connection.prepareStatement(
                 """
-                SELECT check_in_date
+                SELECT check_in_date, reward_gold, reward_xp, reward_gems
                 FROM daily_check_ins
                 WHERE user_id = ?
                   AND check_in_date >= ?
@@ -356,8 +357,18 @@ class PostgresPlayerProfileRepository(
                 statement.setDate(2, Date.valueOf(today.minusMonths(11).withDayOfMonth(1)))
                 statement.setDate(3, Date.valueOf(today))
                 statement.executeQuery().use { result ->
-                    buildList {
-                        while (result.next()) add(result.getDate("check_in_date").toLocalDate().toString())
+                    buildMap {
+                        while (result.next()) {
+                            val date = result.getDate("check_in_date").toLocalDate().toString()
+                            put(
+                                date,
+                                DailyCheckInRewardSnapshot(
+                                    gold = result.getInt("reward_gold"),
+                                    xp = result.getInt("reward_xp"),
+                                    gems = result.getInt("reward_gems")
+                                )
+                            )
+                        }
                     }
                 }
             }
@@ -762,9 +773,10 @@ class PostgresPlayerProfileRepository(
                         totalCheckIns = progressionRow.totalDailyCheckIns,
                         lastCheckInDate = progressionRow.lastDailyCheckInDate?.toString(),
                         todayDate = today.toString(),
-                        historyDates = recentCheckInDates,
+                        historyDates = recentCheckInRewards.keys.toList(),
                         nextResetAtEpochMillis = nextDailyCheckInReset(today),
-                        serverTimeEpochMillis = checkInTime.toEpochMilli()
+                        serverTimeEpochMillis = checkInTime.toEpochMilli(),
+                        historyRewards = recentCheckInRewards
                     ),
                     cosmetics = cosmetics,
                     season = season,

@@ -97,7 +97,7 @@ internal fun PlayCreditShop(
                     horizontalArrangement = Arrangement.spacedBy(12.dp),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    Column(Modifier.weight(1f)) {
+                    Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
                         Text(localized(TextKey.PlayCreditOffer, "plays" to item.plays))
                         Text("${item.gems} ${localized(TextKey.Gems)}")
                     }
@@ -118,7 +118,11 @@ internal fun PlayCreditShop(
 @Composable
 private fun PlayCreditBalance(label: TextKey, amount: Number?, modifier: Modifier) {
     ArcadePanel(modifier) {
-        Column(Modifier.padding(12.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+        Column(
+            Modifier.padding(12.dp),
+            verticalArrangement = Arrangement.spacedBy(4.dp),
+            horizontalAlignment = Alignment.CenterHorizontally
+        ) {
             Text(localized(label), textAlign = TextAlign.Center)
             Text(amount?.toString() ?: "—")
         }
