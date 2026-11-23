@@ -162,9 +162,9 @@ class AuthApiClient(
         EmailVerificationConfirmRequest(accessToken, verificationCode)
     )
 
-    suspend fun deleteAccount(accessToken: String, password: String): AccountActionResponse = executeAction(
+    suspend fun deleteAccount(accessToken: String): AccountActionResponse = executeAction(
         "$baseUrl/auth/delete-account",
-        DeleteAccountRequest(accessToken, password)
+        DeleteAccountRequest(accessToken)
     )
 
     suspend fun listSessions(accessToken: String): AccountSessionsResponse = executeResponse(

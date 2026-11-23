@@ -296,7 +296,7 @@ class AuthRefreshRecoveryTest {
     @Test fun lateRevocationActionCannotClearReplacementLogin() = runTest {
         val actions: List<(AuthController) -> Unit> = listOf(
             { it.changePassword("old-password", "new-password") },
-            { it.deleteAccount("test-password") },
+            { it.deleteAccount() },
             { it.revokeAllSessions() }
         )
         for (action in actions) {
@@ -328,7 +328,7 @@ class AuthRefreshRecoveryTest {
     @Test fun refreshRequiredBeforeAnActionStillClearsItsOwnGeneration() = runTest {
         val actions: List<Pair<(AuthController) -> Unit, AuthStage>> = listOf(
             { controller: AuthController -> controller.changePassword("old-password", "new-password") } to AuthStage.LOGIN,
-            { controller: AuthController -> controller.deleteAccount("test-password") } to AuthStage.WELCOME,
+            { controller: AuthController -> controller.deleteAccount() } to AuthStage.WELCOME,
             { controller: AuthController -> controller.revokeAllSessions() } to AuthStage.LOGIN
         )
         for ((action, expectedStage) in actions) {

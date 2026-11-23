@@ -29,7 +29,7 @@ class PostgresUgcIntegrationTest {
         val account=assertIs<AuthResult.Success>(auth.register("${UUID.randomUUID()}@example.com","Password-123","Reporter",null,acceptedContentTermsVersion=CONTENT_TERMS_VERSION)).session
         val target=PostgresGuestIdentityRepository(source).resolveGuest("Target",null,System.currentTimeMillis(),CONTENT_TERMS_VERSION)
         val receipt=moderation.report(account.userId,ContentReportRequest(UgcTargetType.PLAYER_PROFILE,target.playerId,UgcReportReason.SPAM,"private note","delete-report"))
-        assertIs<AccountActionResult.Success>(auth.deleteAccount(account.accessToken,"Password-123"))
+        assertIs<AccountActionResult.Success>(auth.deleteAccount(account.accessToken))
         moderation.repository.transaction {
             assertNull(acceptedVersion(account.userId))
             val erased=assertNotNull(report(receipt.reportId))

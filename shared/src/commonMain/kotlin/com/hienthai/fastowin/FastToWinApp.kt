@@ -430,7 +430,7 @@ private fun GameContent(
     fcmToken: String?,
     onUpgradeGuest: () -> Unit,
     onChangePassword: (String, String) -> Unit,
-    onDeleteAccount: (String) -> Unit,
+    onDeleteAccount: () -> Unit,
     onClearAccountFeedback: () -> Unit,
     onLoadSessions: () -> Unit,
     onRevokeSession: (String) -> Unit,
@@ -1992,15 +1992,7 @@ private fun GameContent(
                             onRefreshMissions = { missionScope.launch { personalMissions?.refresh() } },
                             onClaimMissionInstance = { id -> missionScope.launch { personalMissions?.claim(id) } },
                             onDismissMissionReward = { personalMissions?.clearLastClaimedReward() },
-                            checkInMonth = checkInDetailMonth,
-                            onRedeemGiftCode = giftClient?.let { client ->
-                                { code ->
-                                    client.redeemCode(code).also {
-                                        controller.refreshProfileAfterGiftClaim()
-                                        controller.requestPlayQuota()
-                                    }
-                                }
-                            }
+                            checkInMonth = checkInDetailMonth
                         )
                     }
                 }
@@ -2558,7 +2550,6 @@ private fun profileSectionRoute(section: ProfileSection): String = when (section
     ProfileSection.MISSIONS -> "missions"
     ProfileSection.COLLECTION -> "collection"
     ProfileSection.RECENT_MATCHES -> "matches"
-    ProfileSection.GIFT_CODE -> "gift-code"
 }
 
 private fun profileSectionFromRoute(route: String): ProfileSection? = when (route.lowercase()) {
@@ -2568,7 +2559,6 @@ private fun profileSectionFromRoute(route: String): ProfileSection? = when (rout
     "missions" -> ProfileSection.MISSIONS
     "collection" -> ProfileSection.COLLECTION
     "matches" -> ProfileSection.RECENT_MATCHES
-    "gift-code" -> ProfileSection.GIFT_CODE
     else -> null
 }
 
@@ -2580,7 +2570,7 @@ private fun homeProfileSectionRoute(section: ProfileSection): String? = when (se
 }
 
 private fun isExternalProfileSection(section: ProfileSection): Boolean =
-    section != ProfileSection.GIFT_CODE && homeProfileSectionRoute(section) == null
+    homeProfileSectionRoute(section) == null
 
 @Composable
 internal fun TopLevelTabIfNeeded(

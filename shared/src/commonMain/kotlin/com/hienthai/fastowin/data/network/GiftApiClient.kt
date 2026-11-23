@@ -61,12 +61,6 @@ class GiftApiClient(
         }
     }
 
-    suspend fun redeemCode(code: String): GiftCodeRedeemResult =
-        send("/gift-codes/redeem", HttpMethod.Post) {
-            contentType(ContentType.Application.Json)
-            setBody(GiftCodeRedeemRequest(code))
-        }
-
     override fun close() = client.close()
 
     private suspend inline fun <reified T> send(

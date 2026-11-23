@@ -57,6 +57,7 @@ import androidx.compose.material.icons.filled.AccountBalanceWallet
 import androidx.compose.material.icons.filled.DateRange
 import androidx.compose.material.icons.filled.Shield
 import androidx.compose.material.icons.filled.ShoppingBag
+import androidx.compose.material.icons.filled.DeleteForever
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
@@ -170,8 +171,7 @@ enum class ProfileSection {
     DAILY_CHECK_IN,
     MISSIONS,
     COLLECTION,
-    RECENT_MATCHES,
-    GIFT_CODE
+    RECENT_MATCHES
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -195,7 +195,7 @@ fun ProfileScreen(
     accountSessions: List<AccountSessionSnapshot>,
     areSessionsLoading: Boolean,
     onChangePassword: (String, String) -> Unit,
-    onDeleteAccount: (String) -> Unit,
+    onDeleteAccount: () -> Unit,
     onClearAccountFeedback: () -> Unit,
     onLoadSessions: () -> Unit,
     onRevokeSession: (String) -> Unit,
@@ -228,6 +228,7 @@ fun ProfileScreen(
     var showAccountSecurity by remember { mutableStateOf(false) }
     var showAccountSessions by remember { mutableStateOf(false) }
     var showLogoutConfirmation by remember { mutableStateOf(false) }
+    var showDeleteAccount by remember { mutableStateOf(false) }
     val avatarSelection = editor.avatarSelection
     DisposableEffect(avatarSelection) {
         // Image preparation is canceled when the picker leaves composition. Keep its last good draft.
@@ -244,8 +245,20 @@ fun ProfileScreen(
                     onClearAccountFeedback()
                 }
             },
-            onChangePassword = onChangePassword,
-            onDeleteAccount = onDeleteAccount
+            onChangePassword = onChangePassword
+        )
+    }
+    if (!isExternalProfile && showDeleteAccount) {
+        DeleteAccountDialog(
+            isLoading = isAccountLoading,
+            error = accountError,
+            onConfirm = onDeleteAccount,
+            onDismiss = {
+                if (!isAccountLoading) {
+                    showDeleteAccount = false
+                    onClearAccountFeedback()
+                }
+            }
         )
     }
     if (!isExternalProfile && showAccountSessions) {
@@ -523,13 +536,6 @@ fun ProfileScreen(
                         onClick = { onOpenSection(ProfileSection.WALLET) },
                         modifier = Modifier.testTag("profile_section_wallet")
                     )
-                        AccountActionRow(
-                            icon = Icons.Default.AccountBalanceWallet,
-                            title = localized(TextKey.GiftCode),
-                            subtitle = localized(TextKey.GiftCodeEntry),
-                            onClick = { onOpenSection(ProfileSection.GIFT_CODE) },
-                            modifier = Modifier.testTag("profile_section_gift_code")
-                        )
                 }
                 if (!isExternalProfile) {
                     AccountActionRow(
@@ -591,6 +597,18 @@ fun ProfileScreen(
                             isDestructive = true,
                             onClick = { showLogoutConfirmation = true },
                             modifier = Modifier.testTag("profile_logout")
+                        )
+                        // App Store 5.1.1(v): deletion is one visible row plus one confirmation.
+                        AccountActionRow(
+                            icon = Icons.Default.DeleteForever,
+                            title = localized(TextKey.DeleteAccount),
+                            subtitle = "",
+                            isDestructive = true,
+                            onClick = {
+                                onClearAccountFeedback()
+                                showDeleteAccount = true
+                            },
+                            modifier = Modifier.testTag("profile_delete_account")
                         )
                 }
             }
@@ -870,7 +888,6 @@ fun ProfileSectionScreen(
     onRefreshMissions: () -> Unit = {},
     onClaimMissionInstance: (String) -> Unit = {},
     onDismissMissionReward: () -> Unit = {},
-    onRedeemGiftCode: (suspend (String) -> com.hienthai.fastowin.protocol.GiftCodeRedeemResult)? = null,
     checkInMonth: String? = null
 ) {
     SystemBackHandler(onBack = onBack)
@@ -899,7 +916,6 @@ fun ProfileSectionScreen(
                 ProfileSection.MISSIONS -> localized(TextKey.MissionsTitle)
                 ProfileSection.COLLECTION -> localized(TextKey.CollectionTitle)
                 ProfileSection.RECENT_MATCHES -> localized(TextKey.RecentMatches)
-                ProfileSection.GIFT_CODE -> localized(TextKey.GiftCode)
             },
             gold = state.profile?.progression?.gold ?: 0,
             gems = state.profile?.progression?.gems ?: 0,
@@ -975,7 +991,6 @@ fun ProfileSectionScreen(
                             onFilterChange = { historyFilter = it },
                             onOpenMatchDetail = onOpenMatchDetail
                         )
-                        ProfileSection.GIFT_CODE -> if (canEdit) GiftCodeEntry(onRedeemGiftCode)
                     }
                 }
             }
@@ -1012,11 +1027,6 @@ private fun ProfileSectionHero(section: ProfileSection) {
             localized(TextKey.RecentCompetitionDescription),
             Res.drawable.arcade_room_portal
         )
-        ProfileSection.GIFT_CODE -> Triple(
-            localized(TextKey.GiftCode),
-            localized(TextKey.GiftCodeEntry),
-            Res.drawable.arcade_shop_chest
-        )
     }
     val accent = when (section) {
         ProfileSection.WALLET, ProfileSection.COLLECTION -> ArcadeGold
@@ -1024,7 +1034,6 @@ private fun ProfileSectionHero(section: ProfileSection) {
         ProfileSection.MISSIONS -> ArcadeGem
         ProfileSection.RECENT_MATCHES -> ArcadeOpponent
         ProfileSection.STATISTICS -> MaterialTheme.colorScheme.primary
-        ProfileSection.GIFT_CODE -> ArcadeGem
     }
     ArcadeFeatureHero(
         illustration = illustration,
@@ -1748,18 +1757,48 @@ private fun AccountActionRow(
 }
 
 @Composable
+private fun DeleteAccountDialog(
+    isLoading: Boolean,
+    error: String?,
+    onConfirm: () -> Unit,
+    onDismiss: () -> Unit
+) {
+    ArcadeDialog(
+        title = localized(TextKey.DeleteAccountConfirmTitle),
+        subtitle = localized(TextKey.DeleteAccountWarning),
+        onDismissRequest = onDismiss,
+        modifier = Modifier.testTag("delete_account_dialog")
+    ) {
+        Column(modifier = Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+            error?.let { Text(it, color = MaterialTheme.colorScheme.error) }
+            ArcadeActionButton(
+                label = if (isLoading) localized(TextKey.DeletingAccount) else localized(TextKey.DeleteAccountConfirmAction),
+                onClick = onConfirm,
+                enabled = !isLoading,
+                style = ArcadeActionStyle.DANGER,
+                modifier = Modifier.fillMaxWidth().testTag("confirm_delete_account")
+            )
+            ArcadeActionButton(
+                label = localized(TextKey.Cancel).uppercase(),
+                onClick = onDismiss,
+                enabled = !isLoading,
+                style = ArcadeActionStyle.OUTLINE,
+                modifier = Modifier.fillMaxWidth()
+            )
+        }
+    }
+}
+
+@Composable
 private fun AccountSecurityDialog(
     isLoading: Boolean,
     error: String?,
     onDismiss: () -> Unit,
-    onChangePassword: (String, String) -> Unit,
-    onDeleteAccount: (String) -> Unit
+    onChangePassword: (String, String) -> Unit
 ) {
     var currentPassword by remember { mutableStateOf("") }
     var newPassword by remember { mutableStateOf("") }
     var confirmPassword by remember { mutableStateOf("") }
-    var deletePassword by remember { mutableStateOf("") }
-    var confirmDelete by remember { mutableStateOf(false) }
     val passwordError = accountPasswordError(newPassword)
     val confirmationError = accountPasswordConfirmationError(newPassword, confirmPassword)
     val passwordUnchanged = currentPassword.isNotEmpty() && currentPassword == newPassword
@@ -1798,34 +1837,6 @@ private fun AccountSecurityDialog(
                     style = ArcadeActionStyle.GOLD
                 )
                 error?.let { Text(it, color = MaterialTheme.colorScheme.error) }
-                ArcadePanel(modifier = Modifier.fillMaxWidth(), accent = ArcadeOpponent) {
-                    Column(Modifier.fillMaxWidth().padding(14.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                        Text(localized(TextKey.DangerZone), color = MaterialTheme.colorScheme.error, fontWeight = FontWeight.Black)
-                        Text(
-                            localized(TextKey.DeleteAccountWarning),
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                    }
-                }
-                SecurePasswordField(deletePassword, localized(TextKey.PasswordToConfirm)) { deletePassword = it }
-                if (!confirmDelete) {
-                    ArcadeActionButton(
-                        label = localized(TextKey.RequestDeleteAccount),
-                        onClick = { confirmDelete = true },
-                        enabled = !isLoading && deletePassword.isNotBlank(),
-                        modifier = Modifier.fillMaxWidth(),
-                        style = ArcadeActionStyle.OUTLINE
-                    )
-                } else {
-                    ArcadeActionButton(
-                        label = if (isLoading) localized(TextKey.DeletingAccount) else localized(TextKey.Delete).uppercase(),
-                        onClick = { onDeleteAccount(deletePassword) },
-                        enabled = !isLoading,
-                        modifier = Modifier.fillMaxWidth(),
-                        style = ArcadeActionStyle.DANGER
-                    )
-                }
         }
         ArcadeActionButton(
             label = localized(TextKey.Close),

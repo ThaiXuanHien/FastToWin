@@ -122,7 +122,8 @@ data class EmailVerificationConfirmRequest(
 @Serializable
 data class DeleteAccountRequest(
     val accessToken: String,
-    val password: String
+    /** Ignored by the server since App Review 5.1.1(v); older clients still send it. */
+    val password: String = ""
 )
 
 @Serializable

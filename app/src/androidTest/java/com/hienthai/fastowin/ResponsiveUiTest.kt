@@ -69,7 +69,7 @@ class ResponsiveUiTest {
     }
 
     @Test
-    fun home_compactHeaderAndSevenDayRewardsStayAlignedWithLargeText() {
+    fun home_compactHeaderStaysReadableWithLargeText() {
         setViewportContent(width = 320.dp, height = 568.dp, fontScale = 1.6f) {
             TestResponsiveLobby()
         }
@@ -78,11 +78,6 @@ class ResponsiveUiTest {
         composeRule.onNodeWithText("Xin chào,", substring = true).assertIsDisplayed()
         assertTrue(composeRule.onAllNodesWithText("FAST TO WIN").fetchSemanticsNodes().isEmpty())
         assertTrue(composeRule.onAllNodesWithContentDescription("Cài đặt").fetchSemanticsNodes().isEmpty())
-
-        val rewardHeights = (1..7).map { day ->
-            composeRule.onNodeWithTag("daily_reward_day_$day").fetchSemanticsNode().boundsInRoot.height
-        }
-        assertTrue(rewardHeights.max() - rewardHeights.min() <= 1f)
 
         val goldBounds = composeRule.onNodeWithTag("header_gold").fetchSemanticsNode().boundsInRoot
         val gemBounds = composeRule.onNodeWithTag("header_gem").fetchSemanticsNode().boundsInRoot

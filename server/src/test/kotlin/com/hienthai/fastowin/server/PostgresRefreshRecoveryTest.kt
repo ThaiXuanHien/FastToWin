@@ -48,7 +48,7 @@ class PostgresRefreshRecoveryTest {
                                 "block" -> PostgresModerationRepository(gate).transaction { putRestriction(ModerationRestrictionView(initial.userId, 1, true), now) }
                                 "password" -> assertIs<AccountActionResult.Success>(auth.changePassword(successor.accessToken, "password123", "new-password123"))
                                 "reset" -> assertIs<AccountActionResult.Success>(auth.resetPassword("$action-$revokeFirst@example.com", assertNotNull(reset), "new-password123"))
-                                "delete" -> assertIs<AccountActionResult.Success>(auth.deleteAccount(successor.accessToken, "password123"))
+                                "delete" -> assertIs<AccountActionResult.Success>(auth.deleteAccount(successor.accessToken))
                             }
                         }
                         gate.arm()

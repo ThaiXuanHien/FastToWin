@@ -345,7 +345,7 @@ class PostgresAuthenticationTest {
                     service.login(email, NEW_PASSWORD, "ios")
                 ).session
                 assertIs<AccountActionResult.Success>(
-                    service.deleteAccount(loggedIn.accessToken, NEW_PASSWORD)
+                    service.deleteAccount(loggedIn.accessToken)
                 )
                 assertIs<AuthResult.Failure>(service.login(email, NEW_PASSWORD, "android"))
                 dataSource.connection.use { connection ->

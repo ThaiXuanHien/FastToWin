@@ -82,7 +82,7 @@ class RefreshRecoveryTest {
                     val reset = assertIs<AccountActionResult.Success>(service.requestPasswordReset(email))
                     assertIs<AccountActionResult.Success>(service.resetPassword(email, assertNotNull(reset.resetToken), "new-password123"))
                 }
-                "delete" -> assertIs<AccountActionResult.Success>(service.deleteAccount(first.accessToken, "password123"))
+                "delete" -> assertIs<AccountActionResult.Success>(service.deleteAccount(first.accessToken))
                 "one" -> {
                     val identity = assertNotNull(service.authenticateAccessToken(first.accessToken))
                     assertIs<AccountActionResult.Success>(service.revokeSession(first.accessToken, identity.sessionId.toString()))

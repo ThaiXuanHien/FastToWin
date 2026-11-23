@@ -482,18 +482,16 @@ class AuthenticationService(
         }
     }
 
-    suspend fun deleteAccount(accessToken: String, password: String): AccountActionResult {
+    /**
+     * Deletes the signed-in account. A valid access token is the only requirement: App Store
+     * guideline 5.1.1(v) forbids extra steps such as re-entering a password. The client asks
+     * for an explicit confirmation before calling this.
+     */
+    suspend fun deleteAccount(accessToken: String): AccountActionResult {
         val authenticated = authenticateAccessToken(accessToken)
             ?: return invalidAccountSession()
-        val account = repository.findActiveAccountById(authenticated.userId)
+        repository.findActiveAccountById(authenticated.userId)
             ?: return invalidAccountSession()
-        val matches = withContext(PasswordHashing) {
-            passwordHasher.verify(password, account.passwordHash)
-        }
-        if (!matches) return AccountActionResult.Failure(
-            "INVALID_CURRENT_PASSWORD",
-            legacyFallback("Mật khẩu không đúng.")
-        )
         return if (repository.deleteAccount(authenticated.userId)) {
             moderationService?.erasePlayer(authenticated.userId.toString())
             AccountActionResult.Success(legacyFallback("Tài khoản và dữ liệu cá nhân đã được xóa."), messageKey = TextKey.AccountDeleted.name)

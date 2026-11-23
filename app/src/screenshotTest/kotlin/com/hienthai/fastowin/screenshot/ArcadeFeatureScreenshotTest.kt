@@ -67,33 +67,6 @@ fun shopPlayCreditsLargeText() = shopPlayCredits()
 @PreviewTest
 @ArcadeScreenshotDevices
 @Composable
-fun profileGiftCode() = ArcadeScreenshotFrame {
-    ProfileSectionScreen(
-        state = ArcadeScreenshotFixtures.homeState(),
-        profile = ArcadeScreenshotFixtures.profile(),
-        section = ProfileSection.GIFT_CODE,
-        isExternalProfile = false,
-        canEdit = true,
-        onBack = {},
-        onRefresh = {},
-        onOpenMatchDetail = {},
-        onCloseMatchDetail = {},
-        onEquipCosmetics = { _, _ -> },
-        onClaimMissionReward = {},
-        onSave = { _, _ -> },
-        onOpenNotifications = {},
-        onRedeemGiftCode = { GiftCodeRedeemResult(GiftCodeReward(plays = 5)) }
-    )
-}
-
-@PreviewTest
-@Preview(name = "code_large_text", widthDp = 375, heightDp = 1000, fontScale = 1.6f)
-@Composable
-fun profileGiftCodeLargeText() = profileGiftCode()
-
-@PreviewTest
-@ArcadeScreenshotDevices
-@Composable
 fun playerLeaderboard() = ArcadeScreenshotFrame {
     LeaderboardScreen(
         state = ArcadeScreenshotFixtures.leaderboardState(),

@@ -32,7 +32,7 @@ class UgcIntegrationTest {
         enforced=true
         val login=assertIs<AuthResult.Success>(auth.login("existing@example.com","Password-123",null)).session
         assertNull(moderation.terms(login.userId).acceptedVersion)
-        assertIs<AccountActionResult.Success>(auth.deleteAccount(login.accessToken,"Password-123"))
+        assertIs<AccountActionResult.Success>(auth.deleteAccount(login.accessToken))
     }
 
     @Test fun `accepted guest resumes without resending local acceptance`() = runTest {
@@ -85,7 +85,7 @@ class UgcIntegrationTest {
         val session = assertIs<AuthResult.Success>(auth.register("a@example.com", "password123", "Name", null, acceptedContentTermsVersion = CONTENT_TERMS_VERSION)).session
         assertEquals(CONTENT_TERMS_VERSION, moderation.terms(session.userId).acceptedVersion)
         val login = assertIs<AuthResult.Success>(auth.login("a@example.com", "password123", null)).session
-        assertIs<AccountActionResult.Success>(auth.deleteAccount(login.accessToken, "password123"))
+        assertIs<AccountActionResult.Success>(auth.deleteAccount(login.accessToken))
         assertNull(moderation.repository.transaction { acceptedVersion(session.userId) })
     }
 }
