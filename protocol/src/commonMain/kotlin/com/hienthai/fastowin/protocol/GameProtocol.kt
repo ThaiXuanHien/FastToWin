@@ -408,6 +408,9 @@ data class MissionSnapshot(
 )
 
 @Serializable
+data class DailyCheckInRewardSnapshot(val gold: Int, val xp: Int, val gems: Int)
+
+@Serializable
 data class DailyCheckInSnapshot(
     val claimedToday: Boolean = false,
     val cycleDay: Int = 1,
@@ -424,7 +427,8 @@ data class DailyCheckInSnapshot(
     val todayDate: String? = null,
     val historyDates: List<String> = emptyList(),
     val nextResetAtEpochMillis: Long? = null,
-    val serverTimeEpochMillis: Long? = null
+    val serverTimeEpochMillis: Long? = null,
+    val historyRewards: Map<String, DailyCheckInRewardSnapshot> = emptyMap()
 )
 
 @Serializable

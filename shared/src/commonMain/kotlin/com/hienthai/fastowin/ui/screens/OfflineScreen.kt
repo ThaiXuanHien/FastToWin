@@ -127,7 +127,7 @@ fun OfflineScreen(
                         tint = ArcadePalette.Blue300,
                         modifier = Modifier.size(20.dp)
                     )
-                    Column(Modifier.weight(1f)) {
+                    Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
                         Text(
                             localized(TextKey.OfflineCheckNetwork),
                             style = MaterialTheme.typography.labelLarge,

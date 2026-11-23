@@ -324,23 +324,32 @@ private fun NotificationCard(
                     )
                 }
             }
-            Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(3.dp)) {
+            Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 notification.announcement?.let { context ->
-                    Text(localized(TextKey.AnnouncementLabel), fontWeight = FontWeight.Bold)
-                    Text(localized(com.hienthai.fastowin.ui.components.announcementCategoryKey(context.category)) + " · " +
-                        localized(com.hienthai.fastowin.ui.components.announcementStateKey(context.state)), style = MaterialTheme.typography.bodySmall)
-                    if (dismissed) Text(localized(TextKey.AnnouncementDismissed), style = MaterialTheme.typography.bodySmall)
+                    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                        Text(localized(TextKey.AnnouncementLabel), fontWeight = FontWeight.Bold)
+                        Text(
+                            localized(com.hienthai.fastowin.ui.components.announcementCategoryKey(context.category)) + " · " +
+                                localized(com.hienthai.fastowin.ui.components.announcementStateKey(context.state)),
+                            style = MaterialTheme.typography.bodySmall
+                        )
+                        if (dismissed) {
+                            Text(localized(TextKey.AnnouncementDismissed), style = MaterialTheme.typography.bodySmall)
+                        }
+                    }
                 }
-                Text(
-                    notification.title,
-                    fontWeight = if (notification.isRead) FontWeight.Medium else FontWeight.Bold
-                )
-                Text(
-                    notification.message,
-                    maxLines = if (notification.announcement != null) 3 else Int.MAX_VALUE,
-                    overflow = TextOverflow.Ellipsis,
-                    color = if (notification.isRead) MaterialTheme.colorScheme.onSurfaceVariant else ArcadePalette.Blue100
-                )
+                Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                    Text(
+                        notification.title,
+                        fontWeight = if (notification.isRead) FontWeight.Medium else FontWeight.Bold
+                    )
+                    Text(
+                        notification.message,
+                        maxLines = if (notification.announcement != null) 3 else Int.MAX_VALUE,
+                        overflow = TextOverflow.Ellipsis,
+                        color = if (notification.isRead) MaterialTheme.colorScheme.onSurfaceVariant else ArcadePalette.Blue100
+                    )
+                }
                 Text(
                     relativeNotificationTime(notification.createdAtEpochMillis, nowMillis),
                     style = MaterialTheme.typography.bodySmall,

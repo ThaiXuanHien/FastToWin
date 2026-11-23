@@ -1,6 +1,7 @@
 package com.hienthai.fastowin.screenshot
 
 import androidx.compose.runtime.Composable
+import androidx.compose.ui.tooling.preview.Preview
 import com.android.tools.screenshot.PreviewTest
 import com.hienthai.fastowin.data.preferences.AppPreferences
 import com.hienthai.fastowin.state.AuthStage
@@ -39,6 +40,13 @@ fun login() = ArcadeScreenshotFrame {
 @Composable
 fun home() = ArcadeScreenshotFrame {
     LobbyScreen(state = ArcadeScreenshotFixtures.homeState(), callbacks = lobbyCallbacks())
+}
+
+@PreviewTest
+@Preview(name = "calendar_footer_and_missions", widthDp = 390, heightDp = 1500)
+@Composable
+fun homeCheckInDetails() = ArcadeScreenshotFrame {
+    LobbyScreen(state = ArcadeScreenshotFixtures.homeState(), callbacks = lobbyCallbacks(), claimableMissionCount = 3)
 }
 
 @PreviewTest
@@ -116,7 +124,8 @@ private data class LobbyCallbacks(
 @Composable
 private fun LobbyScreen(
     state: com.hienthai.fastowin.state.GameState,
-    callbacks: LobbyCallbacks
+    callbacks: LobbyCallbacks,
+    claimableMissionCount: Int = 0
 ) {
     callbacks.unused
     LobbyScreen(
@@ -146,7 +155,8 @@ private fun LobbyScreen(
         onOpenShop = {},
         onShareRoom = { _, _ -> Result.success(Unit) },
         onResolveRoomLink = {},
-        onClaimDailyCheckIn = {}
+        onClaimDailyCheckIn = {},
+        claimableMissionCount = claimableMissionCount
     )
 }
 

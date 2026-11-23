@@ -66,11 +66,24 @@ class LocalizedProfileUiTest {
     @Test
     fun dailyCheckInUsesVietnameseCopy() {
         setLocalizedContent(AppLanguage.VIETNAMESE) {
-            ProfileTestSection(ProfileSection.DAILY_CHECK_IN)
+            val state = profileState()
+            val profile = requireNotNull(state.profile)
+            ProfileTestSection(
+                ProfileSection.DAILY_CHECK_IN,
+                state.copy(
+                    profile = profile.copy(
+                        progression = profile.progression.copy(
+                            dailyCheckIn = profile.progression.dailyCheckIn.copy(todayDate = "2026-08-17")
+                        )
+                    )
+                )
+            )
         }
 
-        composeRule.onNodeWithText("Lịch sử điểm danh").assertIsDisplayed()
-        composeRule.onNodeWithText("Hành trình chuyên cần").assertIsDisplayed()
+        composeRule.onNodeWithText("Điểm danh").assertIsDisplayed()
+        composeRule.onNodeWithText("Quà trong tháng").assertIsDisplayed()
+        composeRule.onNodeWithTag("daily_check_in_reward:31").performScrollTo().assertIsDisplayed()
+        composeRule.onNodeWithTag("daily_check_in_milestones").assertExists()
     }
 
     @Test

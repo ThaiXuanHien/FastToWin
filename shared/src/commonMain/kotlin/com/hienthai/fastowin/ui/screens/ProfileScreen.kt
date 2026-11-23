@@ -6,10 +6,13 @@ import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.detectHorizontalDragGestures
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
@@ -26,9 +29,6 @@ import androidx.compose.foundation.layout.only
 import androidx.compose.foundation.layout.safeDrawing
 import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.lazy.items
-import androidx.compose.foundation.lazy.grid.GridCells
-import androidx.compose.foundation.lazy.grid.LazyHorizontalGrid
-import androidx.compose.foundation.lazy.grid.items as gridItems
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -74,6 +74,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -84,15 +85,21 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.layout.Layout
 import androidx.compose.ui.platform.LocalClipboard
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.input.pointer.consumePositionChange
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.input.VisualTransformation
+import androidx.compose.ui.unit.Constraints
+import androidx.compose.ui.unit.constrainHeight
 import androidx.compose.ui.unit.dp
 import com.hienthai.fastowin.protocol.MatchHistoryOutcome
 import com.hienthai.fastowin.protocol.AccountSessionSnapshot
@@ -104,8 +111,6 @@ import com.hienthai.fastowin.protocol.CosmeticType
 import com.hienthai.fastowin.protocol.DailyCheckInSnapshot
 import com.hienthai.fastowin.protocol.DAILY_CHECK_IN_AVATAR_ID
 import com.hienthai.fastowin.protocol.DAILY_CHECK_IN_FRAME_TARGET
-import com.hienthai.fastowin.protocol.DAILY_CHECK_IN_REWARDS_GEMS
-import com.hienthai.fastowin.protocol.DAILY_CHECK_IN_REWARDS_GOLD
 import com.hienthai.fastowin.protocol.DAILY_CHECK_IN_STREAK_ACHIEVEMENT_TARGET
 import com.hienthai.fastowin.protocol.DAILY_CHECK_IN_TITLE_TARGET
 import com.hienthai.fastowin.protocol.MAX_PROFILE_DISPLAY_NAME_LENGTH
@@ -142,6 +147,8 @@ import com.hienthai.fastowin.ui.components.FastToWinPullRefresh
 import com.hienthai.fastowin.ui.components.HeaderRefreshAction
 import com.hienthai.fastowin.ui.components.WalletDeltaAmounts
 import com.hienthai.fastowin.ui.components.PlayerAvatar
+import com.hienthai.fastowin.ui.components.RewardAmount
+import com.hienthai.fastowin.ui.components.RewardCurrency
 import com.hienthai.fastowin.ui.components.catalogAvatarFrameName
 import com.hienthai.fastowin.ui.components.nextArcadePageItemCount
 import com.hienthai.fastowin.resources.Res
@@ -526,20 +533,6 @@ fun ProfileScreen(
                 }
                 if (!isExternalProfile) {
                     AccountActionRow(
-                        icon = Icons.Default.DateRange,
-                        title = localized(TextKey.CheckInHistory),
-                        subtitle = localized(TextKey.CheckInHistorySubtitle),
-                        onClick = { onOpenSection(ProfileSection.DAILY_CHECK_IN) },
-                        modifier = Modifier.testTag("profile_section_daily_check_in")
-                    )
-                    AccountActionRow(
-                        icon = Icons.AutoMirrored.Filled.Assignment,
-                        title = localized(TextKey.MissionsTitle),
-                        subtitle = localized(TextKey.MissionsSubtitle),
-                        onClick = { onOpenSection(ProfileSection.MISSIONS) },
-                        modifier = Modifier.testTag("profile_section_missions")
-                    )
-                    AccountActionRow(
                         icon = Icons.Default.Collections,
                         title = localized(TextKey.CollectionTitle),
                         subtitle = localized(TextKey.CollectionSubtitle),
@@ -877,7 +870,8 @@ fun ProfileSectionScreen(
     onRefreshMissions: () -> Unit = {},
     onClaimMissionInstance: (String) -> Unit = {},
     onDismissMissionReward: () -> Unit = {},
-    onRedeemGiftCode: (suspend (String) -> com.hienthai.fastowin.protocol.GiftCodeRedeemResult)? = null
+    onRedeemGiftCode: (suspend (String) -> com.hienthai.fastowin.protocol.GiftCodeRedeemResult)? = null,
+    checkInMonth: String? = null
 ) {
     SystemBackHandler(onBack = onBack)
     val isLoading = when {
@@ -901,7 +895,7 @@ fun ProfileSectionScreen(
             title = when (section) {
                 ProfileSection.STATISTICS -> localized(TextKey.StatisticsAchievements)
                 ProfileSection.WALLET -> localized(TextKey.WalletHistory)
-                ProfileSection.DAILY_CHECK_IN -> localized(TextKey.CheckInHistory)
+                ProfileSection.DAILY_CHECK_IN -> localized(TextKey.CheckIn)
                 ProfileSection.MISSIONS -> localized(TextKey.MissionsTitle)
                 ProfileSection.COLLECTION -> localized(TextKey.CollectionTitle)
                 ProfileSection.RECENT_MATCHES -> localized(TextKey.RecentMatches)
@@ -912,6 +906,7 @@ fun ProfileSectionScreen(
             unreadNotifications = state.unreadNotificationCount,
             onNotifications = onOpenNotifications,
             onBack = onBack,
+            showBalances = section != ProfileSection.DAILY_CHECK_IN && section != ProfileSection.MISSIONS,
             actions = {
                 HeaderRefreshAction(
                     isRefreshing = isLoading && state.equippingCosmeticId == null,
@@ -942,7 +937,7 @@ fun ProfileSectionScreen(
                         .padding(vertical = 16.dp),
                     verticalArrangement = Arrangement.spacedBy(14.dp)
                 ) {
-                    ProfileSectionHero(section)
+                    if (section != ProfileSection.DAILY_CHECK_IN) ProfileSectionHero(section)
                     when (section) {
                         ProfileSection.STATISTICS -> StatisticsAchievementsSectionContent(profile)
                         ProfileSection.WALLET -> {
@@ -955,15 +950,10 @@ fun ProfileSectionScreen(
                             )
                             WalletHistorySectionContent(state.walletTransactions)
                         }
-                        ProfileSection.DAILY_CHECK_IN -> {
-                            val checkIn = profile.progression.dailyCheckIn
-                            ProfileDailyCheckInStrip(checkIn)
-                            DailyCheckInCalendar(checkIn)
-                            DailyCheckInMilestones(
-                                bestStreak = checkIn.bestStreak,
-                                totalCheckIns = checkIn.totalCheckIns
-                            )
-                        }
+                        ProfileSection.DAILY_CHECK_IN -> DailyCheckInDetailsContent(
+                            checkIn = profile.progression.dailyCheckIn,
+                            initialMonth = checkInMonth
+                        )
                         ProfileSection.MISSIONS -> ServerMissionList(
                             state = missionState,
                             onRefresh = onRefreshMissions,
@@ -1006,11 +996,7 @@ private fun ProfileSectionHero(section: ProfileSection) {
             localized(TextKey.WalletFlowDescription),
             Res.drawable.arcade_shop_chest
         )
-        ProfileSection.DAILY_CHECK_IN -> Triple(
-            localized(TextKey.AttendanceJourney),
-            localized(TextKey.AttendanceJourneyDescription),
-            Res.drawable.arcade_leaderboard_trophy
-        )
+        ProfileSection.DAILY_CHECK_IN -> return
         ProfileSection.MISSIONS -> Triple(
             localized(TextKey.MissionsTitle),
             localized(TextKey.TodayMissionsDescription),
@@ -1300,7 +1286,7 @@ private fun StatisticsAchievementsSectionContent(profile: PlayerProfileSnapshot)
                                                 )
                                             }
                                         }
-                                        Column(modifier = Modifier.weight(1f)) {
+                                        Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
                                             Text(localizedAchievementTitle(achievement), fontWeight = FontWeight.Black)
                                             Text(
                                                 localizedAchievementDescription(achievement),
@@ -1377,27 +1363,40 @@ private fun CollectionSectionContent(
     val frames = cosmetics.filter { it.type == CosmeticType.FRAME }
     val frameCardHeight = if (LocalDensity.current.fontScale >= 1.5f) 244.dp else 208.dp
     val frameGridHeight = frameCardHeight * 3 + 20.dp
-    LazyHorizontalGrid(
-        rows = GridCells.Fixed(3),
+    val frameScrollState = rememberScrollState()
+    Row(
         modifier = Modifier
             .fillMaxWidth()
             .height(frameGridHeight)
+            .horizontalScroll(frameScrollState)
+            .pointerInput(frameScrollState) {
+                detectHorizontalDragGestures { change, dragAmount ->
+                    change.consumePositionChange()
+                    frameScrollState.dispatchRawDelta(-dragAmount)
+                }
+            }
             .testTag("collection_frames"),
-        horizontalArrangement = Arrangement.spacedBy(10.dp),
-        verticalArrangement = Arrangement.spacedBy(10.dp)
+        horizontalArrangement = Arrangement.spacedBy(10.dp)
     ) {
-        gridItems(frames, key = { it.id }) { cosmetic ->
-            val isEquipping = equippingCosmeticId == cosmetic.id
-            val canEquip = canEdit && cosmetic.unlocked && !cosmetic.equipped &&
-                !isLoading && equippingCosmeticId == null
-            CollectionFrameCard(
-                cosmetic = cosmetic,
-                profile = profile,
-                isEquipping = isEquipping,
-                canEquip = canEquip,
-                onClick = { onEquipCosmetics(cosmetic.id, equippedTitle) },
-                modifier = Modifier.width(180.dp).fillMaxHeight()
-            )
+        frames.chunked(3).forEach { columnFrames ->
+            Column(
+                modifier = Modifier.height(frameGridHeight),
+                verticalArrangement = Arrangement.spacedBy(10.dp)
+            ) {
+                columnFrames.forEach { cosmetic ->
+                    val isEquipping = equippingCosmeticId == cosmetic.id
+                    val canEquip = canEdit && cosmetic.unlocked && !cosmetic.equipped &&
+                        !isLoading && equippingCosmeticId == null
+                    CollectionFrameCard(
+                        cosmetic = cosmetic,
+                        profile = profile,
+                        isEquipping = isEquipping,
+                        canEquip = canEquip,
+                        onClick = { onEquipCosmetics(cosmetic.id, equippedTitle) },
+                        modifier = Modifier.width(180.dp).height(frameCardHeight)
+                    )
+                }
+            }
         }
     }
     Text(localized(TextKey.Titles), style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Black)
@@ -1728,7 +1727,7 @@ private fun AccountActionRow(
                     )
                 }
             }
-            Column(modifier = Modifier.weight(1f)) {
+            Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
                 Text(title, fontWeight = FontWeight.SemiBold, color = contentColor)
                 if (subtitle.isNotBlank()) {
                     Text(
@@ -1944,7 +1943,7 @@ private fun AccountSessionsDialog(
                                 horizontalArrangement = Arrangement.spacedBy(10.dp)
                             ) {
                                 Icon(Icons.Default.Devices, contentDescription = null)
-                                Column(modifier = Modifier.weight(1f)) {
+                                Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
                                     Text(
                                         buildString {
                                             append(deviceLabel)
@@ -2051,100 +2050,41 @@ private data class DailyCheckInMilestone(
 )
 
 @Composable
-private fun ProfileDailyCheckInStrip(checkIn: DailyCheckInSnapshot) {
-    val rewardCardHeight = if (LocalDensity.current.fontScale >= 1.3f) 78.dp else 58.dp
+internal fun DailyCheckInContent(
+    checkIn: DailyCheckInSnapshot,
+    isClaiming: Boolean,
+    onClaim: () -> Unit,
+    onOpenDetails: (String) -> Unit
+) {
     Column(
-        modifier = Modifier.fillMaxWidth().testTag("profile_daily_check_in_strip"),
-        verticalArrangement = Arrangement.spacedBy(8.dp)
+        modifier = Modifier.fillMaxWidth().testTag("daily_check_in_card"),
+        verticalArrangement = Arrangement.spacedBy(12.dp)
     ) {
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.SpaceBetween
-        ) {
-            ProfileSectionTitle(localized(TextKey.CheckIn))
-            Surface(
-                shape = RoundedCornerShape(999.dp),
-                color = ArcadeGold.copy(alpha = 0.16f),
-                border = BorderStroke(1.dp, ArcadeGold.copy(alpha = 0.34f))
-            ) {
-                Text(
-                    localized(TextKey.StreakDays, "count" to checkIn.currentStreak),
-                    modifier = Modifier.padding(horizontal = 9.dp, vertical = 4.dp),
-                    color = ArcadePalette.Gold400,
-                    style = MaterialTheme.typography.labelSmall,
-                    fontWeight = FontWeight.Black
-                )
-            }
-        }
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(5.dp)
-        ) {
-            DAILY_CHECK_IN_REWARDS_GOLD.forEachIndexed { index, rewardGold ->
-                val day = index + 1
-                val rewardGems = DAILY_CHECK_IN_REWARDS_GEMS[index]
-                val completed = day < checkIn.cycleDay ||
-                    (day == checkIn.cycleDay && checkIn.claimedToday)
-                val current = day == checkIn.cycleDay
-                Surface(
-                    modifier = Modifier
-                        .weight(1f)
-                        .height(rewardCardHeight)
-                        .testTag("profile_check_in_day_$day"),
-                    shape = RoundedCornerShape(11.dp),
-                    color = when {
-                        current -> ArcadePalette.Gold800.copy(alpha = 0.72f)
-                        completed -> ArcadePalette.Navy900.copy(alpha = 0.66f)
-                        else -> ArcadePalette.Navy800
-                    },
-                    border = BorderStroke(
-                        1.dp,
-                        if (current) ArcadePalette.Gold400
-                        else ArcadePalette.OutlineDark.copy(alpha = 0.72f)
-                    )
-                ) {
-                    Column(
-                        modifier = Modifier.fillMaxSize().padding(horizontal = 2.dp, vertical = 5.dp),
-                        horizontalAlignment = Alignment.CenterHorizontally,
-                        verticalArrangement = Arrangement.Center
-                    ) {
-                        Text(
-                            day.toString(),
-                            style = MaterialTheme.typography.labelMedium,
-                            fontWeight = FontWeight.Black,
-                            color = Color.White.copy(alpha = if (completed) 0.58f else 1f)
-                        )
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            Icon(
-                                if (rewardGems > 0) Icons.Default.Payments else Icons.Default.MonetizationOn,
-                                contentDescription = null,
-                                modifier = Modifier.size(11.dp),
-                                tint = if (rewardGems > 0) ArcadeGem else ArcadeGold
-                            )
-                            Text(
-                                (if (rewardGems > 0) rewardGems else rewardGold).toString(),
-                                style = MaterialTheme.typography.labelSmall,
-                                fontWeight = FontWeight.Bold,
-                                color = Color.White.copy(alpha = if (completed) 0.58f else 1f),
-                                maxLines = 1
-                            )
-                        }
-                    }
-                }
-            }
+        DailyCheckInCalendar(checkIn, onOpenDetails)
+        if (!checkIn.claimedToday) {
+            ArcadeActionButton(
+                label = if (isClaiming) localized(TextKey.Claiming) else localized(
+                    TextKey.ClaimDayReward,
+                    "day" to (checkIn.todayDate?.toProfileCalendarDate()?.day ?: checkIn.cycleDay)
+                ),
+                onClick = onClaim,
+                enabled = !isClaiming,
+                style = ArcadeActionStyle.GOLD,
+                modifier = Modifier.fillMaxWidth().testTag("daily_check_in_claim")
+            )
         }
     }
 }
 
 @Composable
-private fun DailyCheckInCalendar(checkIn: DailyCheckInSnapshot) {
+private fun DailyCheckInCalendar(checkIn: DailyCheckInSnapshot, onOpenDetails: (String) -> Unit) {
     val today = checkIn.todayDate?.toProfileCalendarDate() ?: return
     val currentMonth = ProfileCalendarMonth(today.year, today.month)
     val earliestMonth = currentMonth.shift(-11)
-    var visibleMonth by remember(checkIn.todayDate) { mutableStateOf(currentMonth) }
-    val checkedDates = remember(checkIn.historyDates) { checkIn.historyDates.toSet() }
+    var monthOffset by rememberSaveable(currentMonth.year, currentMonth.month) { mutableStateOf(0) }
+    val visibleMonth = currentMonth.shift(monthOffset)
     val cells = profileCalendarCells(visibleMonth)
+    val monthlyRewards = remember(visibleMonth, checkIn) { monthlyCheckInRewards(visibleMonth, checkIn) }
 
     ArcadePanel(
         modifier = Modifier.fillMaxWidth().testTag("daily_check_in_calendar"),
@@ -2154,13 +2094,22 @@ private fun DailyCheckInCalendar(checkIn: DailyCheckInSnapshot) {
             modifier = Modifier.fillMaxWidth().padding(16.dp),
             verticalArrangement = Arrangement.spacedBy(10.dp)
         ) {
-            Row(
+            FlowRow(
                 modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                verticalArrangement = Arrangement.spacedBy(4.dp)
             ) {
-                Text(localized(TextKey.CheckInHistory), style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Black)
-                Surface(shape = RoundedCornerShape(999.dp), color = ArcadeGold.copy(alpha = 0.16f)) {
+                Text(
+                    localized(TextKey.CheckInHistory),
+                    modifier = Modifier.align(Alignment.CenterVertically),
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.Black
+                )
+                Surface(
+                    modifier = Modifier.align(Alignment.CenterVertically),
+                    shape = RoundedCornerShape(999.dp),
+                    color = ArcadeGold.copy(alpha = 0.16f)
+                ) {
                     Text(
                         localized(TextKey.StreakDays, "count" to checkIn.currentStreak),
                         modifier = Modifier.padding(horizontal = 10.dp, vertical = 5.dp),
@@ -2175,28 +2124,11 @@ private fun DailyCheckInCalendar(checkIn: DailyCheckInSnapshot) {
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.Center
-            ) {
-                IconButton(
-                    onClick = { visibleMonth = visibleMonth.shift(-1) },
-                    enabled = visibleMonth > earliestMonth
-                ) {
-                    Icon(Icons.Default.ChevronLeft, localized(TextKey.PreviousMonth))
-                }
-                Text(
-                    localized(TextKey.MonthYear, "month" to visibleMonth.month, "year" to visibleMonth.year),
-                    fontWeight = FontWeight.Bold
-                )
-                IconButton(
-                    onClick = { visibleMonth = visibleMonth.shift(1) },
-                    enabled = visibleMonth < currentMonth
-                ) {
-                    Icon(Icons.Default.ChevronRight, localized(TextKey.NextMonth))
-                }
-            }
+            CheckInMonthNavigation(
+                visibleMonth, earliestMonth, currentMonth,
+                onPrevious = { monthOffset-- },
+                onNext = { monthOffset++ }
+            )
             Row(Modifier.fillMaxWidth()) {
                 localizedCalendarWeekdays().forEach { label ->
                     Box(Modifier.weight(1f), contentAlignment = Alignment.Center) {
@@ -2216,9 +2148,9 @@ private fun DailyCheckInCalendar(checkIn: DailyCheckInSnapshot) {
                             contentAlignment = Alignment.Center
                         ) {
                             if (day != null) {
-                                val dateKey = profileCalendarDateKey(visibleMonth, day)
-                                val checked = dateKey in checkedDates
-                                val isToday = visibleMonth == currentMonth && day == today.day
+                                val entry = monthlyRewards[day - 1]
+                                val checked = entry.claimed
+                                val isToday = entry.isToday
                                 Surface(
                                     modifier = Modifier.size(36.dp),
                                     shape = CircleShape,
@@ -2251,18 +2183,189 @@ private fun DailyCheckInCalendar(checkIn: DailyCheckInSnapshot) {
                 }
             }
             Row(
-                horizontalArrangement = Arrangement.spacedBy(6.dp),
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                Box(
-                    modifier = Modifier
-                        .size(7.dp)
-                        .background(MaterialTheme.colorScheme.primary, CircleShape)
+                CheckInStatusLegend(
+                    label = localized(TextKey.CheckedIn),
+                    color = MaterialTheme.colorScheme.primary,
+                    modifier = Modifier.weight(1f)
                 )
+                TextButton(
+                    onClick = { onOpenDetails(visibleMonth.routeMonth) },
+                    modifier = Modifier.testTag("daily_check_in_details")
+                ) {
+                    Text(localized(TextKey.CheckInDetails))
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun CheckInMonthNavigation(
+    month: ProfileCalendarMonth,
+    earliestMonth: ProfileCalendarMonth,
+    currentMonth: ProfileCalendarMonth,
+    onPrevious: () -> Unit,
+    onNext: () -> Unit
+) {
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.Center
+    ) {
+        IconButton(onClick = onPrevious, enabled = month > earliestMonth) {
+            Icon(Icons.Default.ChevronLeft, localized(TextKey.PreviousMonth))
+        }
+        Text(
+            localized(TextKey.MonthYear, "month" to month.month, "year" to month.year),
+            fontWeight = FontWeight.Bold
+        )
+        IconButton(onClick = onNext, enabled = month < currentMonth) {
+            Icon(Icons.Default.ChevronRight, localized(TextKey.NextMonth))
+        }
+    }
+}
+
+@Composable
+private fun CheckInStatusLegend(label: String, color: Color, modifier: Modifier = Modifier) {
+    Row(
+        modifier = modifier,
+        horizontalArrangement = Arrangement.spacedBy(6.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Box(Modifier.size(8.dp).background(color, CircleShape))
+        Text(label, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+    }
+}
+
+@Composable
+private fun DailyCheckInDetailsContent(checkIn: DailyCheckInSnapshot, initialMonth: String?) {
+    val date = checkIn.todayDate?.toProfileCalendarDate()
+    if (date != null) {
+        val currentMonth = ProfileCalendarMonth(date.year, date.month)
+        val earliestMonth = currentMonth.shift(-11)
+        val startMonth = initialMonth?.let { "$it-01".toProfileCalendarDate() }
+            ?.let { ProfileCalendarMonth(it.year, it.month).coerceIn(earliestMonth, currentMonth) }
+            ?: currentMonth
+        var monthOffset by rememberSaveable(startMonth.year, startMonth.month) { mutableStateOf(0) }
+        val month = startMonth.shift(monthOffset).coerceIn(earliestMonth, currentMonth)
+        val rewards = remember(month, checkIn) { monthlyCheckInRewards(month, checkIn) }
+        Column(
+            modifier = Modifier.fillMaxWidth().testTag("daily_check_in_month_rewards"),
+            verticalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            Text(
+                localized(TextKey.CheckInMonthlyRewards),
+                style = MaterialTheme.typography.titleLarge,
+                fontWeight = FontWeight.Bold
+            )
+            CheckInMonthNavigation(
+                month, earliestMonth, currentMonth,
+                onPrevious = { monthOffset-- },
+                onNext = { monthOffset++ }
+            )
+            FlowRow(horizontalArrangement = Arrangement.spacedBy(16.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                CheckInStatusLegend(localized(TextKey.Claimed), ArcadePalette.Mint400)
+                CheckInStatusLegend(localized(TextKey.CheckInMissed), ArcadePalette.Coral400)
+            }
+            if (month == currentMonth && date.day < rewards.size) {
                 Text(
-                    localized(TextKey.CheckedIn),
+                    localized(TextKey.CheckInForecast),
                     style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.primary
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+            MonthlyCheckInRewardGrid(rewards)
+        }
+    }
+    DailyCheckInMilestones(bestStreak = checkIn.bestStreak, totalCheckIns = checkIn.totalCheckIns)
+}
+
+@Composable
+private fun MonthlyCheckInRewardGrid(days: List<CheckInRewardDay>) {
+    Layout(
+        modifier = Modifier.fillMaxWidth(),
+        content = { days.forEach { CheckInRewardCard(it) } }
+    ) { cards, constraints ->
+        val width = constraints.maxWidth
+        val columns = (width.toDp() / (115.dp * fontScale.coerceAtLeast(1f))).toInt().coerceIn(2, 5)
+        val gap = 8.dp.roundToPx()
+        val cardWidth = ((width - gap * (columns - 1)) / columns).coerceAtLeast(0)
+        val minHeight = 72.dp.roundToPx()
+        // Choose one height for the whole month at the current column width and text scale.
+        val cardHeight = cards.fold(minHeight) { height, card ->
+            maxOf(height, card.minIntrinsicHeight(cardWidth))
+        }
+        val cardConstraints = Constraints.fixed(cardWidth, cardHeight)
+        val placedCards = cards.map { it.measure(cardConstraints) }
+        val rows = (cards.size + columns - 1) / columns
+        val height = rows * cardHeight + (rows - 1).coerceAtLeast(0) * gap
+        layout(width, constraints.constrainHeight(height)) {
+            placedCards.forEachIndexed { index, card ->
+                card.placeRelative(
+                    x = (index % columns) * (cardWidth + gap),
+                    y = (index / columns) * (cardHeight + gap)
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun CheckInRewardCard(entry: CheckInRewardDay) {
+    val reward = entry.reward
+    val status = when {
+        entry.claimed -> TextKey.Claimed
+        reward == null && !entry.isToday -> TextKey.CheckInMissed
+        else -> null
+    }
+    val statusLabel = status?.let { localized(it) }
+    ArcadePanel(
+        modifier = Modifier.testTag("daily_check_in_reward:${entry.day}")
+            .semantics { if (statusLabel != null) stateDescription = statusLabel },
+        accent = if (entry.isToday) ArcadeGold else ArcadePalette.Blue700
+    ) {
+        Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+            Column(
+                modifier = Modifier.fillMaxWidth().padding(horizontal = 14.dp, vertical = 10.dp),
+                horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.spacedBy(4.dp)
+            ) {
+                Text(
+                    "${localized(TextKey.DayLabel)} ${entry.day}",
+                    style = MaterialTheme.typography.labelLarge,
+                    fontWeight = FontWeight.Bold,
+                    textAlign = TextAlign.Center
+                )
+                if (entry.isToday && !entry.claimed) {
+                    Text(
+                        localized(TextKey.CheckInToday),
+                        style = MaterialTheme.typography.labelSmall,
+                        color = ArcadeGold
+                    )
+                }
+                if (reward != null) {
+                    RewardAmount(localized(TextKey.RewardGoldDescription, "count" to reward.gold), RewardCurrency.GOLD)
+                    RewardAmount(localized(TextKey.RewardXpDescription, "count" to reward.xp), RewardCurrency.XP)
+                    if (reward.gems > 0) {
+                        RewardAmount(localized(TextKey.RewardGemsDescription, "count" to reward.gems), RewardCurrency.GEM)
+                    }
+                } else if (entry.claimed) {
+                    Text(
+                        localized(TextKey.CheckInRewardUnavailable),
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        textAlign = TextAlign.Center
+                    )
+                }
+            }
+            if (status != null) {
+                Box(
+                    Modifier.align(Alignment.TopEnd).padding(12.dp).size(8.dp)
+                        .background(if (entry.claimed) ArcadePalette.Mint400 else ArcadePalette.Coral400, CircleShape)
                 )
             }
         }
@@ -2272,6 +2375,8 @@ private fun DailyCheckInCalendar(checkIn: DailyCheckInSnapshot) {
 internal data class ProfileCalendarDate(val year: Int, val month: Int, val day: Int)
 
 internal data class ProfileCalendarMonth(val year: Int, val month: Int) : Comparable<ProfileCalendarMonth> {
+    val routeMonth: String get() = "${year.toString().padStart(4, '0')}-${month.toString().padStart(2, '0')}"
+
     override fun compareTo(other: ProfileCalendarMonth): Int = monthIndex.compareTo(other.monthIndex)
 
     fun shift(months: Int): ProfileCalendarMonth {
@@ -2323,9 +2428,6 @@ private fun profileCalendarDaysInMonth(year: Int, month: Int): Int = when (month
     4, 6, 9, 11 -> 30
     else -> 31
 }
-
-private fun profileCalendarDateKey(month: ProfileCalendarMonth, day: Int): String =
-    "${month.year.toString().padStart(4, '0')}-${month.month.toString().padStart(2, '0')}-${day.toString().padStart(2, '0')}"
 
 @Composable
 private fun localizedCalendarWeekdays() = listOf(
@@ -2432,7 +2534,7 @@ private fun StatCard(label: String, value: String, modifier: Modifier = Modifier
         Column(
             Modifier.fillMaxWidth().padding(horizontal = 7.dp, vertical = 10.dp),
             horizontalAlignment = Alignment.CenterHorizontally,
-            verticalArrangement = Arrangement.Center
+            verticalArrangement = Arrangement.spacedBy(4.dp, Alignment.CenterVertically)
         ) {
             Text(
                 value,

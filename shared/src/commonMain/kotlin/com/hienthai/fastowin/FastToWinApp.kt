@@ -164,6 +164,7 @@ import com.hienthai.fastowin.ui.components.RewardReceiptAmounts
 import com.hienthai.fastowin.ui.components.ArcadeActionButton
 import com.hienthai.fastowin.ui.components.ArcadeActionStyle
 import com.hienthai.fastowin.ui.components.ArcadeDialog
+import com.hienthai.fastowin.ui.components.SystemBackHandler
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
@@ -574,6 +575,9 @@ private fun GameContent(
     }
     var profileSection by remember { mutableStateOf<ProfileSection?>(null) }
     var profileSectionExternal by remember { mutableStateOf(false) }
+    var homeSectionOpenedFromHome by remember { mutableStateOf(false) }
+    var checkInDetailMonth by remember(accountUserId) { mutableStateOf<String?>(null) }
+    val homeSection = profileSection?.takeIf { !profileSectionExternal && homeProfileSectionRoute(it) != null }
     val collectionOpen = profileSection == ProfileSection.COLLECTION
     LaunchedEffect(controller, collectionOpen, profileSectionExternal, state.connectionStatus) {
         if (collectionOpen && !profileSectionExternal &&
@@ -629,15 +633,8 @@ private fun GameContent(
     val clanMissionsOpen = state.isClanOpen && state.profile?.clanId != null && state.currentClan?.id == state.profile?.clanId
     // Context changes fence suspended HTTP completions before launching a new request.
     androidx.compose.runtime.SideEffect {
-        personalMissions?.setContext(accountUserId, com.hienthai.fastowin.protocol.MissionScope.PERSONAL,
-            view = if (personalMissionsOpen) "open" else "closed", sessionEpoch = missionSessionEpoch)
         clanMissions?.setContext(accountUserId, com.hienthai.fastowin.protocol.MissionScope.CLAN, state.profile?.clanId,
             view = if (clanMissionsOpen) "open" else "closed", sessionEpoch = missionSessionEpoch)
-    }
-    LaunchedEffect(personalMissions, personalMissionsOpen, missionSessionEpoch, state.connectionStatus, state.profile?.progression) {
-        personalMissions?.setContext(accountUserId, com.hienthai.fastowin.protocol.MissionScope.PERSONAL,
-            view = if (personalMissionsOpen) "open" else "closed", sessionEpoch = missionSessionEpoch)
-        if (personalMissionsOpen) personalMissions?.refresh()
     }
     LaunchedEffect(clanMissions, clanMissionsOpen, missionSessionEpoch, state.profile?.clanId, state.connectionStatus, state.currentClan, state.donatingClanRequestId) {
         clanMissions?.setContext(accountUserId, com.hienthai.fastowin.protocol.MissionScope.CLAN, state.profile?.clanId,
@@ -695,6 +692,8 @@ private fun GameContent(
         mailboxController?.reset()
         showTutorial = false
         profileSection = null
+        homeSectionOpenedFromHome = false
+        checkInDetailMonth = null
         clearPracticeSession()
         controller.closeNotifications()
         controller.closeFriendProfile()
@@ -762,6 +761,11 @@ private fun GameContent(
     var refreshAfterReconnect by remember { mutableStateOf(false) }
     val sessionUsable = state.connectionStatus == com.hienthai.fastowin.state.ConnectionStatus.CONNECTED &&
         state.isSessionRestored && serviceReachable != false
+    LaunchedEffect(controller, homeSection, sessionUsable) {
+        if (homeSection != null && sessionUsable && state.profile == null && !state.isProfileLoading) {
+            controller.refreshProfile()
+        }
+    }
     LaunchedEffect(sessionUsable) {
         if (!sessionUsable) { refreshAfterReconnect = true; return@LaunchedEffect }
         if (!refreshAfterReconnect) return@LaunchedEffect
@@ -1299,6 +1303,37 @@ private fun GameContent(
             controller.openFriendProfile(userId)
         }
     }
+    fun openHomeProfileSection(section: ProfileSection, openedFromHome: Boolean = false, checkInMonth: String? = null) {
+        closeLocalScreens()
+        controller.openHome()
+        profileSectionExternal = false
+        profileSection = section
+        homeSectionOpenedFromHome = openedFromHome
+        checkInDetailMonth = checkInMonth
+    }
+    val openMissions = {
+        if (isGuest) onUpgradeGuest() else {
+            navigateToAppRoute(checkNotNull(homeProfileSectionRoute(ProfileSection.MISSIONS))) {
+                openHomeProfileSection(ProfileSection.MISSIONS, openedFromHome = true)
+            }
+        }
+    }
+    val openCheckInDetails: (String) -> Unit = { month ->
+        navigateToAppRoute("/check-in/$month") {
+            openHomeProfileSection(ProfileSection.DAILY_CHECK_IN, openedFromHome = true, checkInMonth = month)
+        }
+    }
+    val backFromHomeSection = {
+        if (!homeSectionOpenedFromHome || !navigationBridge.goBack()) {
+            routeRequests.supersede()
+            requestedAppRoute = null
+            navigationBridge.replace("/")
+            profileSection = null
+            homeSectionOpenedFromHome = false
+            checkInDetailMonth = null
+            controller.openHome()
+        }
+    }
     val openOwnProfileSection: (ProfileSection) -> Unit = { section ->
         navigateToAppRoute("/account/${profileSectionRoute(section)}") {
             profileSectionExternal = false
@@ -1307,10 +1342,12 @@ private fun GameContent(
         }
     }
     val openExternalProfileSection: (ProfileSection) -> Unit = { section ->
-        val userId = state.viewedFriendUserId.orEmpty()
-        navigateToAppRoute("/friends/$userId/${profileSectionRoute(section)}") {
-            profileSectionExternal = true
-            profileSection = section
+        if (isExternalProfileSection(section)) {
+            val userId = state.viewedFriendUserId.orEmpty()
+            navigateToAppRoute("/friends/$userId/${profileSectionRoute(section)}") {
+                profileSectionExternal = true
+                profileSection = section
+            }
         }
     }
     val navigateBack: (() -> Unit) -> Unit = { fallback ->
@@ -1346,6 +1383,10 @@ private fun GameContent(
         val requested = requestedAppRoute ?: return@LaunchedEffect
         if (!routeRequests.isCurrent(requested)) return@LaunchedEffect
         val route = requested.route
+        val requestedCheckInMonth = route.removePrefix("/check-in/")
+            .takeIf { route.startsWith("/check-in/") && checkInRouteMonth.matches(it) }
+        val requestedHomeSection = if (requestedCheckInMonth != null) ProfileSection.DAILY_CHECK_IN
+            else profileSectionFromRoute(route.removePrefix("/"))?.takeIf { homeProfileSectionRoute(it) != null }
         fun finishRequest(): Boolean {
             if (!routeRequests.clear(requested)) return false
             requestedAppRoute = null
@@ -1443,8 +1484,26 @@ private fun GameContent(
                 closeLocalScreens()
                 openRequestedAccount()
             }
+            requestedHomeSection != null -> {
+                val canonicalRoute = checkNotNull(homeProfileSectionRoute(requestedHomeSection)) +
+                    requestedCheckInMonth?.let { "/$it" }.orEmpty()
+                when {
+                    isGuest -> redirectRequest("/")
+                    route != canonicalRoute -> redirectRequest(canonicalRoute)
+                    else -> openHomeProfileSection(
+                        requestedHomeSection,
+                        openedFromHome = homeSection == requestedHomeSection && homeSectionOpenedFromHome,
+                        checkInMonth = requestedCheckInMonth
+                    )
+                }
+            }
             route.startsWith("/account/") -> {
                 val section = profileSectionFromRoute(route.substringAfter("/account/"))
+                val homeSectionRoute = section?.let(::homeProfileSectionRoute)
+                if (homeSectionRoute != null) {
+                    redirectRequest(homeSectionRoute)
+                    return@LaunchedEffect
+                }
                 if (section != null && route != "/account/${profileSectionRoute(section)}") {
                     redirectRequest("/account/${profileSectionRoute(section)}")
                     return@LaunchedEffect
@@ -1476,7 +1535,7 @@ private fun GameContent(
                 val section = friendPath.substringAfter('/', missingDelimiterValue = "")
                     .takeIf(String::isNotBlank)
                     ?.let(::profileSectionFromRoute)
-                    ?.takeUnless { it == ProfileSection.GIFT_CODE }
+                    ?.takeIf(::isExternalProfileSection)
                 val canonicalRoute = "/friends/$friendId" +
                     (section?.let { "/${profileSectionRoute(it)}" } ?: "")
                 if (route != canonicalRoute) {
@@ -1646,6 +1705,8 @@ private fun GameContent(
         state.isNotificationsOpen -> "/notifications"
         showTutorial -> "/tutorial"
         showSettings -> "/settings"
+        homeSection != null -> checkNotNull(homeProfileSectionRoute(homeSection)) +
+            checkInDetailMonth?.takeIf { homeSection == ProfileSection.DAILY_CHECK_IN }?.let { "/$it" }.orEmpty()
         profileSection != null && !profileSectionExternal ->
             "/account/${profileSectionRoute(checkNotNull(profileSection))}"
         profileSection != null && profileSectionExternal ->
@@ -1664,6 +1725,20 @@ private fun GameContent(
         showPracticeLauncher || showPracticeModePicker -> "/practice"
         state.lobbyStage == com.hienthai.fastowin.state.LobbyStage.ROOM_BROWSER -> "/rooms"
         else -> "/"
+    }
+    val personalMissionView = if (sessionUsable && (appRoute == "/" || appRoute == "/missions")) "open" else "closed"
+    androidx.compose.runtime.SideEffect {
+        personalMissions?.setContext(accountUserId, com.hienthai.fastowin.protocol.MissionScope.PERSONAL,
+            view = personalMissionView, sessionEpoch = missionSessionEpoch)
+    }
+    LaunchedEffect(personalMissions, personalMissionView, appRoute, missionSessionEpoch, state.profile?.progression) {
+        val missions = personalMissions ?: return@LaunchedEffect
+        if (personalMissionView == "closed") return@LaunchedEffect
+        missions.refresh()
+        while (appRoute == "/") {
+            delay(60_000)
+            missions.refresh()
+        }
     }
     // One tiny first-page request discovers gifts across the whole mailbox. Reconnect and
     // returning Home refresh immediately; the timer also catches new gifts and expiry.
@@ -1862,7 +1937,35 @@ private fun GameContent(
                 profileSection != null -> {
                     val sectionProfile = if (profileSectionExternal) state.friendProfile else state.profile
                     if (sectionProfile == null) {
-                        profileSection = null
+                        if (homeSection == null) {
+                            profileSection = null
+                        } else {
+                            SystemBackHandler(onBack = backFromHomeSection)
+                            Column(Modifier.fillMaxSize()) {
+                                FastToWinHeader(
+                                    title = localized(if (homeSection == ProfileSection.MISSIONS) TextKey.MissionsTitle else TextKey.CheckIn),
+                                    gold = 0,
+                                    gems = 0,
+                                    unreadNotifications = 0,
+                                    onNotifications = {},
+                                    onBack = backFromHomeSection,
+                                    showBalances = false,
+                                    showNotifications = false
+                                )
+                                Box(Modifier.fillMaxSize().padding(16.dp), contentAlignment = Alignment.Center) {
+                                    if (!sessionUsable || state.isProfileLoading) {
+                                        CircularProgressIndicator()
+                                    } else {
+                                        Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                                            Text(localized(TextKey.ProfileLoadError), textAlign = TextAlign.Center)
+                                            TextButton(onClick = controller::refreshProfile) {
+                                                Text(localized(TextKey.Retry))
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
                     } else {
                         ProfileSectionScreen(
                             state = state,
@@ -1870,11 +1973,12 @@ private fun GameContent(
                             section = checkNotNull(profileSection),
                             isExternalProfile = profileSectionExternal,
                             canEdit = !profileSectionExternal && !isGuest,
-                            onBack = { navigateBack { profileSection = null } },
+                            onBack = if (homeSection != null) backFromHomeSection else ({ navigateBack { profileSection = null } }),
                             onRefresh = when {
                                 profileSectionExternal -> controller::refreshFriendProfile
                                 profileSection == ProfileSection.WALLET -> controller::refreshWalletHistory
                                 profileSection == ProfileSection.MISSIONS -> { { missionScope.launch { personalMissions?.refresh() }; Unit } }
+                                profileSection == ProfileSection.DAILY_CHECK_IN -> controller::refreshProfile
                                 else -> controller::openProfile
                             },
                             onOpenMatchDetail = controller::openMatchDetail,
@@ -1888,6 +1992,7 @@ private fun GameContent(
                             onRefreshMissions = { missionScope.launch { personalMissions?.refresh() } },
                             onClaimMissionInstance = { id -> missionScope.launch { personalMissions?.claim(id) } },
                             onDismissMissionReward = { personalMissions?.clearLastClaimedReward() },
+                            checkInMonth = checkInDetailMonth,
                             onRedeemGiftCode = giftClient?.let { client ->
                                 { code ->
                                     client.redeemCode(code).also {
@@ -2183,6 +2288,9 @@ private fun GameContent(
                     onUpgradeGuest = onUpgradeGuest,
                     onOpenNotifications = openNotifications,
                     onOpenGifts = openGiftMailbox,
+                    onOpenMissions = openMissions,
+                    claimableMissionCount = personalMissionState.claimableCount,
+                    onOpenCheckInDetails = openCheckInDetails,
                     unclaimedGiftCount = mailboxState.availableCount,
                     rewardEventState = rewardEventState,
                     announcementState = if (isGuest) null else announcementState,
@@ -2463,6 +2571,16 @@ private fun profileSectionFromRoute(route: String): ProfileSection? = when (rout
     "gift-code" -> ProfileSection.GIFT_CODE
     else -> null
 }
+
+private val checkInRouteMonth = Regex("[0-9]{4}-(0[1-9]|1[0-2])")
+
+private fun homeProfileSectionRoute(section: ProfileSection): String? = when (section) {
+    ProfileSection.MISSIONS, ProfileSection.DAILY_CHECK_IN -> "/${profileSectionRoute(section)}"
+    else -> null
+}
+
+private fun isExternalProfileSection(section: ProfileSection): Boolean =
+    section != ProfileSection.GIFT_CODE && homeProfileSectionRoute(section) == null
 
 @Composable
 internal fun TopLevelTabIfNeeded(

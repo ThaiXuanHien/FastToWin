@@ -14,7 +14,10 @@ data class MissionState(
     val pendingIds: Set<String> = emptySet(),
     val itemErrors: Map<String, String> = emptyMap(),
     val lastClaimedReward: MissionClaimResponse? = null
-)
+) {
+    val claimableCount: Int
+        get() = items.count { it.state == MissionClaimState.CLAIMABLE }
+}
 
 /** Owns only server snapshots and request intent; reward calculation stays on the server. */
 class MissionController(

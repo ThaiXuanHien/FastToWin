@@ -9,6 +9,7 @@ import com.hienthai.fastowin.protocol.ClanSnapshot
 import com.hienthai.fastowin.protocol.CosmeticSnapshot
 import com.hienthai.fastowin.protocol.CosmeticType
 import com.hienthai.fastowin.protocol.DailyCheckInSnapshot
+import com.hienthai.fastowin.protocol.DailyCheckInRewardSnapshot
 import com.hienthai.fastowin.protocol.GemPackageSnapshot
 import com.hienthai.fastowin.protocol.LeaderboardEntrySnapshot
 import com.hienthai.fastowin.protocol.LeaderboardSnapshot
@@ -155,9 +156,18 @@ object ArcadeScreenshotFixtures {
                 todayRewardXp = 50,
                 todayRewardGold = 250,
                 todayRewardGems = 1,
+                nextRewardGold = 120,
+                nextRewardXp = 25,
                 currentStreak = 12,
                 bestStreak = 24,
-                totalCheckIns = 86
+                totalCheckIns = 86,
+                todayDate = "2026-11-17",
+                historyDates = listOf("2026-11-14", "2026-11-15", "2026-11-16"),
+                historyRewards = mapOf(
+                    "2026-11-14" to DailyCheckInRewardSnapshot(gold = 60, xp = 10, gems = 0),
+                    "2026-11-15" to DailyCheckInRewardSnapshot(gold = 70, xp = 15, gems = 0),
+                    "2026-11-16" to DailyCheckInRewardSnapshot(gold = 80, xp = 15, gems = 0)
+                )
             ),
             cosmetics = listOf(
                 CosmeticSnapshot("frame_default", "Khung mặc định", CosmeticType.FRAME, true, false),

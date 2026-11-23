@@ -16,6 +16,37 @@ class MissionControllerTest {
     }
     private fun row(id: String, state: MissionClaimState = MissionClaimState.CLAIMABLE) = MissionInstanceView(id, "ADMIN_CODE", MissionScope.PERSONAL, MissionAction.PLAY, MissionCadence.DAILY, MissionDifficulty.NORMAL, "2026-10-24", "2026-10-25", 7, 7, 7, MissionReward(gold=50), state, "MissionActionPLAY", mapOf("target" to "7"))
     private fun response(vararg rows: MissionInstanceView) = MissionListResponse(rows.toList(), 1)
+
+    @Test
+    fun `claimable count only counts claimable rows and decreases after a successful claim`() = runTest {
+        val api = Gateway()
+        val controller = MissionController(api, {})
+        controller.setContext("player", MissionScope.PERSONAL)
+        assertEquals(0, controller.state.value.claimableCount)
+
+        val load = launch { controller.refresh() }
+        runCurrent()
+        api.loads.single().complete(
+            response(
+                row("daily"),
+                row("weekly").copy(period = MissionCadence.WEEKLY, periodEndExclusive = "2026-10-31"),
+                row("in-progress", MissionClaimState.IN_PROGRESS).copy(progress = 3, personalContribution = 3),
+                row("already-claimed", MissionClaimState.CLAIMED)
+            )
+        )
+        load.join()
+        assertEquals(2, controller.state.value.claimableCount)
+
+        val claim = launch { controller.claim("daily") }
+        runCurrent()
+        assertEquals(2, controller.state.value.claimableCount)
+        api.claims.single().second.complete(
+            MissionClaimResponse("daily", MissionClaimState.CLAIMED, MissionReward(gold = 50))
+        )
+        claim.join()
+        assertEquals(1, controller.state.value.claimableCount)
+    }
+
     @Test fun `old account response cannot replace current mission list`() = runTest {
         val api = Gateway(); val controller = MissionController(api, {})
         controller.setContext("A", MissionScope.PERSONAL)

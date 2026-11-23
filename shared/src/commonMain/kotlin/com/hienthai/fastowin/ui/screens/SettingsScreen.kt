@@ -544,7 +544,7 @@ private fun LanguageOption(code: String, title: String, subtitle: String, isSele
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(8.dp)
         ) {
-            Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+            Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
                 Text(title, color = ArcadePalette.White, fontWeight = FontWeight.SemiBold)
                 if (subtitle != title) Text(subtitle, color = ArcadePalette.White, style = MaterialTheme.typography.bodySmall)
             }
@@ -589,7 +589,7 @@ private fun SettingsInstallRow(status: AppInstallStatus) {
                 )
             }
         }
-        Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+        Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
             Text(title, fontWeight = FontWeight.SemiBold)
             Text(
                 subtitle,
@@ -723,7 +723,7 @@ private fun SettingsSwitchRow(
                 Icon(icon, contentDescription = null, modifier = Modifier.size(22.dp))
             }
         }
-        Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+        Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
             Text(title, fontWeight = FontWeight.SemiBold)
             Text(
                 subtitle,

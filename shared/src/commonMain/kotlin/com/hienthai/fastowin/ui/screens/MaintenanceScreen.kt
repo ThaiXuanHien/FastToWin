@@ -149,7 +149,7 @@ fun MaintenanceScreen(
                             tint = ArcadePalette.Mint400,
                             modifier = Modifier.size(20.dp)
                         )
-                        Column(Modifier.weight(1f)) {
+                        Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
                             Text(
                                 localized(TextKey.MaintenanceAutoResume),
                                 style = MaterialTheme.typography.labelLarge,

@@ -2,6 +2,7 @@ package com.hienthai.fastowin.server
 
 import com.hienthai.fastowin.protocol.CosmeticType
 import com.hienthai.fastowin.protocol.DAILY_CHECK_IN_AVATAR_ID
+import com.hienthai.fastowin.protocol.DailyCheckInRewardSnapshot
 import com.zaxxer.hikari.HikariConfig
 import com.zaxxer.hikari.HikariDataSource
 import kotlinx.coroutines.test.runTest
@@ -32,6 +33,7 @@ class PostgresDailyCheckInMilestoneTest {
             val userId = UUID.fromString(player.playerId)
             val zone = ZoneId.of("Asia/Bangkok")
             val today = LocalDate.of(2026, 8, 17)
+            val firstHistoryDate = LocalDate.of(2025, 9, 1)
             val clock = Clock.fixed(today.atTime(12, 0).atZone(zone).toInstant(), zone)
             val repository = PostgresPlayerProfileRepository(dataSource, clock)
             try {
@@ -54,10 +56,25 @@ class PostgresDailyCheckInMilestoneTest {
                         statement.setDate(2, Date.valueOf(today.minusDays(1)))
                         statement.executeUpdate()
                     }
+                    connection.prepareStatement(
+                        """
+                        INSERT INTO daily_check_ins (
+                            user_id, check_in_date, cycle_day, reward_xp, reward_gold, reward_gems, streak_after
+                        ) VALUES (?, ?, 1, 17, 73, 2, 1)
+                        """.trimIndent()
+                    ).use { statement ->
+                        statement.setObject(1, userId)
+                        for (date in listOf(firstHistoryDate, firstHistoryDate.minusDays(1), today.plusDays(1))) {
+                            statement.setDate(2, Date.valueOf(date))
+                            statement.addBatch()
+                        }
+                        statement.executeBatch()
+                    }
                 }
 
                 assertFalse(repository.updateProfile(player.playerId, player.displayName, DAILY_CHECK_IN_AVATAR_ID))
-                assertTrue(repository.claimDailyCheckIn(player.playerId)!!.claimed)
+                val claim = repository.claimDailyCheckIn(player.playerId)!!
+                assertTrue(claim.claimed)
                 assertFalse(repository.claimDailyCheckIn(player.playerId)!!.claimed)
                 val sevenDayProfile = repository.findByPlayerId(player.playerId)!!
                 assertTrue(sevenDayProfile.achievements.any { it.code == "CHECKIN_STREAK_7" })
@@ -65,8 +82,20 @@ class PostgresDailyCheckInMilestoneTest {
                 assertEquals(60, sevenDayProfile.progression.experiencePoints)
                 assertEquals(300, sevenDayProfile.progression.gold)
                 assertEquals(1, sevenDayProfile.progression.gems)
-                assertTrue(today.toString() in sevenDayProfile.progression.dailyCheckIn.historyDates)
-                assertTrue(sevenDayProfile.progression.dailyCheckIn.todayDate == today.toString())
+                val checkIn = sevenDayProfile.progression.dailyCheckIn
+                assertEquals(today.toString(), checkIn.todayDate)
+                assertEquals(listOf(firstHistoryDate.toString(), today.toString()), checkIn.historyDates)
+                assertEquals(
+                    mapOf(
+                        firstHistoryDate.toString() to DailyCheckInRewardSnapshot(gold = 73, xp = 17, gems = 2),
+                        today.toString() to DailyCheckInRewardSnapshot(
+                            gold = claim.rewardGold,
+                            xp = claim.rewardXp,
+                            gems = claim.rewardGems
+                        )
+                    ),
+                    checkIn.historyRewards
+                )
                 dataSource.connection.use { connection ->
                     assertEquals(
                         1,

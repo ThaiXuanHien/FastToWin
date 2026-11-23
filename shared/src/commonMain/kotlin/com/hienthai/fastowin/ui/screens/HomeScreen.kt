@@ -29,16 +29,15 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.Assignment
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.ChevronRight
 import androidx.compose.material.icons.filled.Lock
-import androidx.compose.material.icons.filled.Payments
 import androidx.compose.material.icons.filled.EmojiEvents
 import androidx.compose.material.icons.filled.FitnessCenter
 import androidx.compose.material.icons.filled.Group
 import androidx.compose.material.icons.filled.Home
 import androidx.compose.material.icons.filled.MeetingRoom
-import androidx.compose.material.icons.filled.MonetizationOn
 import androidx.compose.material.icons.filled.Person
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Redeem
@@ -52,7 +51,6 @@ import androidx.compose.material.icons.rounded.Timer
 import androidx.compose.material3.Badge
 import androidx.compose.material3.BadgedBox
 import androidx.compose.material3.CardDefaults
-import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ElevatedCard
 import androidx.compose.material3.Icon
 import androidx.compose.material3.LinearProgressIndicator
@@ -93,10 +91,6 @@ import com.hienthai.fastowin.localization.localized
 import com.hienthai.fastowin.localization.localizedNetworkText
 import com.hienthai.fastowin.protocol.FriendPresence
 import com.hienthai.fastowin.protocol.LeaderboardSnapshot
-import com.hienthai.fastowin.protocol.DailyCheckInSnapshot
-import com.hienthai.fastowin.protocol.DAILY_CHECK_IN_REWARDS_XP
-import com.hienthai.fastowin.protocol.DAILY_CHECK_IN_REWARDS_GOLD
-import com.hienthai.fastowin.protocol.DAILY_CHECK_IN_REWARDS_GEMS
 import com.hienthai.fastowin.protocol.CosmeticType
 import com.hienthai.fastowin.protocol.MatchType
 import com.hienthai.fastowin.protocol.PlayQuotaSnapshot
@@ -108,8 +102,6 @@ import com.hienthai.fastowin.ui.components.ArcadeDialog
 import com.hienthai.fastowin.ui.components.ArcadePanel
 import com.hienthai.fastowin.state.ConnectionStatus
 import com.hienthai.fastowin.state.GameState
-import com.hienthai.fastowin.ui.components.GemColor
-import com.hienthai.fastowin.ui.components.GoldColor
 import com.hienthai.fastowin.ui.components.CrossedSwordsIcon
 import com.hienthai.fastowin.ui.components.PlayerAvatar
 import com.hienthai.fastowin.ui.theme.ArcadePalette
@@ -145,6 +137,9 @@ internal fun HomeDashboard(
     onUpgradeGuest: () -> Unit,
     onLogout: () -> Unit,
     onPlayQuotaExhausted: () -> Unit = {},
+    onOpenMissions: () -> Unit = {},
+    claimableMissionCount: Int = 0,
+    onOpenCheckInDetails: (String) -> Unit = {},
     modifier: Modifier = Modifier
 ) {
     val profile = state.profile
@@ -263,10 +258,21 @@ internal fun HomeDashboard(
             )
 
             if (!isGuest && profile != null) {
-                DailyCheckInCard(
+                HomeQuickAction(
+                    localized(TextKey.MissionsTitle),
+                    localized(TextKey.MissionsSubtitle),
+                    Icons.AutoMirrored.Filled.Assignment,
+                    ArcadePalette.Mint600,
+                    onOpenMissions,
+                    Modifier.fillMaxWidth().testTag("home_missions"),
+                    badgeCount = claimableMissionCount.toLong(),
+                    badgeTextKey = TextKey.ClaimableMissionCount
+                )
+                DailyCheckInContent(
                     checkIn = profile.progression.dailyCheckIn,
                     isClaiming = state.isDailyCheckInClaiming,
-                    onClaim = onClaimDailyCheckIn
+                    onClaim = onClaimDailyCheckIn,
+                    onOpenDetails = onOpenCheckInDetails
                 )
             }
 
@@ -590,122 +596,6 @@ private fun ArcadePlayerSummary(
 }
 
 @Composable
-private fun DailyCheckInCard(
-    checkIn: DailyCheckInSnapshot,
-    isClaiming: Boolean,
-    onClaim: () -> Unit
-) {
-    val rewardCardHeight = if (LocalDensity.current.fontScale >= 1.3f) 82.dp else 62.dp
-    Column(
-        modifier = Modifier
-            .fillMaxWidth()
-            .testTag("daily_check_in_card"),
-        verticalArrangement = Arrangement.spacedBy(10.dp)
-    ) {
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            verticalAlignment = Alignment.Bottom,
-            horizontalArrangement = Arrangement.SpaceBetween
-        ) {
-            Text(
-                localized(TextKey.DailyCheckInSevenDays),
-                style = MaterialTheme.typography.titleMedium,
-                fontWeight = FontWeight.Black
-            )
-            Text(
-                localized(TextKey.CheckInStreak, "count" to checkIn.currentStreak),
-                style = MaterialTheme.typography.labelSmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant
-            )
-        }
-
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(5.dp)
-        ) {
-            DAILY_CHECK_IN_REWARDS_XP.forEachIndexed { index, _ ->
-                val day = index + 1
-                val rewardGold = DAILY_CHECK_IN_REWARDS_GOLD[index]
-                val rewardGems = DAILY_CHECK_IN_REWARDS_GEMS[index]
-                val completed = day < checkIn.cycleDay || (day == checkIn.cycleDay && checkIn.claimedToday)
-                val current = day == checkIn.cycleDay
-                Surface(
-                    modifier = Modifier
-                        .weight(1f)
-                        .height(rewardCardHeight)
-                        .testTag("daily_reward_day_$day"),
-                    shape = RoundedCornerShape(11.dp),
-                    color = when {
-                        current -> Color(0xFF44371E)
-                        completed -> ArcadePalette.Navy800.copy(alpha = 0.62f)
-                        else -> ArcadePalette.Navy800
-                    },
-                    contentColor = Color.White,
-                    border = BorderStroke(
-                        1.dp,
-                        if (current) ArcadePalette.Gold400 else ArcadePalette.OutlineDark.copy(alpha = 0.72f)
-                    )
-                ) {
-                    Column(
-                        modifier = Modifier.padding(vertical = 6.dp, horizontal = 2.dp),
-                        horizontalAlignment = Alignment.CenterHorizontally,
-                        verticalArrangement = Arrangement.spacedBy(3.dp)
-                    ) {
-                        Text(
-                            localized(TextKey.DayLabel),
-                            style = MaterialTheme.typography.labelSmall,
-                            color = Color.White.copy(alpha = if (completed) 0.55f else 0.72f),
-                            maxLines = 1
-                        )
-                        Text(
-                            day.toString(),
-                            style = MaterialTheme.typography.labelMedium,
-                            fontWeight = FontWeight.Black,
-                            color = Color.White.copy(alpha = if (completed) 0.62f else 1f)
-                        )
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            Icon(
-                                if (rewardGems > 0) Icons.Default.Payments else Icons.Default.MonetizationOn,
-                                contentDescription = null,
-                                tint = if (rewardGems > 0) GemColor else GoldColor,
-                                modifier = Modifier.size(12.dp)
-                            )
-                            Text(
-                                (if (rewardGems > 0) rewardGems else rewardGold).toString(),
-                                style = MaterialTheme.typography.labelSmall,
-                                fontWeight = FontWeight.Bold,
-                                color = Color.White.copy(alpha = if (completed) 0.62f else 1f)
-                            )
-                        }
-                    }
-                }
-            }
-        }
-
-        if (!checkIn.claimedToday) {
-            ArcadeActionButton(
-                label = localized(TextKey.ClaimDayReward, "day" to checkIn.cycleDay),
-                onClick = onClaim,
-                enabled = !isClaiming,
-                style = ArcadeActionStyle.GOLD,
-                modifier = Modifier.fillMaxWidth().testTag("daily_check_in_claim"),
-                content = if (isClaiming) {
-                    {
-                        CircularProgressIndicator(
-                            modifier = Modifier.size(20.dp),
-                            strokeWidth = 2.dp,
-                            color = ArcadePalette.Navy900
-                        )
-                    }
-                } else {
-                    null
-                }
-            )
-        }
-    }
-}
-
-@Composable
 @Suppress("UNUSED_PARAMETER")
 internal fun FastToWinBottomBar(
     selected: MainTab,
@@ -825,7 +715,7 @@ private fun BottomBarItem(
                 horizontalAlignment = Alignment.CenterHorizontally,
                 verticalArrangement = Arrangement.spacedBy(2.dp)
             ) {
-                BadgedBox(badge = { GiftCountBadge(giftBadgeCount, Modifier.offset(y = 4.dp)) }) {
+                BadgedBox(badge = { HomeCountBadge(giftBadgeCount, Modifier.offset(y = 4.dp)) }) {
                     Icon(icon, contentDescription = null, tint = itemColor)
                 }
                 Text(
@@ -847,15 +737,16 @@ private fun HomeQuickAction(
     accent: Color,
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
-    badgeCount: Long = 0
+    badgeCount: Long = 0,
+    badgeTextKey: TextKey = TextKey.GiftUnclaimedCount
 ) {
-    val giftDescription = if (badgeCount > 0) localized(TextKey.GiftUnclaimedCount, "count" to badgeCount) else null
+    val badgeDescription = if (badgeCount > 0) localized(badgeTextKey, "count" to badgeCount) else null
     ElevatedCard(
         onClick = onClick,
         modifier = modifier
             .heightIn(min = 92.dp)
             .testTag("home_action:$title")
-            .semantics { if (giftDescription != null) stateDescription = giftDescription }
+            .semantics { if (badgeDescription != null) stateDescription = badgeDescription }
             .border(1.dp, accent.copy(alpha = 0.4f), RoundedCornerShape(18.dp)),
         shape = RoundedCornerShape(18.dp),
         colors = CardDefaults.elevatedCardColors(containerColor = MaterialTheme.colorScheme.surface),
@@ -887,11 +778,11 @@ private fun HomeQuickAction(
                 }
                 Column(
                     modifier = Modifier.weight(1f),
-                    verticalArrangement = Arrangement.Center
+                    verticalArrangement = Arrangement.spacedBy(4.dp, Alignment.CenterVertically)
                 ) {
                     Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                         Text(title, fontWeight = FontWeight.Bold, maxLines = 1, modifier = Modifier.weight(1f, fill = false))
-                        GiftCountBadge(badgeCount)
+                        HomeCountBadge(badgeCount)
                     }
                     Text(
                         subtitle,
@@ -908,7 +799,7 @@ private fun HomeQuickAction(
 
 /** The parent control announces the exact contextual count; the visual cap remains decorative. */
 @Composable
-private fun GiftCountBadge(count: Long, modifier: Modifier = Modifier) {
+private fun HomeCountBadge(count: Long, modifier: Modifier = Modifier) {
     if (count <= 0) return
     Badge(
         modifier = modifier.clearAndSetSemantics {},
@@ -1074,7 +965,10 @@ private fun ModeChoice(
                     Icon(icon, null, modifier = Modifier.size(24.dp), tint = ArcadePalette.Blue100)
                 }
             }
-            Column(modifier = Modifier.weight(1f)) {
+            Column(
+                modifier = Modifier.weight(1f),
+                verticalArrangement = Arrangement.spacedBy(4.dp)
+            ) {
                 Text(title, fontWeight = FontWeight.Black, color = Color.White)
                 Text(subtitle, style = MaterialTheme.typography.bodySmall, color = Color(0xFFA9BADC))
             }

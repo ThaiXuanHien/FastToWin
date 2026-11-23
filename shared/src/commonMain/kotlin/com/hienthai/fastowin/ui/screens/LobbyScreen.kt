@@ -129,7 +129,10 @@ fun LobbyScreen(
     onDismissDailyCheckInReward: () -> Unit = {},
     onPlayQuotaExhausted: () -> Unit = {},
     serverUrl: String = "",
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    onOpenMissions: () -> Unit = {},
+    claimableMissionCount: Int = 0,
+    onOpenCheckInDetails: (String) -> Unit = {}
 ) {
     val hasBottomNavigation = state.lobbyStage == LobbyStage.SELECT_MODE ||
         state.lobbyStage == LobbyStage.ROOM_BROWSER
@@ -228,6 +231,9 @@ fun LobbyScreen(
                     onOpenProfile = onOpenProfile,
                     onOpenNotifications = onOpenNotifications,
                     onOpenGifts = onOpenGifts,
+                    onOpenMissions = onOpenMissions,
+                    claimableMissionCount = claimableMissionCount,
+                    onOpenCheckInDetails = onOpenCheckInDetails,
                     unclaimedGiftCount = if (isGuest) 0 else unclaimedGiftCount,
                     rewardEventState = rewardEventState,
                     announcementState = announcementState,
@@ -346,10 +352,13 @@ private fun MatchmakingScreen(state: GameState, onCancel: () -> Unit) {
         ) {
             Row(
                 modifier = Modifier.fillMaxWidth().padding(14.dp),
-                horizontalArrangement = Arrangement.SpaceBetween,
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                Column {
+                Column(
+                    modifier = Modifier.weight(1f),
+                    verticalArrangement = Arrangement.spacedBy(4.dp)
+                ) {
                     Text(
                         if (state.matchType == MatchType.RANKED) localized(TextKey.EloRange) else state.gameMode.displayName(),
                         fontWeight = FontWeight.Black,
@@ -879,7 +888,10 @@ private fun CreateRoomDialog(
                             )
                         }
                     }
-                    Column(modifier = Modifier.weight(1f)) {
+                    Column(
+                        modifier = Modifier.weight(1f),
+                        verticalArrangement = Arrangement.spacedBy(4.dp)
+                    ) {
                         Text(mode.displayName(), color = Color.White, fontWeight = FontWeight.Black)
                         Text(
                             if (matchType == MatchType.RANKED) {
@@ -964,7 +976,10 @@ private fun RoomCard(room: AvailableRoom, onClick: () -> Unit) {
                     )
                 }
             }
-            Column(modifier = Modifier.weight(1f)) {
+            Column(
+                modifier = Modifier.weight(1f),
+                verticalArrangement = Arrangement.spacedBy(4.dp)
+            ) {
                 Text(
                     room.name,
                     style = MaterialTheme.typography.titleSmall,
@@ -1152,10 +1167,13 @@ private fun RoomWaiting(
         ) {
             Row(
                 modifier = Modifier.fillMaxWidth().padding(14.dp),
-                horizontalArrangement = Arrangement.SpaceBetween,
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                Column(modifier = Modifier.weight(1f)) {
+                Column(
+                    modifier = Modifier.weight(1f),
+                    verticalArrangement = Arrangement.spacedBy(4.dp)
+                ) {
                     Text(
                         localized(TextKey.ModeNumberCount, "mode" to state.gameMode.displayName()),
                         fontWeight = FontWeight.Black
@@ -1273,7 +1291,10 @@ private fun RoomWaitingPlayerCard(
                 frameId = player.frameId,
                 size = 52.dp
             )
-            Column(modifier = Modifier.weight(1f)) {
+            Column(
+                modifier = Modifier.weight(1f),
+                verticalArrangement = Arrangement.spacedBy(4.dp)
+            ) {
                 Text(label, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 Text(player.name, fontWeight = FontWeight.Bold)
             }
