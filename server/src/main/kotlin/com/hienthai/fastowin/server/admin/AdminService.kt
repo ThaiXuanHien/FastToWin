@@ -7,6 +7,13 @@ import com.hienthai.fastowin.server.RateLimitPolicy
 import com.hienthai.fastowin.server.RateLimitUnavailableException
 import com.hienthai.fastowin.server.hashToken
 import com.hienthai.fastowin.server.legacyFallback
+import com.hienthai.fastowin.server.avatars.ManagedAvatarFrame
+import com.hienthai.fastowin.server.avatars.SaveAvatarFrameRequest
+import com.hienthai.fastowin.server.avatars.StoredAvatarFrame
+import com.hienthai.fastowin.server.avatars.builtInAvatarFrames
+import com.hienthai.fastowin.server.avatars.isValidAvatarFrameId
+import com.hienthai.fastowin.server.avatars.managedAvatarFrames
+import com.hienthai.fastowin.server.avatars.normalizeAvatarFramePng
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import java.security.MessageDigest
@@ -349,6 +356,42 @@ class AdminService(
         val actor = principal(token, ownerOnly = true).second.identity
         val result = accounts(page); auditEntry(actor.id, "ADMIN_LIST"); result
     }
+
+    internal suspend fun avatarFrames(token: String?): List<ManagedAvatarFrame> = repository.readTransaction {
+        principal(token, ownerOnly = true)
+        managedAvatarFrames(avatarFrames())
+    }
+
+    internal suspend fun requireAvatarFrameWriter(token: String?, csrf: String?, origin: String?) {
+        requireOrigin(origin)
+        repository.readTransaction { principal(token, csrf, mutation = true, ownerOnly = true) }
+    }
+
+    internal suspend fun saveAvatarFrame(
+        token: String?, csrf: String?, id: String, request: SaveAvatarFrameRequest
+    ): ManagedAvatarFrame {
+        val nameVi = request.nameVi.trim()
+        val nameEn = request.nameEn.trim()
+        val reason = request.reason.trim()
+        if (!isValidAvatarFrameId(id) || (request.version ?: 0) !in 0 until Int.MAX_VALUE ||
+            reason.length !in 1..500 || reason.any(Char::isISOControl) ||
+            listOf(nameVi, nameEn).any { it.length !in 1..80 || it.any(Char::isISOControl) }) invalid()
+        val png = withContext(Dispatchers.Default) { request.pngBase64?.let(::normalizeAvatarFramePng) }
+        return repository.transaction {
+            val actor = principal(token, csrf, mutation = true, ownerOnly = true).second.identity
+            val builtIn = builtInAvatarFrames[id]
+            val previous = avatarFrames().firstOrNull { it.id == id } ?: builtIn
+            if (request.version != previous?.version) conflict()
+            if (previous == null && png == null) invalid()
+            val frame = StoredAvatarFrame(id, nameVi, nameEn, (request.version ?: 0) + 1)
+            saveAvatarFrame(frame, png)
+            auditEntry(actor.id, if (previous == null) "AVATAR_FRAME_CREATE" else "AVATAR_FRAME_UPDATE",
+                reason = reason, before = previous?.let { "frameId=$id;version=${it.version}" },
+                after = "frameId=$id;version=${frame.version};imageChanged=${png != null}")
+            ManagedAvatarFrame(frame.definition(), builtIn != null, frame.version)
+        }
+    }
+
     suspend fun audit(token: String?, page: PageRequest): AdminPage<AuditEntry> = repository.readTransaction {
         val actor = principal(token, ownerOnly = true).second.identity
         val result = audit(page); auditEntry(actor.id, "AUDIT_READ"); result

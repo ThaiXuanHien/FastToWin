@@ -67,6 +67,7 @@ import com.hienthai.fastowin.navigation.GameMode
 import com.hienthai.fastowin.state.GAME_NUMBER_COUNT
 import com.hienthai.fastowin.state.ConnectionStatus
 import com.hienthai.fastowin.state.GameState
+import com.hienthai.fastowin.state.matchTypeLabelKey
 import com.hienthai.fastowin.state.PlayerState
 import com.hienthai.fastowin.localization.TextKey
 import com.hienthai.fastowin.localization.localized
@@ -139,7 +140,11 @@ fun GameScreen(
     if (showExitConfirmation && allowExit) {
         ArcadeDialog(
             title = localized(TextKey.ExitMatchTitle),
-            subtitle = localized(if (state.matchType == MatchType.RANKED) TextKey.ForfeitRankedDescription else TextKey.ForfeitCasualDescription),
+            subtitle = localized(when {
+                state.isBotMatch -> TextKey.BotMatchRules
+                state.matchType == MatchType.RANKED -> TextKey.ForfeitRankedDescription
+                else -> TextKey.ForfeitCasualDescription
+            }),
             onDismissRequest = { showExitConfirmation = false },
         ) {
             Column(
@@ -176,9 +181,10 @@ fun GameScreen(
                 title = localized(
                     TextKey.GameHeader,
                     "mode" to localized(state.gameMode.titleKey),
-                    "matchType" to localized(if (state.matchType == MatchType.RANKED) TextKey.Ranked else TextKey.Casual)
+                    "matchType" to localized(state.matchTypeLabelKey)
                 ),
-                subtitle = state.currentRoomName ?: localized(TextKey.GameDefaultRoom),
+                subtitle = if (state.isBotMatch) localized(TextKey.BotMatchRules)
+                    else state.currentRoomName ?: localized(TextKey.GameDefaultRoom),
                 gold = 0,
                 gems = 0,
                 unreadNotifications = 0,
@@ -461,6 +467,8 @@ private fun PlayerScoreBar(
     val labelOpp = localized(if (is2v2) TextKey.OpponentTeam else TextKey.OpponentLabel)
     val nameMe = if (is2v2) "(${state.player.name} & ${state.teammates.firstOrNull()?.name ?: "..."})" else state.player.name
     val nameOpp = if (is2v2) "(${state.opponents.joinToString(" & ") { it.name }})" else state.opponent.name
+    val opponent = state.opponents.firstOrNull() ?: state.opponent
+    val opponentAvatar = if (state.isBotMatch) opponent.copy(id = null) else opponent
 
     BoxWithConstraints(modifier = modifier.fillMaxWidth()) {
         val compact = maxWidth < 380.dp
@@ -495,7 +503,7 @@ private fun PlayerScoreBar(
                 label = labelOpp,
                 name = nameOpp,
                 score = opponentScore,
-                avatar = state.opponents.firstOrNull() ?: state.opponent,
+                avatar = opponentAvatar,
                 isLocal = false,
                 onViewInfo = onOpponentInfo,
                 compact = compact,

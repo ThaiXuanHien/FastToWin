@@ -98,7 +98,7 @@ ClanRaceTitle, ClanRacePrizes, ClanRacePerMember, ClanRaceEligibility, ClanRaceW
     ConnectionConnected, ConnectionReconnecting,
 
     GreetingPlayer, ReadyForRecord, GameRooms, Ready, Matchmaking, MatchFound,
-    FindingOpponent, RankedMatchmakingHint, CasualMatchmakingHint, EloRange, NoEloImpact,
+    FindingOpponent, RankedMatchmakingHint, CasualMatchmakingHint, EloRange, NoEloImpact, BotMatch, BotMatchRules,
     CancelMatchmaking, GuestNameTitle, GuestNameDescription, EnterNickname,
     SaveNameProgressDescription, RoomLinkUnavailable, ChooseRoomType, DefaultRoomName,
     PublicRooms, FindOpponent, PublicRoomsDescription, SaveProgressEmail, SearchRooms,

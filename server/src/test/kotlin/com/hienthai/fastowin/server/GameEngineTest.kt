@@ -51,6 +51,7 @@ import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.test.runTest
 import kotlinx.coroutines.test.runCurrent
@@ -263,6 +264,115 @@ class GameEngineTest {
                 .map { it.quota.remainingMatches }
                 .sorted()
         )
+    }
+
+    @Test
+    fun `a lone ranked player gets a bot after two minutes without spending quota or saving a result`() = runTest {
+        val playerId = UUID.randomUUID()
+        val account = AuthenticatedAccount(playerId, "One player")
+        val quota = RecordingPlayQuotaRepository()
+        val activeRooms = InMemoryActiveRoomRepository()
+        val savedMatches = mutableListOf<CompletedMatch>()
+        val profiles = object : PlayerProfileRepository by NoOpPlayerProfileRepository {
+            override suspend fun findByPlayerId(playerId: String) = PlayerProfileSnapshot(
+                playerId, "One player", "PLAYER01", progression = PlayerProgressionSnapshot(level = 7)
+            )
+        }
+        var now = 10_000L
+        val engine = GameEngine(nowMillis = { now }, playQuotaRepository = quota,
+            activeRoomRepository = activeRooms, playerProfileRepository = profiles,
+            matchResultRepository = MatchResultRepository { savedMatches += it })
+        engine.connectAccount(account)
+        engine.handle(playerId.toString(), ClientMessage.JoinMatchmaking(ProtocolGameMode.SPEED_UP, MatchType.RANKED))
+
+        now += 119_999
+        engine.advanceMatchmaking { assertTrue(it.isEmpty()) }
+        now++
+        val starts = mutableListOf<Delivery>()
+        engine.advanceMatchmaking { starts += it }
+        val start = starts.single { it.message is ServerMessage.GameStarted }
+        val game = assertIs<ServerMessage.GameStarted>(start.message).game
+        val bot = game.players.single { it.id != playerId.toString() }
+        assertEquals(setOf(playerId.toString()), start.recipients)
+        assertTrue(game.isBotMatch)
+        assertEquals(MatchType.CASUAL, game.matchType)
+        assertEquals(0, bot.score)
+        assertEquals(now + 3_000, game.startedAtEpochMillis)
+        assertEquals(5_000L, bot.timeLeftMillis)
+        val duringCountdown = engine.handle(playerId.toString(), ClientMessage.SelectNumber(game.roomId, 1, "premature-tap"))
+        assertEquals("GAME_NOT_PLAYING", duringCountdown.singleErrorCode())
+
+        now += 6_000
+        val move = engine.advanceTimedGames().map(Delivery::message)
+            .filterIsInstance<ServerMessage.GameStateUpdated>().single()
+        assertEquals(bot.id, move.selectedByPlayerId)
+        assertTrue(move.game.players.single { it.id == bot.id }.score > 0)
+
+        var result = move.game
+        for (number in 2..50) {
+            now += 500
+            result = engine.handle(playerId.toString(), ClientMessage.SelectNumber(game.roomId, number, "tap-$number"))
+                .map(Delivery::message).filterIsInstance<ServerMessage.GameStateUpdated>().single().game
+        }
+        assertEquals(com.hienthai.fastowin.protocol.RoomPhase.FINISHED, result.phase)
+        assertEquals(playerId.toString(), result.winnerPlayerId)
+        assertTrue(result.rewardBreakdowns.isEmpty())
+        assertTrue(quota.attemptedMatchIds.isEmpty())
+        assertTrue(savedMatches.isEmpty())
+        assertTrue(activeRooms.loadAll().isEmpty())
+
+        engine.handle(playerId.toString(), ClientMessage.LeaveRoom(game.roomId))
+        val requeued = engine.handle(playerId.toString(), ClientMessage.JoinMatchmaking(ProtocolGameMode.ORDER))
+        assertTrue(requeued.map(Delivery::message).filterIsInstance<ServerMessage.MatchmakingStatus>().single().isSearching)
+    }
+
+    @Test
+    fun `a refreshed human queue entry is checked before falling back to a bot`() = runTest {
+        val firstId = UUID.randomUUID()
+        val secondId = UUID.randomUUID()
+        val pendingChecks = Channel<CompletableDeferred<Unit>>(Channel.UNLIMITED)
+        val profiles = object : PlayerProfileRepository by NoOpPlayerProfileRepository {
+            override suspend fun findByPlayerId(playerId: String) = PlayerProfileSnapshot(
+                playerId, "Player", "PLAYER01",
+                statistics = com.hienthai.fastowin.protocol.PlayerStatisticsSnapshot(
+                    eloRating = if (playerId == firstId.toString()) 1_000 else 1_250
+                )
+            )
+        }
+        val friends = object : FriendRepository by NoOpFriendRepository {
+            override suspend fun isBlockedEitherWay(firstUserId: String, secondUserId: String): Boolean {
+                val checked = CompletableDeferred<Unit>()
+                pendingChecks.send(checked)
+                checked.await()
+                return false
+            }
+        }
+        var now = 10_000L
+        val engine = GameEngine(nowMillis = { now }, playerProfileRepository = profiles, friendRepository = friends)
+        engine.connectAccount(AuthenticatedAccount(firstId, "First"))
+        engine.connectAccount(AuthenticatedAccount(secondId, "Second"))
+        val enter = ClientMessage.JoinMatchmaking(ProtocolGameMode.ORDER, MatchType.RANKED)
+        engine.handle(firstId.toString(), enter)
+        engine.handle(secondId.toString(), enter)
+
+        now += 120_000L
+        val sweep = async {
+            val deliveries = mutableListOf<Delivery>()
+            engine.advanceMatchmaking { deliveries += it }
+            deliveries
+        }
+        val staleCheck = pendingChecks.receive()
+        val refreshed = async { engine.handle(secondId.toString(), enter) }
+        val currentCheck = pendingChecks.receive()
+        staleCheck.complete(Unit)
+        val sweepDeliveries = sweep.await()
+        currentCheck.complete(Unit)
+        val refreshedDeliveries = refreshed.await()
+
+        assertTrue(sweepDeliveries.none { it.message is ServerMessage.GameStarted })
+        val game = refreshedDeliveries.map(Delivery::message).filterIsInstance<ServerMessage.GameStarted>().single().game
+        assertEquals(setOf(firstId.toString(), secondId.toString()), game.players.map { it.id }.toSet())
+        assertFalse(game.isBotMatch)
     }
 
     @Test
@@ -2060,7 +2170,8 @@ class GameEngineTest {
         val firstId = UUID.randomUUID()
         val secondId = UUID.randomUUID()
         val thirdId = UUID.randomUUID()
-        val engine = GameEngine()
+        var now = 10_000L
+        val engine = GameEngine(nowMillis = { now })
         engine.connectAccount(AuthenticatedAccount(firstId, "First"))
         engine.connectAccount(AuthenticatedAccount(secondId, "Second"))
         engine.connectAccount(AuthenticatedAccount(thirdId, "Third"))
@@ -2077,6 +2188,8 @@ class GameEngineTest {
 
         engine.handle(firstId.toString(), ClientMessage.JoinMatchmaking(ProtocolGameMode.ORDER))
         engine.markDisconnected(firstId.toString())
+        now += 120_000L
+        engine.advanceMatchmaking { assertTrue(it.isEmpty()) }
         val thirdWaiting = engine.handle(
             thirdId.toString(),
             ClientMessage.JoinMatchmaking(ProtocolGameMode.ORDER)

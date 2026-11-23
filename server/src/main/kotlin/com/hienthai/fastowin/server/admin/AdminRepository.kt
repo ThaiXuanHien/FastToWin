@@ -1,7 +1,10 @@
 package com.hienthai.fastowin.server.admin
 
+import com.hienthai.fastowin.server.avatars.AvatarFrameSource
+import com.hienthai.fastowin.server.avatars.StoredAvatarFrame
+
 /** Each block is atomic. PostgreSQL uses one connection/transaction and serializes access changes. */
-interface AdminRepository {
+interface AdminRepository : AvatarFrameSource {
     suspend fun <T> transaction(block: AdminTransaction.() -> T): T
 
     /**
@@ -10,8 +13,14 @@ interface AdminRepository {
      * wait for access changes made through [transaction].
      */
     suspend fun <T> readTransaction(block: AdminTransaction.() -> T): T = transaction(block)
+
+    override suspend fun avatarFrameDefinitions() = readTransaction { avatarFrames() }
+    override suspend fun avatarFrameImage(id: String) = readTransaction { framePng(id) }
 }
 interface AdminTransaction {
+    fun avatarFrames(): List<StoredAvatarFrame>
+    fun framePng(id: String): ByteArray?
+    fun saveAvatarFrame(frame: StoredAvatarFrame, png: ByteArray?)
     fun accountByEmail(email: String): AdminAccount?
     fun account(id: String): AdminAccount?
     fun putAccount(account: AdminAccount)

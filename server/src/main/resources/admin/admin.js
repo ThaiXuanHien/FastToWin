@@ -15,6 +15,7 @@ const labels = {
   ADMIN_GIFT: 'Quà quản trị', COMPENSATION: 'Bồi hoàn',
   GIFT_LIST: 'Xem chiến dịch quà', GIFT_DETAIL: 'Xem báo cáo quà', GIFT_CREATE: 'Tạo bản nháp quà', GIFT_UPDATE: 'Sửa bản nháp quà',
   GIFT_PREVIEW: 'Xem trước quà', GIFT_PUBLISH: 'Công bố quà', GIFT_CANCEL: 'Hủy chiến dịch quà',
+  AVATAR_FRAME_CREATE: 'Thêm khung avatar', AVATAR_FRAME_UPDATE: 'Sửa khung avatar',
   EVENT_LIST: 'Xem sự kiện thưởng', EVENT_DETAIL: 'Xem chi tiết sự kiện', EVENT_CREATE: 'Tạo bản nháp sự kiện', EVENT_UPDATE: 'Sửa bản nháp sự kiện', EVENT_PREVIEW: 'Xem trước sự kiện', EVENT_SCHEDULE: 'Lên lịch sự kiện', EVENT_CANCEL: 'Hủy sự kiện',
   ANNOUNCEMENT_CREATE: 'Tạo bản nháp thông báo', ANNOUNCEMENT_UPDATE: 'Sửa bản nháp thông báo',
   ANNOUNCEMENT_PUBLISH: 'Công bố thông báo', ANNOUNCEMENT_CANCEL: 'Hủy thông báo', ANNOUNCEMENT_PUSH_UNKNOWN: 'Push thông báo chưa rõ kết quả',
@@ -57,6 +58,7 @@ function icon(name) {
     bolt: 'M13 2 4 14h7l-1 8 10-13h-7l1-7Z',
     users: 'M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2M9 11a4 4 0 1 0 0-8 4 4 0 0 0 0 8ZM23 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75',
     accounts: 'M12 22a10 10 0 1 0 0-20 10 10 0 0 0 0 20z M12 6a3.5 3.5 0 1 0 0 7 3.5 3.5 0 0 0 0-7z M6 19.5a7 7 0 0 1 12 0',
+    avatarFrames: 'M3 9V3h6 M15 3h6v6 M21 15v6h-6 M9 21H3v-6 M17 12a5 5 0 1 1-10 0 5 5 0 0 1 10 0Z',
     audit: 'M9 5H7a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V7a2 2 0 0 0-2-2h-2 M9 5a2 2 0 0 1 2-2h2a2 2 0 0 1 2 2v0a2 2 0 0 1-2 2h-2a2 2 0 0 1-2-2z M9 12h6 M9 16h6',
     arrow: 'M5 12h14M13 6l6 6-6 6',
     refresh: 'M20 11a8 8 0 0 0-14-5L3 9M3 3v6h6M4 13a8 8 0 0 0 14 5l3-3M15 15h6v6',
@@ -355,6 +357,7 @@ function shell(title, section) {
   if (session.admin.role !== 'SUPPORT') links.push(['events', 'Sự kiện thưởng', rewardEvents]);
   if (session.admin.role !== 'SUPPORT') links.push(['missions', 'Nhiệm vụ', missions]);
   if (session.admin.role !== 'SUPPORT') links.push(['clanRace', 'Đua top bang', clanRace]);
+  if (session.admin.role === 'OWNER') links.push(['avatarFrames', 'Khung avatar', avatarFrames]);
   links.push(['announcements', 'Thông báo', announcements]);
   links.push(['moderation', 'Kiểm duyệt', moderation]);
   if (session.admin.role === 'OWNER') links.push(['accounts', 'Tài khoản quản trị', accounts], ['audit', 'Nhật ký kiểm toán', audit]);
@@ -411,6 +414,19 @@ async function giftCodes() {
     const { openGiftCodes } = await import('./admin-gift-codes.js');
     if (!task.current()) return;
     openGiftCodes({ node, append, button, field, modal, feedback, shell, channel, pagination,
+      api: (path, request, payload, method) => api(path, request, payload, session?.csrfToken, method),
+    });
+  } catch (error) {
+    if (task.current() && error.name !== 'AbortError') notices.fail(error);
+  } finally { pending.delete(task.controller); }
+}
+async function avatarFrames() {
+  if (session?.admin.role !== 'OWNER') return;
+  const { task, notices } = beginNavigation('Khung avatar', 'avatarFrames');
+  try {
+    const { openAvatarFrames } = await import('./admin-avatar-frames.js');
+    if (!task.current()) return;
+    openAvatarFrames({ node, append, button, field, modal, feedback, shell, channel,
       api: (path, request, payload, method) => api(path, request, payload, session?.csrfToken, method),
     });
   } catch (error) {

@@ -142,6 +142,7 @@ fun main() {
                 seasonLifecycleRepository = seasonLifecycleRepository,
                 pushReminderService = pushReminderService,
                 adminService = adminService,
+                avatarFrameSource = database?.adminRepository ?: adminService?.repository,
                 announcementService = AnnouncementService(notificationRepository.announcements, adminService,
                     pushConfigured = { pushNotificationService.announcementConfigured }),
                 announcementPushDelivery = database?.let {

@@ -336,6 +336,7 @@ fun FastToWinApp(
                 }
                 AuthScreen(
                     state = authState,
+                    serverUrl = serverUrl,
                     onOpenLogin = authController::openLogin,
                     onOpenRegister = authController::openRegister,
                     onOpenPasswordReset = authController::openPasswordReset,
@@ -573,6 +574,14 @@ private fun GameContent(
     }
     var profileSection by remember { mutableStateOf<ProfileSection?>(null) }
     var profileSectionExternal by remember { mutableStateOf(false) }
+    val collectionOpen = profileSection == ProfileSection.COLLECTION
+    LaunchedEffect(controller, collectionOpen, profileSectionExternal, state.connectionStatus) {
+        if (collectionOpen && !profileSectionExternal &&
+            state.connectionStatus == com.hienthai.fastowin.state.ConnectionStatus.CONNECTED
+        ) {
+            controller.refreshProfile()
+        }
+    }
     val missionScope = rememberCoroutineScope()
     val currentMissionOwner by rememberUpdatedState(accountUserId)
     val missionSessionEpoch = authState.session?.accessToken
@@ -1718,7 +1727,9 @@ private fun GameContent(
     }
 
     com.hienthai.fastowin.ui.components.UgcSafetyProvider(serverUrl, state.avatarRevision, controller, isGuest, state.player.id,
-        state.suppressedAvatarIds, state.invalidatedAvatarIds) {
+        state.suppressedAvatarIds, state.invalidatedAvatarIds,
+        connected = state.connectionStatus == com.hienthai.fastowin.state.ConnectionStatus.CONNECTED,
+        collectionOpen = collectionOpen) {
         HeaderWalletNavigationProvider(
             onGold = { openShopTab(ShopTab.GOLD) },
             onGems = { openShopTab(ShopTab.GEMS) }

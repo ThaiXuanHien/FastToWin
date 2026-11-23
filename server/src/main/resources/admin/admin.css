@@ -2363,3 +2363,15 @@ dd {
   background: var(--surface); border: 1px solid var(--line);
 }
 @media (max-width: 420px) { .recovery-codes { grid-template-columns: minmax(0, 1fr); } }
+.frame-row {
+  display: grid;
+  grid-template-columns: 56px minmax(0, 1fr) auto;
+  gap: 12px;
+  align-items: center;
+  padding: 12px 0;
+  border-bottom: 1px solid var(--line);
+}
+.frame-image { display: block; object-fit: contain; background: var(--raised); border-radius: var(--radius-sm); }
+.frame-name { display: grid; gap: 2px; overflow-wrap: anywhere; }
+.frame-name span, .frame-name code { color: var(--muted); font-size: 0.875rem; }
+.frame-field-help { margin-top: -8px; font-size: 0.875rem; }

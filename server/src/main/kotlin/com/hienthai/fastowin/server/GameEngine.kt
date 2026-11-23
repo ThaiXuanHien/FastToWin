@@ -228,7 +228,8 @@ class GameEngine(
                     room.maintenanceAborted = true; room.resultQueued = true; room.phase = RoomPhase.FINISHED
                     room.forcedWinnerId = null; room.finishedAtEpochMillis = nowMillis()
                     room.rematchRequestedPlayerIds.clear(); room.rematchExpiresAtEpochMillis = null; room.sequence++
-                    pendingMaintenanceRooms[room.id] = room.toStoredRoom()
+                    if (room.botPlayerIds.isEmpty()) pendingMaintenanceRooms[room.id] = room.toStoredRoom()
+                    else rooms.remove(room.id)
                 }
                 tournaments.values.filter { maintenancePolicy.isFullyClosed && it.phase in setOf(TournamentPhase.LOBBY, TournamentPhase.RUNNING) &&
                     it.id !in pendingTournamentProgressions && it.matches.none { match -> rooms[match.roomId]?.matchId in pendingCompletedMatches } }.forEach { tournament ->
@@ -459,6 +460,7 @@ class GameEngine(
     }
 
     private suspend fun persistRoom(roomId: String) {
+        if (roomId.startsWith(BOT_ROOM_ID_PREFIX)) return
         persistenceMutex.withRoom(roomId) persist@{
             // The lobby is deliberately still visible in memory while this exact candidate awaits durable retry.
             if (mutex.withLock { preparedStarts[roomId]?.let { it.candidate != null || it.fromMatchmaking } == true }) return@persist
@@ -638,7 +640,11 @@ class GameEngine(
                 val text = it.name + "\n" + it.description
                 UgcTarget(type, id, it.ownerId, text, contentRevision(text))
             }
-            UgcTargetType.ROOM -> mutex.withLock { rooms[id]?.let { UgcTarget(type, id, it.hostId, it.name, contentRevision(it.name)) } }
+            UgcTargetType.ROOM -> mutex.withLock {
+                rooms[id]?.takeIf { it.botPlayerIds.isEmpty() }?.let {
+                    UgcTarget(type, id, it.hostId, it.name, contentRevision(it.name))
+                }
+            }
             UgcTargetType.TOURNAMENT -> mutex.withLock { tournaments[id]?.let { UgcTarget(type, id, it.hostId, it.name, contentRevision(it.name)) } }
         }
         moderationService.repository.transaction {
@@ -651,7 +657,8 @@ class GameEngine(
         if (moderationService.repository !is InMemoryModerationRepository) return
         val keys = moderationService.repository.transaction { publishedTargets() }.toSet() + mutex.withLock {
             sessionsByPlayerId.keys.map { UgcTargetType.PLAYER_PROFILE to it } +
-                rooms.keys.map { UgcTargetType.ROOM to it } + tournaments.keys.map { UgcTargetType.TOURNAMENT to it }
+                rooms.values.filter { it.botPlayerIds.isEmpty() }.map { UgcTargetType.ROOM to it.id } +
+                tournaments.keys.map { UgcTargetType.TOURNAMENT to it }
         }
         keys.forEach { (type, id) -> publishMemoryTarget(type, id) }
     }
@@ -912,7 +919,7 @@ class GameEngine(
                 is ClientMessage.KickPlayer -> kickPlayer(player, message)
                 is ClientMessage.RequestRematch -> respondRematch(player, message.roomId, accept = true)
                 is ClientMessage.RespondRematch -> respondRematch(player, message.roomId, message.accept)
-                is ClientMessage.SelectNumber -> selectNumber(player, message)
+                is ClientMessage.SelectNumber -> selectNumber(player.playerId, message)
                 is ClientMessage.SendEmoji -> sendEmoji(player, message)
             }
         }
@@ -2282,10 +2289,10 @@ class GameEngine(
             val queued = mutex.withLock {
                 matchmakingEntries.values.filter(::isQueuedForMatchmaking).sortedBy { it.joinedAtMillis }
             }
-            val checkedPairs = mutableSetOf<Set<String>>()
+            val checkedPairs = mutableSetOf<Set<MatchmakingEntry>>()
             for (entry in queued) {
                 val deliveries = try {
-                    matchQueuedPlayer(entry, checkedPairs)
+                    matchQueuedPlayer(entry, checkedPairs).ifEmpty { startBotMatch(entry, checkedPairs) }
                 } catch (cancelled: CancellationException) {
                     throw cancelled
                 } catch (failure: Exception) {
@@ -2322,7 +2329,10 @@ class GameEngine(
         return Delivery(ServerMessage.MatchmakingStatus(true, entry.gameMode, entry.matchType, entry.ratingRange(now)), setOf(entry.playerId))
     }
 
-    private suspend fun matchQueuedPlayer(entry: MatchmakingEntry, checkedPairs: MutableSet<Set<String>> = mutableSetOf()): List<Delivery> {
+    private suspend fun matchQueuedPlayer(
+        entry: MatchmakingEntry,
+        checkedPairs: MutableSet<Set<MatchmakingEntry>> = mutableSetOf()
+    ): List<Delivery> {
         val candidates = mutex.withLock {
             val now = nowMillis()
             if (!isQueuedForMatchmaking(entry)) return emptyList()
@@ -2334,7 +2344,7 @@ class GameEngine(
         }
         for (candidate in candidates) {
             if (!mutex.withLock { isQueuedForMatchmaking(entry) }) break
-            if (!checkedPairs.add(setOf(entry.playerId, candidate.playerId))) continue
+            if (!checkedPairs.add(setOf(entry, candidate))) continue
             val blocked = try {
                 friendRepository.isBlockedEitherWay(entry.playerId, candidate.playerId)
             } catch (cancelled: CancellationException) {
@@ -2361,6 +2371,41 @@ class GameEngine(
         return emptyList()
     }
 
+    private suspend fun startBotMatch(entry: MatchmakingEntry, checkedPairs: Set<Set<MatchmakingEntry>>): List<Delivery> {
+        val started = mutex.withLock {
+            val now = nowMillis()
+            if (!isQueuedForMatchmaking(entry) || now - entry.joinedAtMillis < BOT_MATCH_WAIT_MILLIS) return emptyList()
+            // A player may have joined while the sweep checked the block list. Let PvP try that pair first.
+            if (matchmakingEntries.values.any { candidate ->
+                    compatibleForMatchmaking(entry, candidate, now) && setOf(entry, candidate) !in checkedPairs
+                }) return emptyList()
+            val teamMode = entry.gameMode == ProtocolGameMode.TEAM_2V2
+            val botIds = List(if (teamMode) 3 else 1) { "bot-${UUID.randomUUID()}" }
+            val room = Room(
+                id = "$BOT_ROOM_ID_PREFIX${UUID.randomUUID()}",
+                name = "Bot",
+                hostId = entry.playerId,
+                password = null,
+                gameMode = entry.gameMode,
+                guestId = botIds.first(),
+                extraGuestIds = botIds.drop(1).toMutableSet(),
+                botPlayerIds = botIds
+            )
+            if (teamMode) {
+                room.teamIds[entry.playerId] = "TEAM_A"
+                botIds.forEachIndexed { index, id -> room.teamIds[id] = if (index == 1) "TEAM_A" else "TEAM_B" }
+            }
+            val startsAt = now + MATCH_COUNTDOWN_MILLIS
+            room.startMatch(startsAt, timeAttackMillis)
+            room.activationPending = true
+            room.scheduleBotAction(startsAt)
+            matchmakingEntries.remove(entry.playerId)
+            rooms[room.id] = room
+            Delivery(ServerMessage.GameStarted(room.snapshot()), setOf(entry.playerId))
+        }
+        return listOf(started) + presenceUpdates(entry.playerId)
+    }
+
     private suspend fun cancelMatchmaking(playerId: String): List<Delivery> {
         var abandoned: PreparedMatchStart? = null
         val stopped = mutex.withLock {
@@ -2374,7 +2419,10 @@ class GameEngine(
             } }
             return stopped
         }
-        val entry = mutex.withLock { matchmakingEntries.remove(playerId) }
+        val entry = mutex.withLock {
+            if (roomFor(playerId)?.botPlayerIds?.isNotEmpty() == true) return emptyList()
+            matchmakingEntries.remove(playerId)
+        }
         return listOf(
             Delivery(
                 ServerMessage.MatchmakingStatus(
@@ -3040,6 +3088,7 @@ class GameEngine(
                 if (room.id in preparedStarts) return@mapNotNull null
                 val previousSequence = room.sequence
                 val gameFinished = room.finishIfTimedOut()
+                if (room.sequence == previousSequence) advanceBot(room, now)?.let { return@mapNotNull it }
                 if (room.sequence == previousSequence) {
                     if (
                         room.phase == RoomPhase.FINISHED &&
@@ -3306,7 +3355,7 @@ class GameEngine(
         if (roomFor(player.playerId) != null) {
             return listOf(error(player.playerId, "ALREADY_IN_ROOM", legacyFallback("Bạn đang ở trong một phòng khác.")))
         }
-        val room = rooms[command.roomId]
+        val room = rooms[command.roomId]?.takeIf { it.botPlayerIds.isEmpty() }
             ?: return listOf(error(player.playerId, "ROOM_NOT_FOUND", legacyFallback("Phòng không còn tồn tại.")))
         if (room.password != null && !room.password.matches(command.password)) {
             return listOf(error(player.playerId, "WRONG_PASSWORD", legacyFallback("Mật khẩu phòng không đúng.")))
@@ -3551,6 +3600,9 @@ class GameEngine(
         if (player.playerId !in room.activePlayerIds()) {
             return HandleResult(listOf(error(player.playerId, "NOT_IN_ROOM", legacyFallback("Bạn không ở trong phòng này."))))
         }
+        if (room.botPlayerIds.isNotEmpty()) {
+            return HandleResult(listOf(error(player.playerId, "BOT_REMATCH_DISABLED", legacyFallback("Hãy tìm trận mới để gặp đối thủ khác."))))
+        }
         if (room.tournamentId != null) {
             return HandleResult(listOf(error(player.playerId, "TOURNAMENT_REMATCH_DISABLED", legacyFallback("Trận đấu giải không hỗ trợ đấu lại."))))
         }
@@ -3640,24 +3692,37 @@ class GameEngine(
         "fasttowin-rematch:$previousMatchId".toByteArray(Charsets.UTF_8)
     ).toString()
 
-    private fun selectNumber(player: GuestSession, command: ClientMessage.SelectNumber): HandleResult {
+    /** Bot taps use the same authoritative selection and scoring path as human taps. */
+    private fun advanceBot(room: Room, now: Long): TimedAdvance? {
+        if (room.botPlayerIds.isEmpty() || room.phase != RoomPhase.PLAYING || now < room.nextBotActionAtMillis ||
+            sessionsByPlayerId[room.hostId]?.isConnected != true
+        ) return null
+        val botId = room.botPlayerIds[room.nextBotIndex]
+        if (botId in room.finishedPlayerIds) return null
+        room.nextBotIndex = (room.nextBotIndex + 1) % room.botPlayerIds.size
+        val action = ClientMessage.SelectNumber(room.id, room.targetFor(botId), "bot-${room.sequence}")
+        val result = selectNumber(botId, action)
+        return TimedAdvance(result.deliveries.single(), result.completedMatch)
+    }
+
+    private fun selectNumber(playerId: String, command: ClientMessage.SelectNumber): HandleResult {
         val room = rooms[command.roomId]
-            ?: return HandleResult(listOf(error(player.playerId, "ROOM_NOT_FOUND", legacyFallback("Phòng không còn tồn tại."), command.requestId)))
-        if (player.playerId !in room.playerIds()) {
-            return HandleResult(listOf(error(player.playerId, "NOT_IN_ROOM", legacyFallback("Bạn không ở trong phòng này."), command.requestId)))
+            ?: return HandleResult(listOf(error(playerId, "ROOM_NOT_FOUND", legacyFallback("Phòng không còn tồn tại."), command.requestId)))
+        if (playerId !in room.playerIds()) {
+            return HandleResult(listOf(error(playerId, "NOT_IN_ROOM", legacyFallback("Bạn không ở trong phòng này."), command.requestId)))
         }
         if (command.requestId.isBlank() || command.requestId.length > MAX_REQUEST_ID_LENGTH) {
-            return HandleResult(listOf(error(player.playerId, "INVALID_REQUEST_ID", legacyFallback("Mã yêu cầu không hợp lệ."))))
+            return HandleResult(listOf(error(playerId, "INVALID_REQUEST_ID", legacyFallback("Mã yêu cầu không hợp lệ."))))
         }
         if (room.activationPending && nowMillis() < (room.startedAtEpochMillis ?: Long.MAX_VALUE)) {
-            return HandleResult(listOf(error(player.playerId, "GAME_NOT_PLAYING", legacyFallback("Trận đấu chưa bắt đầu hoặc đã kết thúc."), command.requestId)))
+            return HandleResult(listOf(error(playerId, "GAME_NOT_PLAYING", legacyFallback("Trận đấu chưa bắt đầu hoặc đã kết thúc."), command.requestId)))
         }
-        val requestKey = "${player.playerId}:${command.requestId}"
+        val requestKey = "${playerId}:${command.requestId}"
         room.processedRequests[requestKey]?.let { previous ->
-            return HandleResult(listOf(Delivery(previous, setOf(player.playerId))))
+            return HandleResult(listOf(Delivery(previous, setOf(playerId))))
         }
-        if (room.requestCount >= MAX_REQUESTS_PER_MATCH) {
-            return HandleResult(listOf(error(player.playerId, "TOO_MANY_REQUESTS", legacyFallback("Trận đấu có quá nhiều lượt gửi."))))
+        if (room.requestCount >= MAX_REQUESTS_PER_MATCH && playerId !in room.botPlayerIds) {
+            return HandleResult(listOf(error(playerId, "TOO_MANY_REQUESTS", legacyFallback("Trận đấu có quá nhiều lượt gửi."))))
         }
         val timedOut = room.finishIfTimedOut()
         if (room.phase != RoomPhase.PLAYING) {
@@ -3670,41 +3735,41 @@ class GameEngine(
             }
             val completedMatch = room.takeCompletedMatch()
             return HandleResult(
-                deliveries = listOf(error(player.playerId, "GAME_NOT_PLAYING", legacyFallback("Trận đấu chưa bắt đầu hoặc đã kết thúc."), command.requestId)),
+                deliveries = listOf(error(playerId, "GAME_NOT_PLAYING", legacyFallback("Trận đấu chưa bắt đầu hoặc đã kết thúc."), command.requestId)),
                 completedMatch = completedMatch,
                 changedRoomId = room.id.takeIf { completedMatch != null }
             )
         }
-        if (player.playerId in room.finishedPlayerIds) {
+        if (playerId in room.finishedPlayerIds) {
             return HandleResult(listOf(error(
-                player.playerId,
+                playerId,
                 "PLAYER_FINISHED",
                 legacyFallback("Lượt chơi của bạn đã kết thúc."),
                 command.requestId
             )))
         }
-        val expectedNumber = room.targetFor(player.playerId)
+        val expectedNumber = room.targetFor(playerId)
         // Persisted with this first event, never through a separate activation-marker write.
         room.activationPending = false
         if (command.number != expectedNumber) {
-            val rejected = error(player.playerId, "WRONG_NUMBER", legacyFallback("Chưa đúng số, thử lại nhé!"), command.requestId)
-            room.rememberRequest(requestKey, player.playerId, rejected.message)
-            room.recordSelection(player.playerId, command, expectedNumber, SelectionResult.REJECTED)
-            room.combos[player.playerId] = 0
+            val rejected = error(playerId, "WRONG_NUMBER", legacyFallback("Chưa đúng số, thử lại nhé!"), command.requestId)
+            room.rememberRequest(requestKey, playerId, rejected.message)
+            room.recordSelection(playerId, command, expectedNumber, SelectionResult.REJECTED)
+            room.combos[playerId] = 0
             when (room.gameMode) {
                 ProtocolGameMode.TIME_BONUS -> {
-                    val deadline = room.deadlinesAtEpochMillis[player.playerId] ?: nowMillis()
-                    room.deadlinesAtEpochMillis[player.playerId] = deadline - TIME_BONUS_WRONG_MILLIS
+                    val deadline = room.deadlinesAtEpochMillis[playerId] ?: nowMillis()
+                    room.deadlinesAtEpochMillis[playerId] = deadline - TIME_BONUS_WRONG_MILLIS
                     if (deadline - TIME_BONUS_WRONG_MILLIS <= nowMillis()) {
-                        room.finishedPlayerIds += player.playerId
+                        room.finishedPlayerIds += playerId
                     }
                 }
                 ProtocolGameMode.SURVIVAL -> {
-                    val remainingLives = ((room.lives[player.playerId] ?: SURVIVAL_STARTING_LIVES) - 1).coerceAtLeast(0)
-                    room.lives[player.playerId] = remainingLives
+                    val remainingLives = ((room.lives[playerId] ?: SURVIVAL_STARTING_LIVES) - 1).coerceAtLeast(0)
+                    room.lives[playerId] = remainingLives
                     if (remainingLives == 0) {
-                        room.finishedPlayerIds += player.playerId
-                        room.forcedWinnerId = room.playerIds().firstOrNull { it != player.playerId }
+                        room.finishedPlayerIds += playerId
+                        room.forcedWinnerId = room.playerIds().firstOrNull { it != playerId }
                     }
                 }
                 ProtocolGameMode.COMBO -> Unit
@@ -3715,7 +3780,7 @@ class GameEngine(
             val update = ServerMessage.GameStateUpdated(
                 game = room.snapshot(),
                 acceptedNumber = command.number,
-                selectedByPlayerId = player.playerId,
+                selectedByPlayerId = playerId,
                 selectionAccepted = false
             )
             return HandleResult(
@@ -3725,16 +3790,16 @@ class GameEngine(
             )
         }
 
-        room.recordSelection(player.playerId, command, expectedNumber, SelectionResult.ACCEPTED)
-        val nextCombo = (room.combos[player.playerId] ?: 0) + 1
-        room.combos[player.playerId] = nextCombo
+        room.recordSelection(playerId, command, expectedNumber, SelectionResult.ACCEPTED)
+        val nextCombo = (room.combos[playerId] ?: 0) + 1
+        room.combos[playerId] = nextCombo
         val multiplier = if (room.gameMode == ProtocolGameMode.COMBO) comboMultiplier(nextCombo) else 1
-        room.scores[player.playerId] = room.scores.getValue(player.playerId) + SCORE_PER_NUMBER * multiplier
+        room.scores[playerId] = room.scores.getValue(playerId) + SCORE_PER_NUMBER * multiplier
         if (room.gameMode == ProtocolGameMode.TIME_BONUS) {
-            room.selectedNumbersByPlayer.getOrPut(player.playerId, ::mutableListOf) += command.number
-            room.targetIndexes[player.playerId] = (room.targetIndexes[player.playerId] ?: 0) + 1
-            val deadline = room.deadlinesAtEpochMillis[player.playerId] ?: nowMillis()
-            room.deadlinesAtEpochMillis[player.playerId] = maxOf(deadline, nowMillis()) + TIME_BONUS_CORRECT_MILLIS
+            room.selectedNumbersByPlayer.getOrPut(playerId, ::mutableListOf) += command.number
+            room.targetIndexes[playerId] = (room.targetIndexes[playerId] ?: 0) + 1
+            val deadline = room.deadlinesAtEpochMillis[playerId] ?: nowMillis()
+            room.deadlinesAtEpochMillis[playerId] = maxOf(deadline, nowMillis()) + TIME_BONUS_CORRECT_MILLIS
         } else {
             room.selectedNumbers += command.number
             room.playerIds().forEach { id ->
@@ -3742,20 +3807,23 @@ class GameEngine(
                 room.targetIndexes[id] = (room.targetIndexes[id] ?: 0) + 1
             }
         }
-        val nextIndex = room.targetIndexes[player.playerId] ?: 0
-        room.currentTarget = room.targetFor(player.playerId)
+        val nextIndex = room.targetIndexes[playerId] ?: 0
+        room.currentTarget = room.targetFor(playerId)
         if (room.gameMode == ProtocolGameMode.SPEED_UP && nextIndex < GAME_NUMBER_COUNT) {
             val targetMillis = (SPEED_UP_START_MILLIS - nextIndex * SPEED_UP_DECREMENT_MILLIS)
                 .coerceAtLeast(SPEED_UP_MIN_MILLIS)
             room.playerIds().forEach { room.deadlinesAtEpochMillis[it] = nowMillis() + targetMillis }
         }
+        if (room.botPlayerIds.isNotEmpty() && (room.gameMode != ProtocolGameMode.TIME_BONUS || playerId != room.hostId)) {
+            room.scheduleBotAction(nowMillis())
+        }
         room.sequence++
         if (nextIndex >= GAME_NUMBER_COUNT) {
-            room.finishedPlayerIds += player.playerId
+            room.finishedPlayerIds += playerId
             // Shared boards are decided by score, not by who taps the final number.
             // Only independent time-bonus boards award the first finisher the win.
             if (room.gameMode == ProtocolGameMode.TIME_BONUS) {
-                room.forcedWinnerId = player.playerId
+                room.forcedWinnerId = playerId
             }
             room.phase = RoomPhase.FINISHED
             room.finishedAtEpochMillis = nowMillis()
@@ -3764,9 +3832,9 @@ class GameEngine(
         val event = ServerMessage.GameStateUpdated(
             game = room.snapshot(),
             acceptedNumber = command.number,
-            selectedByPlayerId = player.playerId
+            selectedByPlayerId = playerId
         )
-        room.rememberRequest(requestKey, player.playerId, event)
+        room.rememberRequest(requestKey, playerId, event)
         return HandleResult(
             deliveries = listOf(Delivery(event, room.participantIds())),
             completedMatch = room.takeCompletedMatch(),
@@ -4262,6 +4330,7 @@ class GameEngine(
             ).firstOrNull()
         }
         val snapshotTime = nowMillis()
+        val timerTime = if (botPlayerIds.isEmpty()) snapshotTime else maxOf(snapshotTime, startedAtEpochMillis ?: snapshotTime)
         return GameSnapshot(
             roomId = id,
             matchId = matchId,
@@ -4269,8 +4338,8 @@ class GameEngine(
             hostId = hostId,
             gameMode = gameMode,
             matchType = matchType,
-            eventRewards = eventRewards.takeIf { startedAtEpochMillis != null },
-            rewardBreakdowns = if (phase == RoomPhase.FINISHED && !maintenanceAborted) playerIds().associateWith { id ->
+            eventRewards = eventRewards.takeIf { startedAtEpochMillis != null && botPlayerIds.isEmpty() },
+            rewardBreakdowns = if (phase == RoomPhase.FINISHED && !maintenanceAborted && botPlayerIds.isEmpty()) playerIds().associateWith { id ->
                 val outcome = when {
                     gameMode == ProtocolGameMode.TEAM_2V2 -> when {
                         winnerTeamId() == null -> MatchOutcome.DRAW
@@ -4285,37 +4354,42 @@ class GameEngine(
             } else emptyMap(),
             phase = phase,
             players = playerIds().mapNotNull { id ->
-                sessionsByPlayerId[id]?.let { session ->
-                    val metrics = metricsByPlayer[id] ?: SelectionMetrics()
-                    val fastestSegment = metrics.fastestSegment
-                    val slowestSegment = metrics.slowestSegment
-                    PlayerSnapshot(
-                        id = id,
-                        name = session.displayName,
-                        score = scores[id] ?: 0,
-                        isReady = id in readyPlayerIds,
-                        correctSelections = metrics.correct,
-                        wrongSelections = metrics.wrong,
-                        averageReactionMillis = metrics.averageReactionMillis,
-                        currentTarget = targetFor(id),
-                        selectedNumbers = selectedNumbersByPlayer[id]?.toList().orEmpty(),
-                        combo = combos[id] ?: 0,
-                        lives = lives[id] ?: SURVIVAL_STARTING_LIVES,
-                        timeLeftMillis = deadlinesAtEpochMillis[id]
-                            ?.let { (it - snapshotTime).coerceAtLeast(0L) }
-                            ?: 0L,
-                        isFinished = id in finishedPlayerIds,
-                        fastestSegmentStart = fastestSegment?.start ?: 0,
-                        fastestSegmentEnd = fastestSegment?.end ?: 0,
-                        fastestSegmentAverageMillis = fastestSegment?.averageMillis ?: 0,
-                        slowestSegmentStart = slowestSegment?.start ?: 0,
-                        slowestSegmentEnd = slowestSegment?.end ?: 0,
-                        slowestSegmentAverageMillis = slowestSegment?.averageMillis ?: 0,
-                        teamId = teamIds[id],
-                        avatarId = session.avatarId,
-                        frameId = session.frameId
-                    )
+                val session = sessionsByPlayerId[id]
+                val botIndex = botPlayerIds.indexOf(id)
+                val displayName = session?.displayName ?: when {
+                    botIndex < 0 -> return@mapNotNull null
+                    botPlayerIds.size == 1 -> "Bot"
+                    else -> "Bot ${botIndex + 1}"
                 }
+                val metrics = metricsByPlayer[id] ?: SelectionMetrics()
+                val fastestSegment = metrics.fastestSegment
+                val slowestSegment = metrics.slowestSegment
+                PlayerSnapshot(
+                    id = id,
+                    name = displayName,
+                    score = scores[id] ?: 0,
+                    isReady = id in readyPlayerIds,
+                    correctSelections = metrics.correct,
+                    wrongSelections = metrics.wrong,
+                    averageReactionMillis = metrics.averageReactionMillis,
+                    currentTarget = targetFor(id),
+                    selectedNumbers = selectedNumbersByPlayer[id]?.toList().orEmpty(),
+                    combo = combos[id] ?: 0,
+                    lives = lives[id] ?: SURVIVAL_STARTING_LIVES,
+                    timeLeftMillis = deadlinesAtEpochMillis[id]
+                        ?.let { (it - timerTime).coerceAtLeast(0L) }
+                        ?: 0L,
+                    isFinished = id in finishedPlayerIds,
+                    fastestSegmentStart = fastestSegment?.start ?: 0,
+                    fastestSegmentEnd = fastestSegment?.end ?: 0,
+                    fastestSegmentAverageMillis = fastestSegment?.averageMillis ?: 0,
+                    slowestSegmentStart = slowestSegment?.start ?: 0,
+                    slowestSegmentEnd = slowestSegment?.end ?: 0,
+                    slowestSegmentAverageMillis = slowestSegment?.averageMillis ?: 0,
+                    teamId = teamIds[id],
+                    avatarId = session?.avatarId,
+                    frameId = session?.frameId ?: "frame_default"
+                )
             },
             spectators = spectatorIds.mapNotNull { id ->
                 sessionsByPlayerId[id]?.let { session ->
@@ -4345,7 +4419,8 @@ class GameEngine(
                 disconnectedForfeitPlayerId?.let { MatchForfeitSnapshot(it, MatchForfeitReason.DISCONNECT_TIMEOUT) }
                     ?: intentionalLeavePlayerIds.singleOrNull()?.let { MatchForfeitSnapshot(it, MatchForfeitReason.VOLUNTARY_LEAVE) }
             } else null,
-            serverTimeEpochMillis = snapshotTime.takeIf { rematchExpiresAtEpochMillis != null }
+            serverTimeEpochMillis = snapshotTime.takeIf { rematchExpiresAtEpochMillis != null },
+            isBotMatch = botPlayerIds.isNotEmpty()
         )
     }
 
@@ -4363,7 +4438,7 @@ class GameEngine(
                         (event.occurredAtMillis - (targetAvailableAtMillis[event.playerId] ?: startedAt))
                             .coerceAtLeast(0L)
                     val reactionMillis = if (
-                        current.reactionSamples == 0 && rawReactionMillis >= MATCH_COUNTDOWN_MILLIS
+                        botPlayerIds.isEmpty() && current.reactionSamples == 0 && rawReactionMillis >= MATCH_COUNTDOWN_MILLIS
                     ) {
                         rawReactionMillis - MATCH_COUNTDOWN_MILLIS
                     } else {
@@ -4415,7 +4490,7 @@ class GameEngine(
     }
 
     private fun Room.takeCompletedMatch(): CompletedMatch? {
-        if (maintenanceAborted || phase != RoomPhase.FINISHED || resultQueued) return null
+        if (botPlayerIds.isNotEmpty() || maintenanceAborted || phase != RoomPhase.FINISHED || resultQueued) return null
         val startedAt = startedAtEpochMillis ?: return null
         val winnerId = winnerId()
         resultQueued = true
@@ -4560,6 +4635,9 @@ class GameEngine(
         val password: PasswordHash?,
         val gameMode: com.hienthai.fastowin.protocol.ProtocolGameMode,
         val matchType: MatchType = MatchType.CASUAL,
+        val botPlayerIds: List<String> = emptyList(),
+        var nextBotActionAtMillis: Long = Long.MAX_VALUE,
+        var nextBotIndex: Int = 0,
         var tournamentId: String? = null,
         var tournamentMatchId: String? = null,
         var tournamentRound: Int? = null,
@@ -4621,8 +4699,16 @@ class GameEngine(
         }
 
         fun playerIds(): Set<String> = setOfNotNull(hostId, guestId) + extraGuestIds
-        fun activePlayerIds(): Set<String> = playerIds() - departedPlayerIds
+        fun activePlayerIds(): Set<String> = playerIds() - departedPlayerIds - botPlayerIds
         fun participantIds(): Set<String> = activePlayerIds() + spectatorIds
+
+        fun scheduleBotAction(now: Long) {
+            val latestReaction = if (gameMode == ProtocolGameMode.SPEED_UP) {
+                val deadline = deadlinesAtEpochMillis.getValue(hostId)
+                (deadline - now - GAME_TIMER_INTERVAL_MILLIS - 1L).coerceIn(0L, BOT_MAX_REACTION_MILLIS)
+            } else BOT_MAX_REACTION_MILLIS
+            nextBotActionAtMillis = now + (minOf(BOT_MIN_REACTION_MILLIS, latestReaction)..latestReaction).random()
+        }
 
         fun targetFor(playerId: String): Int {
             val index = targetIndexes[playerId] ?: 0
@@ -4769,7 +4855,8 @@ class GameEngine(
         )
     }
 
-    private data class MatchmakingEntry(
+    // A refreshed queue entry needs a fresh eligibility check, even if it retains the same join time.
+    private class MatchmakingEntry(
         val playerId: String,
         val gameMode: com.hienthai.fastowin.protocol.ProtocolGameMode,
         val matchType: MatchType,
@@ -5247,6 +5334,10 @@ class GameEngine(
         const val MATCHMAKING_EXPAND_STEP = 50
         const val MATCHMAKING_MAX_RANGE = 300
         const val MATCHMAKING_EXPAND_INTERVAL_MILLIS = 10_000L
+        const val BOT_MATCH_WAIT_MILLIS = 120_000L
+        const val BOT_MIN_REACTION_MILLIS = 1_200L
+        const val BOT_MAX_REACTION_MILLIS = 2_000L
+        const val BOT_ROOM_ID_PREFIX = "bot-room-"
         const val RESTORED_GUEST_RESUME_TOKEN = "restored-guest-session"
         val TIMED_GAME_MODES = setOf(
             ProtocolGameMode.TIME_ATTACK,

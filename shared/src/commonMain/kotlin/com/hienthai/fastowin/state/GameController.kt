@@ -1783,14 +1783,14 @@ class GameController private constructor(
             is ServerMessage.GameStarted -> startMatchCountdown(message.game)
             is ServerMessage.GameStateUpdated -> {
                 applyGameSnapshot(message.game)
-                if (message.game.phase == RoomPhase.FINISHED && accountDisplayName != null) {
+                if (message.game.phase == RoomPhase.FINISHED && !message.game.isBotMatch && accountDisplayName != null) {
                     requestProfileRefresh()
                     sendMessage(ClientMessage.GetFriends)
                 }
             }
             is ServerMessage.GameFinished -> {
                 applyGameSnapshot(message.game)
-                if (accountDisplayName != null) {
+                if (!message.game.isBotMatch && accountDisplayName != null) {
                     requestProfileRefresh()
                     sendMessage(ClientMessage.GetFriends)
                 }
@@ -2357,6 +2357,7 @@ class GameController private constructor(
                 latestGameSequence = -1L,
                 eventRewards = null,
                 rewardBreakdowns = emptyMap(),
+                isBotMatch = false,
                 isRoomHost = false,
                 hasOpponent = false,
                 sendingRoomInviteFriendIds = emptySet(),

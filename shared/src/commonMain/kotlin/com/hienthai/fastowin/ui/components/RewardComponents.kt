@@ -17,6 +17,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.hienthai.fastowin.ui.theme.ArcadeGem
@@ -73,21 +74,9 @@ fun RewardAmounts(
         horizontalArrangement = Arrangement.spacedBy(10.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
-        if (gold > 0) RewardAmount(
-            amount = gold,
-            suffix = "",
-            icon = { Icon(Icons.Default.MonetizationOn, null, tint = GoldColor, modifier = Modifier.size(17.dp)) }
-        )
-        if (xp > 0) RewardAmount(
-            amount = xp,
-            suffix = " XP",
-            icon = { Icon(Icons.Default.Star, null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(17.dp)) }
-        )
-        if (gems > 0) RewardAmount(
-            amount = gems,
-            suffix = "",
-            icon = { Icon(Icons.Default.Payments, null, tint = GemColor, modifier = Modifier.size(17.dp)) }
-        )
+        if (gold > 0) RewardAmount("+$gold", RewardCurrency.GOLD)
+        if (xp > 0) RewardAmount("+$xp XP", RewardCurrency.XP)
+        if (gems > 0) RewardAmount("+$gems", RewardCurrency.GEM)
     }
 }
 
@@ -146,18 +135,28 @@ private fun CurrencyPill(
     }
 }
 
+internal enum class RewardCurrency { GOLD, XP, GEM }
+
 @Composable
-private fun RewardAmount(
-    amount: Int,
-    suffix: String,
-    icon: @Composable () -> Unit
+internal fun RewardAmount(
+    label: String,
+    currency: RewardCurrency,
+    modifier: Modifier = Modifier,
+    style: TextStyle = MaterialTheme.typography.labelMedium,
+    fontWeight: FontWeight = FontWeight.Bold
 ) {
+    val (icon, tint) = when (currency) {
+        RewardCurrency.GOLD -> Icons.Default.MonetizationOn to GoldColor
+        RewardCurrency.XP -> Icons.Default.Star to MaterialTheme.colorScheme.primary
+        RewardCurrency.GEM -> Icons.Default.Payments to GemColor
+    }
     Row(
+        modifier = modifier,
         horizontalArrangement = Arrangement.spacedBy(3.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
-        icon()
-        Text("+$amount$suffix", style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.Bold)
+        Icon(icon, contentDescription = null, tint = tint, modifier = Modifier.size(17.dp))
+        Text(label, style = style, fontWeight = fontWeight)
     }
 }
 

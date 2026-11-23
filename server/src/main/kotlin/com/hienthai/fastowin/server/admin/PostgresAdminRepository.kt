@@ -1,6 +1,9 @@
 package com.hienthai.fastowin.server.admin
 
 import com.hienthai.fastowin.server.PlayerProgression
+import com.hienthai.fastowin.server.avatars.StoredAvatarFrame
+import com.hienthai.fastowin.server.avatars.loadAvatarFrameDefinitions
+import com.hienthai.fastowin.server.avatars.loadAvatarFrameImage
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.encodeToString
@@ -14,6 +17,14 @@ import java.util.UUID
 import javax.sql.DataSource
 
 class PostgresAdminRepository(private val dataSource: DataSource) : AdminRepository {
+    override suspend fun avatarFrameDefinitions() = avatarFrameRead(Connection::loadAvatarFrameDefinitions)
+
+    override suspend fun avatarFrameImage(id: String) = avatarFrameRead { it.loadAvatarFrameImage(id) }
+
+    private suspend fun <T> avatarFrameRead(read: (Connection) -> T): T = withContext(Dispatchers.IO) {
+        try { dataSource.connection.use(read) } catch (_: SQLException) { unavailable() }
+    }
+
     override suspend fun <T> transaction(block: AdminTransaction.() -> T): T = locked(exclusive = true, block)
 
     override suspend fun <T> readTransaction(block: AdminTransaction.() -> T): T = locked(exclusive = false, block)
@@ -37,6 +48,25 @@ class PostgresAdminRepository(private val dataSource: DataSource) : AdminReposit
 }
 
 internal class JdbcAdminTransaction(private val connection: Connection) : AdminTransaction {
+    override fun avatarFrames() = connection.loadAvatarFrameDefinitions()
+
+    override fun framePng(id: String) = connection.loadAvatarFrameImage(id)
+
+    override fun saveAvatarFrame(frame: StoredAvatarFrame, png: ByteArray?) {
+        connection.prepareStatement("""
+            INSERT INTO avatar_frames(id, name_vi, name_en, version, png) VALUES (?, ?, ?, ?, ?)
+            ON CONFLICT (id) DO UPDATE SET name_vi = EXCLUDED.name_vi, name_en = EXCLUDED.name_en,
+                version = EXCLUDED.version, png = COALESCE(EXCLUDED.png, avatar_frames.png)
+        """.trimIndent()).use { statement ->
+            statement.setString(1, frame.id)
+            statement.setString(2, frame.nameVi)
+            statement.setString(3, frame.nameEn)
+            statement.setInt(4, frame.version)
+            statement.setBytes(5, png)
+            statement.executeUpdate()
+        }
+    }
+
     private fun <T> rows(sql: String, values: List<Any?> = emptyList(), mapper: (ResultSet) -> T): List<T> =
         connection.prepareStatement(sql).use { statement ->
             statement.bind(values)

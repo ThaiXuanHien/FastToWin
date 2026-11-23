@@ -2,6 +2,7 @@ package com.hienthai.fastowin.server.admin
 
 import com.hienthai.fastowin.server.gifts.*
 import com.hienthai.fastowin.server.PlayerProgression
+import com.hienthai.fastowin.server.avatars.StoredAvatarFrame
 import java.util.UUID
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
@@ -27,11 +28,14 @@ class InMemoryAdminRepository : AdminRepository {
         /** adminId to (code hash to used). */
         val recoveryCodes: MutableMap<String, Map<String, Boolean>> = linkedMapOf(),
         val mfaChallenges: MutableMap<String, AdminMfaChallenge> = linkedMapOf(),
-        val approvals: MutableMap<Triple<String, String, String>, PublishApproval> = linkedMapOf()
+        val approvals: MutableMap<Triple<String, String, String>, PublishApproval> = linkedMapOf(),
+        val frames: MutableMap<String, StoredAvatarFrame> = linkedMapOf(),
+        val framePngs: MutableMap<String, ByteArray> = linkedMapOf()
     ) {
         fun snapshot() = State(accounts.toMutableMap(), sessions.toMutableMap(), requests.toMutableMap(), audits.toMutableList(),
             users.toMutableMap(), matches.toMutableMap(), wallet.toMutableMap(), announcementPush.toMutableMap(), playerStorageAvailable,
-            mfa.toMutableMap(), recoveryCodes.toMutableMap(), mfaChallenges.toMutableMap(), approvals.toMutableMap())
+            mfa.toMutableMap(), recoveryCodes.toMutableMap(), mfaChallenges.toMutableMap(), approvals.toMutableMap(),
+            frames.toMutableMap(), framePngs.toMutableMap())
     }
     suspend fun seedUser(user: UserDetail, matches: List<MatchEntry> = emptyList(), wallet: List<WalletEntry> = emptyList()) = mutex.withLock {
         state.playerStorageAvailable = true; state.users[user.id] = user; state.matches[user.id] = matches; state.wallet[user.id] = wallet
@@ -47,6 +51,12 @@ class InMemoryAdminRepository : AdminRepository {
         return mutex.withLock {
         val next = state.snapshot()
         val tx = object : AdminTransaction, GiftMemoryPlayers, com.hienthai.fastowin.server.announcements.AnnouncementMemoryPushTargets {
+            override fun avatarFrames() = next.frames.values.sortedBy(StoredAvatarFrame::id)
+            override fun framePng(id: String) = next.framePngs[id]?.copyOf()
+            override fun saveAvatarFrame(frame: StoredAvatarFrame, png: ByteArray?) {
+                next.frames[frame.id] = frame
+                if (png != null) next.framePngs[frame.id] = png.copyOf()
+            }
             override fun announcementPushTarget(userId: String): Pair<String, String>? = next.announcementPush[userId]
             override fun giftPlayers(): List<GiftPlayer> {
                 available()

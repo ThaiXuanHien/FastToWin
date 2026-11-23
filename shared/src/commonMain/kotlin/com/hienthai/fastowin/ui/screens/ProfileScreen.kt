@@ -142,6 +142,7 @@ import com.hienthai.fastowin.ui.components.FastToWinPullRefresh
 import com.hienthai.fastowin.ui.components.HeaderRefreshAction
 import com.hienthai.fastowin.ui.components.WalletDeltaAmounts
 import com.hienthai.fastowin.ui.components.PlayerAvatar
+import com.hienthai.fastowin.ui.components.catalogAvatarFrameName
 import com.hienthai.fastowin.ui.components.nextArcadePageItemCount
 import com.hienthai.fastowin.resources.Res
 import com.hienthai.fastowin.resources.arcade_leaderboard_trophy
@@ -2703,7 +2704,8 @@ private fun formatMatchDuration(millis: Long): String {
 
 @Composable
 private fun CosmeticSnapshot.localizedName(): String =
-    localizedNetworkText(nameKey, emptyMap(), name)
+    (if (type == CosmeticType.FRAME) catalogAvatarFrameName(id) else null)
+        ?: localizedNetworkText(nameKey, emptyMap(), name)
 
 @Composable
 private fun CosmeticSnapshot.localizedUnlockRequirement(): String? =

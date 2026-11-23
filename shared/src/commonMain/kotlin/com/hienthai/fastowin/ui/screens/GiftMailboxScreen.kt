@@ -17,18 +17,13 @@ import androidx.compose.foundation.layout.safeDrawing
 import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
-import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Payments
-import androidx.compose.material.icons.filled.MonetizationOn
 import androidx.compose.material.icons.filled.Redeem
 import androidx.compose.material.icons.filled.Refresh
-import androidx.compose.material.icons.filled.Star
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
-import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -60,8 +55,8 @@ import com.hienthai.fastowin.ui.components.ArcadeActionStyle
 import com.hienthai.fastowin.ui.components.ArcadeHeaderIconButton
 import com.hienthai.fastowin.ui.components.ArcadePanel
 import com.hienthai.fastowin.ui.components.FastToWinHeader
-import com.hienthai.fastowin.ui.components.GemColor
-import com.hienthai.fastowin.ui.components.GoldColor
+import com.hienthai.fastowin.ui.components.RewardAmount
+import com.hienthai.fastowin.ui.components.RewardCurrency
 import com.hienthai.fastowin.ui.components.SystemBackHandler
 import com.hienthai.fastowin.ui.layout.ResponsiveScreen
 import com.hienthai.fastowin.ui.theme.ArcadePalette
@@ -264,7 +259,7 @@ private fun GiftCard(
                 color = MaterialTheme.colorScheme.onSurface
             )
             if (race != null) {
-                RaceReward(race.reward)
+                GiftRewardAmounts(race.reward.gold, race.reward.xp, race.reward.gems, plays = 0)
                 Text(localized(TextKey.ClanRaceRankPoints, "rank" to race.finalRank, "points" to race.points))
                 race.poolId?.let { Text(racePoolLabel(it), style = MaterialTheme.typography.bodySmall) }
                 Text(localized(TextKey.ClanRaceCutoff, "time" to raceTime(race.cutoffEpochMillis)))
@@ -285,20 +280,28 @@ private fun GiftCard(
                         else -> null
                     }
                 }
-                GiftState.CLAIMED -> localized(TextKey.GiftClaimed)
+                GiftState.CLAIMED -> null
                 GiftState.EXPIRED -> localized(TextKey.GiftExpired)
                 GiftState.CANCELLED -> localized(TextKey.GiftCancelled)
             }
             status?.let { Text(it, color = MaterialTheme.colorScheme.onSurfaceVariant) }
             errorCode?.let { Text(localized(giftErrorTextKey(it)), color = MaterialTheme.colorScheme.error) }
-            if (displayState == GiftState.AVAILABLE) {
-                ArcadeActionButton(
+            when (displayState) {
+                GiftState.CLAIMED -> ArcadeActionButton(
+                    label = localized(TextKey.GiftClaimed),
+                    onClick = {},
+                    enabled = false,
+                    style = ArcadeActionStyle.OUTLINE,
+                    modifier = Modifier.fillMaxWidth().testTag("gift_claim_${gift.campaignId}")
+                )
+                GiftState.AVAILABLE -> ArcadeActionButton(
                     label = localized(if (isPending) TextKey.GiftClaiming else TextKey.GiftClaim),
                     onClick = onClaim,
                     enabled = !isPending,
                     style = ArcadeActionStyle.GOLD,
                     modifier = Modifier.fillMaxWidth().testTag("gift_claim_${gift.campaignId}")
                 )
+                GiftState.EXPIRED, GiftState.CANCELLED -> Unit
             }
         }
     }
@@ -315,28 +318,17 @@ private fun GiftRewardAmounts(gold: Int, xp: Int, gems: Int, plays: Int) {
     }.joinToString(", ")
     FlowRow(
         modifier = Modifier.fillMaxWidth().clearAndSetSemantics { contentDescription = description },
-        horizontalArrangement = Arrangement.spacedBy(16.dp),
+        horizontalArrangement = Arrangement.spacedBy(12.dp),
         verticalArrangement = Arrangement.spacedBy(8.dp)
     ) {
-        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-            // Same filled coin and tint as Mission, on the shared navy backing.
-            Surface(shape = CircleShape, color = ArcadePalette.Navy900) {
-                Icon(Icons.Default.MonetizationOn, null, tint = GoldColor, modifier = Modifier.padding(2.dp).size(20.dp))
-            }
-            Text(gold.toString(), style = MaterialTheme.typography.bodyLarge, fontWeight = FontWeight.Bold,
-                color = MaterialTheme.colorScheme.onSurface)
-        }
-        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-            Icon(Icons.Default.Star, null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(20.dp))
-            Text(xp.toString(), style = MaterialTheme.typography.bodyLarge, fontWeight = FontWeight.Bold,
-                color = MaterialTheme.colorScheme.onSurface)
-        }
-        if (gems > 0) Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-            Icon(Icons.Default.Payments, null, tint = GemColor, modifier = Modifier.size(20.dp))
-            Text(gems.toString(), style = MaterialTheme.typography.bodyLarge, fontWeight = FontWeight.Bold,
-                color = MaterialTheme.colorScheme.onSurface)
-        }
-        if (plays > 0) Text(localized(TextKey.PlayCreditOffer, "plays" to plays),
-            style = MaterialTheme.typography.bodyLarge, fontWeight = FontWeight.Bold)
+        RewardAmount("+$gold", RewardCurrency.GOLD, Modifier.align(Alignment.CenterVertically))
+        RewardAmount("+$xp XP", RewardCurrency.XP, Modifier.align(Alignment.CenterVertically))
+        if (gems > 0) RewardAmount("+$gems", RewardCurrency.GEM, Modifier.align(Alignment.CenterVertically))
+        if (plays > 0) Text(
+            localized(TextKey.PlayCreditOffer, "plays" to plays),
+            modifier = Modifier.align(Alignment.CenterVertically),
+            style = MaterialTheme.typography.labelMedium,
+            fontWeight = FontWeight.Bold
+        )
     }
 }

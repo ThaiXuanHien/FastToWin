@@ -1,5 +1,6 @@
 package com.hienthai.fastowin.state
 
+import com.hienthai.fastowin.localization.TextKey
 import com.hienthai.fastowin.navigation.GameMode
 import com.hienthai.fastowin.protocol.PlayerProfileSnapshot
 import com.hienthai.fastowin.protocol.LeaderboardSnapshot
@@ -149,6 +150,7 @@ data class GameState(
     val countdown: Int? = null,
     val isMatchStarted: Boolean = false,
     val currentMatchId: String? = null,
+    val isBotMatch: Boolean = false,
     val eventRewards: com.hienthai.fastowin.protocol.MatchRewardEventSnapshot? = null,
     val rewardBreakdowns: Map<String, com.hienthai.fastowin.protocol.MatchRewardBreakdown> = emptyMap(),
     val currentTournamentId: String? = null,
@@ -272,6 +274,13 @@ internal val GameState.canOpenPushInbox: Boolean
     get() = isSessionRestored && connectionStatus == ConnectionStatus.CONNECTED && currentRoomId == null &&
         !isMatchStarted && !isGameOver && !isMatchmaking
 
+internal val GameState.matchTypeLabelKey: TextKey
+    get() = when {
+        isBotMatch -> TextKey.BotMatch
+        matchType == MatchType.RANKED -> TextKey.Ranked
+        else -> TextKey.Casual
+    }
+
 internal fun GameState.prepareForMatchStart(): GameState = copy(
     isProfileOpen = false,
     isProfileLoading = false,
@@ -345,6 +354,7 @@ internal fun GameState.applyAuthoritativeSnapshot(game: GameSnapshot, playerId: 
         matchmakingStartedAtMillis = null,
         isMatchStarted = playing,
         currentMatchId = game.matchId,
+        isBotMatch = game.isBotMatch,
         eventRewards = game.eventRewards,
         rewardBreakdowns = game.rewardBreakdowns,
         currentTournamentId = game.tournamentId,

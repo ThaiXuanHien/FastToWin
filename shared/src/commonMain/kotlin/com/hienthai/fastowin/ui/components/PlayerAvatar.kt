@@ -2,6 +2,7 @@ package com.hienthai.fastowin.ui.components
 
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.size
@@ -9,6 +10,12 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -21,7 +28,10 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
+import com.hienthai.fastowin.data.network.AvatarFrameApiClient
 import com.hienthai.fastowin.data.network.toAvatarImageUrl
+import com.hienthai.fastowin.data.network.toHttpBaseUrl
+import com.hienthai.fastowin.protocol.AvatarFrameDefinition
 import com.hienthai.fastowin.protocol.MODERATED_AVATAR_ID
 import com.hienthai.fastowin.protocol.DAILY_CHECK_IN_AVATAR_ID
 import com.hienthai.fastowin.protocol.DEFAULT_FEMALE_AVATAR_ID
@@ -32,37 +42,12 @@ import com.hienthai.fastowin.localization.localized
 import com.hienthai.fastowin.localization.localizedNetworkText
 import com.hienthai.fastowin.localization.localizedRankedTierName
 import com.hienthai.fastowin.localization.AppLanguage
-import com.hienthai.fastowin.localization.LocalizationService
-import com.hienthai.fastowin.localization.rankedTierTextKey
+import com.hienthai.fastowin.localization.LocalLocalization
 import com.hienthai.fastowin.resources.Res
-import com.hienthai.fastowin.resources.arcade_frame_bronze
-import com.hienthai.fastowin.resources.arcade_frame_challenger
-import com.hienthai.fastowin.resources.arcade_frame_champion
-import com.hienthai.fastowin.resources.arcade_frame_default
-import com.hienthai.fastowin.resources.arcade_frame_diamond
-import com.hienthai.fastowin.resources.arcade_frame_dragon_might
-import com.hienthai.fastowin.resources.arcade_frame_emperor
-import com.hienthai.fastowin.resources.arcade_frame_glory
-import com.hienthai.fastowin.resources.arcade_frame_gold
-import com.hienthai.fastowin.resources.arcade_frame_immortal
-import com.hienthai.fastowin.resources.arcade_frame_legend
-import com.hienthai.fastowin.resources.arcade_frame_lightning
-import com.hienthai.fastowin.resources.arcade_frame_master
-import com.hienthai.fastowin.resources.arcade_frame_peerless
-import com.hienthai.fastowin.resources.arcade_frame_perfect
-import com.hienthai.fastowin.resources.arcade_frame_persistent
-import com.hienthai.fastowin.resources.arcade_frame_platinum
-import com.hienthai.fastowin.resources.arcade_frame_silver
-import com.hienthai.fastowin.resources.arcade_frame_speed_shadow
-import com.hienthai.fastowin.resources.arcade_frame_supreme
-import com.hienthai.fastowin.resources.arcade_frame_unyielding
-import com.hienthai.fastowin.resources.arcade_frame_veteran
-import com.hienthai.fastowin.resources.arcade_frame_warrior
-import com.hienthai.fastowin.resources.arcade_frame_wildfire
 import com.hienthai.fastowin.resources.avatar_player_blue
 import com.hienthai.fastowin.resources.avatar_player_coral
-import org.jetbrains.compose.resources.DrawableResource
 import org.jetbrains.compose.resources.painterResource
+import kotlinx.coroutines.CancellationException
 
 @Composable
 fun PlayerAvatar(
@@ -82,7 +67,8 @@ fun PlayerAvatar(
     val isModerated = avatarId == MODERATED_AVATAR_ID || (previewBitmap == null && userId in suppressedIds)
     val frameName = localizedAvatarFrameName(frameId)
     val avatarDescription = localized(TextKey.AvatarOfPlayer, "player" to displayName)
-    val frameResource = avatarFrameResource(frameId)
+    val frames = LocalAvatarFrames.current
+    val frameUrl = frames?.let { resolveAvatarFrameImageUrl(avatarServerUrl, frameId, it) }.orEmpty()
     val avatarSize = size * 0.78f
     val illustratedAvatar = if (avatarId in coralAvatarIds) {
         Res.drawable.avatar_player_coral
@@ -135,12 +121,9 @@ fun PlayerAvatar(
             }
         }
 
-        Image(
-            painter = painterResource(frameResource),
-            contentDescription = null,
-            contentScale = ContentScale.Fit,
-            modifier = Modifier.fillMaxSize()
-        )
+        NetworkImage(frameUrl, modifier = Modifier.fillMaxSize(), contentScale = ContentScale.Fit) {
+            Box(Modifier.size(avatarSize).border(1.dp, MaterialTheme.colorScheme.outlineVariant, CircleShape))
+        }
     }
 }
 
@@ -158,6 +141,7 @@ private val LocalAvatarServerUrl = staticCompositionLocalOf { "" }
 private val LocalSuppressedAvatarIds = staticCompositionLocalOf { emptySet<String>() }
 private val LocalInvalidatedAvatarIds = staticCompositionLocalOf { emptySet<String>() }
 private val LocalAvatarRevision = staticCompositionLocalOf { 0L }
+private val LocalAvatarFrames = staticCompositionLocalOf<Map<String, AvatarFrameDefinition>?> { null }
 
 @Composable
 fun AvatarImageProvider(
@@ -165,108 +149,54 @@ fun AvatarImageProvider(
     revision: Long,
     suppressedIds: Set<String> = emptySet(),
     invalidatedIds: Set<String> = emptySet(),
+    connected: Boolean = true,
+    collectionOpen: Boolean = false,
     content: @Composable () -> Unit
 ) {
+    val client = remember(serverUrl) { serverUrl.takeIf(String::isNotBlank)?.let(::AvatarFrameApiClient) }
+    var frames by remember(client) { mutableStateOf<Map<String, AvatarFrameDefinition>?>(null) }
+    DisposableEffect(client) { onDispose { client?.close() } }
+    LaunchedEffect(client, connected, collectionOpen) {
+        if (!connected || client == null) return@LaunchedEffect
+        try {
+            client.load()?.let { catalog -> frames = catalog.frames.associateBy { it.id } }
+        } catch (cancelled: CancellationException) {
+            throw cancelled
+        } catch (_: Exception) {
+            // Keep displaying the last good catalog during a network failure.
+        }
+    }
     CompositionLocalProvider(
         LocalAvatarServerUrl provides serverUrl,
         LocalAvatarRevision provides revision,
         LocalSuppressedAvatarIds provides suppressedIds,
         LocalInvalidatedAvatarIds provides invalidatedIds,
+        LocalAvatarFrames provides frames,
         content = content
     )
 }
 
-private fun avatarFrameResource(frameId: String): DrawableResource {
-    return when (avatarFrameAssetName(frameId)) {
-        "arcade_frame_bronze" -> Res.drawable.arcade_frame_bronze
-        "arcade_frame_silver" -> Res.drawable.arcade_frame_silver
-        "arcade_frame_gold" -> Res.drawable.arcade_frame_gold
-        "arcade_frame_platinum" -> Res.drawable.arcade_frame_platinum
-        "arcade_frame_diamond" -> Res.drawable.arcade_frame_diamond
-        "arcade_frame_master" -> Res.drawable.arcade_frame_master
-        "arcade_frame_challenger" -> Res.drawable.arcade_frame_challenger
-        "arcade_frame_perfect" -> Res.drawable.arcade_frame_perfect
-        "arcade_frame_persistent" -> Res.drawable.arcade_frame_persistent
-        "arcade_frame_lightning" -> Res.drawable.arcade_frame_lightning
-        "arcade_frame_wildfire" -> Res.drawable.arcade_frame_wildfire
-        "arcade_frame_warrior" -> Res.drawable.arcade_frame_warrior
-        "arcade_frame_veteran" -> Res.drawable.arcade_frame_veteran
-        "arcade_frame_glory" -> Res.drawable.arcade_frame_glory
-        "arcade_frame_unyielding" -> Res.drawable.arcade_frame_unyielding
-        "arcade_frame_legend" -> Res.drawable.arcade_frame_legend
-        "arcade_frame_emperor" -> Res.drawable.arcade_frame_emperor
-        "arcade_frame_speed_shadow" -> Res.drawable.arcade_frame_speed_shadow
-        "arcade_frame_champion" -> Res.drawable.arcade_frame_champion
-        "arcade_frame_immortal" -> Res.drawable.arcade_frame_immortal
-        "arcade_frame_dragon_might" -> Res.drawable.arcade_frame_dragon_might
-        "arcade_frame_supreme" -> Res.drawable.arcade_frame_supreme
-        "arcade_frame_peerless" -> Res.drawable.arcade_frame_peerless
-        else -> Res.drawable.arcade_frame_default
-    }
+internal fun resolveAvatarFrameImageUrl(
+    serverUrl: String,
+    frameId: String,
+    frames: Map<String, AvatarFrameDefinition>
+): String {
+    if (serverUrl.isBlank()) return ""
+    val tierFrameId = seasonalFrameTier(frameId)?.let { "frame_${it.name.lowercase()}" }
+    val path = (frames[frameId] ?: tierFrameId?.let(frames::get))?.imagePath ?: return ""
+    return if (avatarFrameImagePath.matches(path)) "${serverUrl.toHttpBaseUrl()}$path" else ""
 }
 
-internal fun avatarFrameAssetName(frameId: String): String {
-    seasonalFrameTier(frameId)?.let { tier ->
-        return when (tier) {
-            RankedTier.BRONZE -> "arcade_frame_bronze"
-            RankedTier.SILVER -> "arcade_frame_silver"
-            RankedTier.GOLD -> "arcade_frame_gold"
-            RankedTier.PLATINUM -> "arcade_frame_platinum"
-            RankedTier.DIAMOND -> "arcade_frame_diamond"
-            RankedTier.MASTER -> "arcade_frame_master"
-            RankedTier.CHALLENGER -> "arcade_frame_challenger"
-        }
-    }
-    return when (frameId) {
-        "frame_bronze" -> "arcade_frame_bronze"
-        "frame_silver" -> "arcade_frame_silver"
-        "frame_gold" -> "arcade_frame_gold"
-        "frame_perfect" -> "arcade_frame_perfect"
-        "frame_persistent" -> "arcade_frame_persistent"
-        "frame_lightning" -> "arcade_frame_lightning"
-        "frame_wildfire" -> "arcade_frame_wildfire"
-        "frame_warrior" -> "arcade_frame_warrior"
-        "frame_veteran" -> "arcade_frame_veteran"
-        "frame_diamond" -> "arcade_frame_diamond"
-        "frame_challenger" -> "arcade_frame_challenger"
-        "frame_glory" -> "arcade_frame_glory"
-        "frame_unyielding" -> "arcade_frame_unyielding"
-        "frame_legend" -> "arcade_frame_legend"
-        "frame_emperor" -> "arcade_frame_emperor"
-        "frame_speed_shadow" -> "arcade_frame_speed_shadow"
-        "frame_champion" -> "arcade_frame_champion"
-        "frame_immortal" -> "arcade_frame_immortal"
-        "frame_dragon_might" -> "arcade_frame_dragon_might"
-        "frame_supreme" -> "arcade_frame_supreme"
-        "frame_peerless" -> "arcade_frame_peerless"
-        else -> "arcade_frame_default"
-    }
-}
+private val avatarFrameImagePath = Regex("/api/avatar-frames/[a-z0-9_]+/image(?:\\?v=[A-Za-z0-9_-]+)?")
 
-fun avatarFrameName(frameId: String): String {
-    val localization = LocalizationService(AppLanguage.VIETNAMESE)
-    seasonalFrameTier(frameId)?.let {
-        return localization.text(
-            TextKey.SeasonalFrame,
-            mapOf("tier" to localization.text(rankedTierTextKey(it)))
-        )
-    }
-    FRAME_CATALOG.firstOrNull { it.id == frameId }?.let { definition ->
-        val key = TextKey.entries.firstOrNull { it.name == definition.nameKey }
-        return key?.let { localization.text(it) } ?: definition.fallbackName
-    }
-    return localization.text(when (frameId) {
-        "frame_bronze" -> TextKey.BronzeFrame
-        "frame_silver" -> TextKey.SilverFrame
-        "frame_gold" -> TextKey.GoldFrame
-        "frame_perfect" -> TextKey.PerfectFrame
-        "frame_persistent" -> TextKey.PersistentFrameName
-        else -> TextKey.BasicFrame
-    })
+@Composable
+internal fun catalogAvatarFrameName(frameId: String): String? = LocalAvatarFrames.current?.get(frameId)?.let { definition ->
+    if (LocalLocalization.current.language == AppLanguage.VIETNAMESE) definition.nameVi else definition.nameEn
 }
 
 @Composable
 private fun localizedAvatarFrameName(frameId: String): String {
+    catalogAvatarFrameName(frameId)?.let { return it }
     seasonalFrameTier(frameId)?.let {
         return localized(TextKey.SeasonalFrame, "tier" to localizedRankedTierName(it))
     }

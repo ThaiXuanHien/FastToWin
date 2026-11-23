@@ -1,5 +1,7 @@
 package com.hienthai.fastowin.server.admin
 
+import com.hienthai.fastowin.server.avatars.MAX_FRAME_REQUEST_BYTES
+import com.hienthai.fastowin.server.avatars.SaveAvatarFrameRequest
 import io.ktor.http.*
 import io.ktor.server.application.*
 import io.ktor.server.plugins.origin
@@ -35,6 +37,13 @@ fun Route.adminRoutes(service: AdminService) {
             call.respond(login.response)
         } }
         get("/session") { call.adminResponse(service) { call.respond(service.session(call.adminToken())) } }
+        get("/avatar-frames") { call.adminResponse(service) { call.respond(service.avatarFrames(call.adminToken())) } }
+        put("/avatar-frames/{id}") { call.adminResponse(service) {
+            val token = call.adminToken()
+            val csrf = call.request.header(ADMIN_CSRF_HEADER)
+            service.requireAvatarFrameWriter(token, csrf, call.request.header(HttpHeaders.Origin))
+            call.respond(service.saveAvatarFrame(token, csrf, call.adminId(), call.adminBody<SaveAvatarFrameRequest>(MAX_FRAME_REQUEST_BYTES)))
+        } }
         post("/logout") { call.adminResponse(service) {
             service.logout(call.adminToken(), call.request.header(ADMIN_CSRF_HEADER), call.request.header(HttpHeaders.Origin))
             call.adminCookie("", service.configuration.secureCookie, expire = true); call.respond(AdminOk())
@@ -76,16 +85,16 @@ private fun ApplicationCall.adminCookie(token: String, secure: Boolean, expire: 
     response.cookies.append(Cookie(ADMIN_COOKIE, token, encoding = CookieEncoding.RAW, maxAge = if (expire) 0 else (AdminService.SESSION_MILLIS / 1000).toInt(),
         path = "/admin", secure = secure, httpOnly = true, extensions = mapOf("SameSite" to "Strict")))
 }
-private suspend inline fun <reified T> ApplicationCall.adminBody(): T {
+private suspend inline fun <reified T> ApplicationCall.adminBody(maximumBytes: Int = 8192): T {
     if (!request.contentType().match(ContentType.Application.Json)) invalid()
-    val channel = receiveChannel(); val buffer = ByteArray(8193); var size = 0
+    val channel = receiveChannel(); val buffer = ByteArray(maximumBytes + 1); var size = 0
     while (!channel.isClosedForRead) {
         if (size == buffer.size) invalid()
         val count = channel.readAvailable(buffer, size, buffer.size - size)
         if (count == -1) break
         size += count
     }
-    if (size > 8192) invalid()
+    if (size > maximumBytes) invalid()
     return try { adminJson.decodeFromString<T>(buffer.copyOf(size).toString(Charsets.UTF_8)) } catch (_: SerializationException) { invalid() }
 }
 private suspend fun ApplicationCall.adminResponse(service: AdminService, block: suspend () -> Unit) {

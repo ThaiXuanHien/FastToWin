@@ -1,6 +1,8 @@
 package com.hienthai.fastowin.server
 
 import com.hienthai.fastowin.server.analytics.AnalyticsFacts
+import com.hienthai.fastowin.server.avatars.builtInAvatarFrames
+import com.hienthai.fastowin.server.avatars.loadAvatarFrameDefinitions
 import com.hienthai.fastowin.server.missions.*
 
 import com.hienthai.fastowin.protocol.MatchHistoryOutcome
@@ -620,6 +622,7 @@ class PostgresPlayerProfileRepository(
             val experiencePoints = progressionRow.experiencePoints
             val levelProgress = PlayerProgression.progress(experiencePoints)
             val level = levelProgress.level
+            val customFrames = connection.loadAvatarFrameDefinitions().filter { it.id !in builtInAvatarFrames }
             val unlockedFrames = unlockedFrameIds(
                 level,
                 historicalAchievementCodes,
@@ -627,6 +630,7 @@ class PostgresPlayerProfileRepository(
             ).toMutableSet().apply {
                 addAll(FRAME_CATALOG.filter { ownedCosmetics[it.id] == CosmeticType.FRAME }.map { it.id })
                 addAll(seasonCosmetics.filter { it.type == CosmeticType.FRAME }.map { it.id })
+                addAll(customFrames.map { it.id })
             }
             val unlockedTitles = unlockedTitleIds(
                 base.statistics.wins,
@@ -726,7 +730,10 @@ class PostgresPlayerProfileRepository(
                     }
                 )
             }
-            val cosmetics = (legacyCosmetics + catalogCosmetics + receiptCosmetics)
+            val managedCosmetics = customFrames.map {
+                cosmetic(it.id, it.nameVi, CosmeticType.FRAME, unlocked = true, equippedId = equippedFrameId)
+            }
+            val cosmetics = (legacyCosmetics + catalogCosmetics + receiptCosmetics + managedCosmetics)
                 .distinctBy { it.type to it.id }
             base.copy(
                 recentMatches = recentMatches,
