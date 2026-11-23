@@ -1,0 +1,3 @@
+ALTER TABLE email_verification_tokens
+    ADD COLUMN delivered BOOLEAN NOT NULL DEFAULT TRUE,
+    ADD COLUMN send_sequence BIGINT GENERATED ALWAYS AS IDENTITY;
