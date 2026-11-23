@@ -254,7 +254,7 @@ class RefreshRecoveryPostgresTest {
                         val reset = assertIs<AccountActionResult.Success>(auth.requestPasswordReset(email))
                         assertIs<AccountActionResult.Success>(auth.resetPassword(email, assertNotNull(reset.resetToken), "new-password123"))
                     }
-                    "delete" -> assertIs<AccountActionResult.Success>(auth.deleteAccount(first.accessToken, "password123"))
+                    "delete" -> assertIs<AccountActionResult.Success>(auth.deleteAccount(first.accessToken))
                     "inactive" -> source.connection.use { connection ->
                         connection.prepareStatement("UPDATE users SET status = 'DELETED' WHERE id = ?").use {
                             it.setObject(1, UUID.fromString(first.userId)); it.executeUpdate()

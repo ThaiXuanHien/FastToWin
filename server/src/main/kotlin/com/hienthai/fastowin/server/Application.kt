@@ -763,7 +763,7 @@ fun Application.gameModule(
 
         post("/auth/delete-account") {
             val request = call.receiveOrReject<DeleteAccountRequest>() ?: return@post
-            call.respondAccountAction(authService.deleteAccount(request.accessToken, request.password))
+            call.respondAccountAction(authService.deleteAccount(request.accessToken))
         }
 
         avatarRoutes(engine.avatarService)

@@ -448,14 +448,14 @@ class AuthController(
         }
     }
 
-    fun deleteAccount(password: String) {
+    fun deleteAccount() {
         if (_state.value.isLoading) return
         if (_state.value.session == null) return
         _state.update { it.copy(isLoading = true, error = null, notice = null) }
         scope.launch {
             val accessToken = actionAccessToken(::showError) ?: return@launch
             val expected = sessionForAccessToken(accessToken) ?: return@launch
-            runCatching { api.deleteAccount(accessToken, password) }
+            runCatching { api.deleteAccount(accessToken) }
                 .onSuccess { response ->
                     if (!clearOwnedSession(expected)) return@onSuccess
                     resumeTokenStore.clear(serverUrl)

@@ -449,14 +449,15 @@ class AuthenticationTest {
             "/auth/login",
             LoginRequest(email, RESET_PASSWORD, "android")
         ).decode<AuthSessionResponse>()
-        val wrongDelete = client.postJson(
+        val forgedDelete = client.postJson(
             "/auth/delete-account",
-            DeleteAccountRequest(finalSession.accessToken, "wrong-password")
+            DeleteAccountRequest("not-a-session")
         )
-        assertEquals(HttpStatusCode.BadRequest, wrongDelete.status)
+        assertEquals(HttpStatusCode.Unauthorized, forgedDelete.status)
+        // App Store 5.1.1(v): the signed-in session alone deletes the account, no password step.
         val deleted = client.postJson(
             "/auth/delete-account",
-            DeleteAccountRequest(finalSession.accessToken, RESET_PASSWORD)
+            DeleteAccountRequest(finalSession.accessToken)
         )
         assertEquals(HttpStatusCode.OK, deleted.status)
         val afterDelete = client.postJson(

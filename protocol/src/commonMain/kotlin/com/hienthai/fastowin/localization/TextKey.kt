@@ -170,7 +170,7 @@ ClanRaceTitle, ClanRacePrizes, ClanRacePerMember, ClanRaceEligibility, ClanRaceW
     LogoutTitle, LogoutDescription, LogoutAction, AccountSecurityTitle,
     AccountSecurityDescription, ChangePassword, CurrentPassword, NewPasswordLabel,
     ConfirmNewPasswordLabel, NewPasswordMustDiffer, UpdatingPassword, DangerZone,
-    DeleteAccountWarning, PasswordToConfirm, RequestDeleteAccount, DeletingAccount,
+    DeleteAccountWarning, DeleteAccount, DeleteAccountConfirmTitle, DeleteAccountConfirmAction, DeletingAccount,
     LoginDevicesTitle, LoginDevicesDescription, NoActiveSessions, CurrentDevice,
     LogoutAllDevices, LogoutAllDevicesTitle, LogoutAllDevicesDescription,
     RevokeDeviceTitle, RevokeCurrentDeviceTitle, RevokeCurrentDeviceDescription,

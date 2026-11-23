@@ -220,6 +220,11 @@ export const test = base.extend({
         }
       } catch (error) { cleanupErrors.push(error); }
       try {
+        // A test that deleted its own account through the UI leaves nothing to clean up.
+        if (actor.accountDeleted) {
+          expect(actor.errors, 'No uncaught browser errors').toEqual([]);
+          continue;
+        }
         const cleanupSessionResponse = await request.post(`${process.env.E2E_API_URL}/auth/login`, {
           data: {
             email: actor.account.email,

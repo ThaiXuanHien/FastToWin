@@ -25,7 +25,7 @@ class PostgresAdminRepositoryTest {
             val repository = PostgresAuthRepository(source)
             val auth = AuthenticationService(repository, PasswordHasher(1_000))
             val signedIn = assertIs<AuthResult.Success>(auth.login(request.email, request.password, "test")).session
-            assertIs<AccountActionResult.Success>(auth.deleteAccount(signedIn.accessToken, request.password))
+            assertIs<AccountActionResult.Success>(auth.deleteAccount(signedIn.accessToken))
             assertNull(repository.findActiveAccount(request.email))
             assertNull(auth.authenticateAccessToken(signedIn.accessToken))
             source.connection.use { connection ->

@@ -84,6 +84,12 @@ export default defineConfig({
       use: { browserName: 'chromium' },
     },
     {
+      // App Store 5.1.1(v): deletion must be reachable and finish without a password.
+      name: 'chromium-account-deletion',
+      testMatch: /account-deletion\.spec\.mjs/,
+      use: { browserName: 'chromium', viewport: { width: 390, height: 844 }, hasTouch: true },
+    },
+    {
       name: 'chromium-wallet',
       testMatch: /(?:shop|avatar-picker)\.spec\.mjs/,
       use: { browserName: 'chromium' },

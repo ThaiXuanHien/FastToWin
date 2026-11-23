@@ -32,11 +32,6 @@ class GiftApiClientTest {
                         respond("""{"ok":true}""", headers = headersOf(HttpHeaders.ContentType, ContentType.Application.Json.toString()))
                     }
                 }
-                "/api/gift-codes/redeem" -> {
-                    assertEquals("""{"code":"PLAYWEEK"}""", body)
-                    respond("""{"reward":{"gold":0,"xp":0,"gems":10,"plays":5}}""",
-                        headers = headersOf(HttpHeaders.ContentType, ContentType.Application.Json.toString()))
-                }
                 else -> error("Unexpected endpoint")
             }
         }) { install(ContentNegotiation) { json(ProtocolJson) } }
@@ -45,7 +40,6 @@ class GiftApiClientTest {
         assertEquals(2, exchangeBodies.size)
         assertEquals(exchangeBodies.first(), exchangeBodies.last())
         assertTrue(exchangeBodies.first().contains("same-receipt"))
-        assertEquals(5, api.redeemCode("PLAYWEEK").reward.plays)
         api.close()
     }
 

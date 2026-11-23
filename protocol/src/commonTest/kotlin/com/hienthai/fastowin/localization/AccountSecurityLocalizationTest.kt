@@ -12,7 +12,7 @@ class AccountSecurityLocalizationTest {
             TextKey.CurrentPassword, TextKey.NewPasswordLabel,
             TextKey.ConfirmNewPasswordLabel, TextKey.NewPasswordMustDiffer,
             TextKey.DangerZone, TextKey.DeleteAccountWarning,
-            TextKey.PasswordToConfirm, TextKey.RequestDeleteAccount,
+            TextKey.DeleteAccount, TextKey.DeleteAccountConfirmTitle, TextKey.DeleteAccountConfirmAction,
             TextKey.LoginDevicesDescription, TextKey.NoActiveSessions,
             TextKey.CurrentDevice, TextKey.LogoutAllDevices,
             TextKey.LogoutAllDevicesTitle, TextKey.LogoutAllDevicesDescription,

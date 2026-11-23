@@ -134,7 +134,7 @@ class PostgresFriendRepositoryTest {
                 assertEquals(2, recentPlayer.matchesPlayed)
                 assertEquals(NOW + 101L, recentPlayer.lastPlayedAtEpochMillis)
 
-                assertIs<AccountActionResult.Success>(auth.deleteAccount(second.accessToken, PASSWORD))
+                assertIs<AccountActionResult.Success>(auth.deleteAccount(second.accessToken))
                 assertTrue(friends.load(first.userId).friends.isEmpty())
             } finally {
                 dataSource.connection.use { connection ->
