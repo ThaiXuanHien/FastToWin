@@ -448,5 +448,5 @@ ClanRaceTitle, ClanRacePrizes, ClanRacePerMember, ClanRaceEligibility, ClanRaceW
     ClanLogoUpload, ClanLogoRemoveUpload, ClanLogoUploadHint, ClanLogoUploadedImage, ClanLogoUploading,
     ServerClanPermissionDenied, ServerClanChatMuted, ServerClanChatInvalidMessage, ServerClanLogoDailyLimit,
     ServerClanLogoUploadFailed, ServerClanCoLeaderLimit, PushClanChatTitle, PushClanChatMessage,
-    UgcClanLogo, UgcClanMessage
+    UgcClanLogo, UgcClanMessage, ClanChatBlockSender, ClanChatBlockDescription
 }

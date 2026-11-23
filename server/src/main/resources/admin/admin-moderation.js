@@ -122,11 +122,15 @@ export function openModeration(ui) {
       if (view.targetMissing || view.targetChanged) { remove.disabled = true; form.append(node('p', 'Nội dung đã đổi hoặc không còn tồn tại; không thể gỡ từ phiên bản báo cáo cũ.', { class: 'muted' })); }
     }
     form.append(node('p', 'Chỉ gỡ phần nội dung vi phạm. Không hủy trận/giải hoặc thay đổi số dư.', { class: 'muted' }));
+    // Clan chat reports can also mute the sender in that clan (requires "Đã xử lý").
+    const chatMute = writable(role()) && report.targetType === 'CLAN_MESSAGE' && !view.targetMissing
+      ? select(form, 'Cấm chat người gửi trong bang', { 0: 'Không cấm', 24: '24 giờ', 168: '7 ngày' }, '0') : null;
+    chatMute?.addEventListener('change', () => { if (chatMute.value !== '0') status.value = 'RESOLVED'; });
     const reason = field(form, 'Lý do xử lý nội bộ', 'moderation-reason', 'textarea', { required: '', maxlength: '500', rows: '3' }), notices = feedback(form);
     const submit = button('Lưu xử lý', null, { type: 'submit', class: 'primary' }); form.append(append(node('div', null, { class: 'modal-actions' }), dialog.cancel, submit));
-    status.addEventListener('change', () => { if (status.value !== 'RESOLVED' && remove) remove.checked = false; });
+    status.addEventListener('change', () => { if (status.value !== 'RESOLVED') { if (remove) remove.checked = false; if (chatMute) chatMute.value = '0'; } });
     remove?.addEventListener('change', () => { if (remove.checked) status.value = 'RESOLVED'; });
-    bindMutation(dialog, form, submit, notices, path(report.id) + '/resolve', () => ({ expectedVersion: report.version, status: status.value, reason: reason.value, removeContent: Boolean(remove?.checked) }), () => { dialog.finish(); list('Đã lưu kết quả xử lý báo cáo.'); });
+    bindMutation(dialog, form, submit, notices, path(report.id) + '/resolve', () => ({ expectedVersion: report.version, status: status.value, reason: reason.value, removeContent: Boolean(remove?.checked), ...(chatMute && chatMute.value !== '0' ? { chatMuteHours: Number(chatMute.value) } : {}) }), () => { dialog.finish(); list('Đã lưu kết quả xử lý báo cáo.'); });
     dialog.show(status);
   }
   function restriction(view) {

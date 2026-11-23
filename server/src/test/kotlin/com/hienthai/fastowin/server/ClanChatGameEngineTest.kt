@@ -153,6 +153,36 @@ class ClanChatGameEngineTest {
     }
 
     @Test
+    fun `blocked players never see each other's lines in either direction`() = runTest {
+        val f = Fixture()
+        f.connectAll()
+        f.send(f.leader, "before block", requestId = "b0")
+        f.blocks += f.member to f.leader
+        f.clock += 1_000
+        val fromLeader = f.send(f.leader, "after block", requestId = "b1")
+        assertTrue(fromLeader.none { f.member in it.recipients.orEmpty() })
+        f.clock += 1_000
+        val fromMember = f.send(f.member, "hidden from leader", requestId = "b2")
+        assertTrue(fromMember.none { f.leader in it.recipients.orEmpty() })
+        assertTrue(f.history(f.member).messages.none { it.senderId == f.leader })
+        assertEquals(0, f.history(f.member).unreadCount)
+        assertTrue(f.history(f.leader).messages.none { it.senderId == f.member })
+        assertEquals(listOf("before block", "after block", "hidden from leader"), f.history(f.coLeader).messages.map { it.text })
+    }
+
+    @Test
+    fun `an admin mute from a chat report applies in the line's clan and notifies moderators`() = runTest {
+        val f = Fixture()
+        f.connectAll()
+        val line = f.lastId(f.send(f.member, "rude", requestId = "a1"))
+        val until = f.clock + 24 * 3_600_000L
+        val delivery = f.engine.adminClanChatMute(line, until).single()
+        assertEquals(setOf(f.leader, f.coLeader, f.member), delivery.recipients)
+        assertEquals("CLAN_CHAT_MUTED", f.errorCode(f.send(f.member, "again", requestId = "a2")))
+        assertTrue(f.engine.adminClanChatMute(UUID.randomUUID().toString(), until).isEmpty())
+    }
+
+    @Test
     fun `offline members get at most one chat push per half hour`() = runTest {
         val f = Fixture()
         f.connect(f.member)
@@ -251,7 +281,13 @@ class ClanChatGameEngineTest {
             override suspend fun findPushTarget(playerId: String, category: com.hienthai.fastowin.protocol.PushNotificationCategory) =
                 PushTarget(fcmToken = "${names[playerId]?.lowercase()}-token", language = com.hienthai.fastowin.localization.AppLanguage.VIETNAMESE)
         }
+        val blocks = mutableSetOf<Pair<String, String>>()
+        val friends = object : FriendRepository by NoOpFriendRepository {
+            override suspend fun blockedEitherWay(userId: String) =
+                blocks.mapNotNullTo(mutableSetOf()) { (a, b) -> if (a == userId) b else if (b == userId) a else null }
+        }
         val engine = GameEngine(
+            friendRepository = friends,
             clanRepository = clans,
             playerProfileRepository = profiles,
             pushNotificationService = push,

@@ -26,10 +26,10 @@ interface ClanChatRepository {
     suspend fun mutedUntil(clanId: String, userId: String, nowMillis: Long): Long?
     suspend fun activeMutes(clanId: String, nowMillis: Long): Map<String, Long>
     /** Null [untilMillis] lifts the mute. */
-    suspend fun setMute(clanId: String, userId: String, untilMillis: Long?, mutedBy: String)
+    suspend fun setMute(clanId: String, userId: String, untilMillis: Long?, mutedBy: String?)
     suspend fun markRead(clanId: String, userId: String, atMillis: Long)
     /** Other members' lines after the reader's position, capped at 99. */
-    suspend fun unreadCount(clanId: String, userId: String, sinceMillis: Long): Int
+    suspend fun unreadCount(clanId: String, userId: String, sinceMillis: Long, excludedSenders: Set<String> = emptySet()): Int
     /** Members due a push; their throttle moves to [nowMillis] in the same step. */
     suspend fun claimPush(clanId: String, userIds: Collection<String>, nowMillis: Long, intervalMillis: Long): Set<String>
     suspend fun cleanup(beforeMillis: Long): Int
@@ -80,7 +80,7 @@ class InMemoryClanChatRepository : ClanChatRepository {
         mutes.filter { it.key.first == clanId && it.value > nowMillis }.mapKeys { it.key.second }
     }
 
-    override suspend fun setMute(clanId: String, userId: String, untilMillis: Long?, mutedBy: String) = mutex.withLock {
+    override suspend fun setMute(clanId: String, userId: String, untilMillis: Long?, mutedBy: String?) = mutex.withLock {
         if (untilMillis == null) mutes.remove(clanId to userId) else mutes[clanId to userId] = untilMillis
         Unit
     }
@@ -89,10 +89,11 @@ class InMemoryClanChatRepository : ClanChatRepository {
         reads[clanId to userId] = maxOf(reads[clanId to userId] ?: 0, atMillis)
     }
 
-    override suspend fun unreadCount(clanId: String, userId: String, sinceMillis: Long) = mutex.withLock {
+    override suspend fun unreadCount(clanId: String, userId: String, sinceMillis: Long, excludedSenders: Set<String>) = mutex.withLock {
         val read = maxOf(reads[clanId to userId] ?: 0, sinceMillis - 1)
         messages[clanId].orEmpty().count {
-            it.kind == ClanChatMessageKind.USER && it.senderId != userId && it.createdAtEpochMillis > read
+            it.kind == ClanChatMessageKind.USER && it.senderId != userId && it.senderId !in excludedSenders &&
+                it.createdAtEpochMillis > read
         }.coerceAtMost(CLAN_CHAT_UNREAD_CAP)
     }
 
@@ -192,7 +193,7 @@ class PostgresClanChatRepository(private val source: DataSource) : ClanChatRepos
         }
     }
 
-    override suspend fun setMute(clanId: String, userId: String, untilMillis: Long?, mutedBy: String) = transaction { connection ->
+    override suspend fun setMute(clanId: String, userId: String, untilMillis: Long?, mutedBy: String?) = transaction { connection ->
         if (untilMillis == null) {
             connection.prepareStatement("DELETE FROM clan_chat_mutes WHERE clan_id = ? AND user_id = ?").use {
                 it.setObject(1, UUID.fromString(clanId)); it.setObject(2, UUID.fromString(userId)); it.executeUpdate()
@@ -203,7 +204,7 @@ class PostgresClanChatRepository(private val source: DataSource) : ClanChatRepos
                 ON CONFLICT (clan_id, user_id) DO UPDATE SET muted_until = EXCLUDED.muted_until, muted_by = EXCLUDED.muted_by
             """.trimIndent()).use {
                 it.setObject(1, UUID.fromString(clanId)); it.setObject(2, UUID.fromString(userId))
-                it.setLong(3, untilMillis); it.setObject(4, UUID.fromString(mutedBy)); it.executeUpdate()
+                it.setLong(3, untilMillis); it.setObject(4, mutedBy?.let(UUID::fromString)); it.executeUpdate()
             }
         }
         Unit
@@ -221,19 +222,22 @@ class PostgresClanChatRepository(private val source: DataSource) : ClanChatRepos
         Unit
     }
 
-    override suspend fun unreadCount(clanId: String, userId: String, sinceMillis: Long) = read { connection ->
+    override suspend fun unreadCount(clanId: String, userId: String, sinceMillis: Long, excludedSenders: Set<String>) = read { connection ->
+        val excluded = connection.createArrayOf("uuid", excludedSenders.map(UUID::fromString).toTypedArray())
         connection.prepareStatement("""
             SELECT COUNT(*) FROM (
                 SELECT 1 FROM clan_chat_messages m
                 WHERE m.clan_id = ? AND m.kind = 'USER' AND m.deleted_at IS NULL AND m.sender_id <> ?
+                  AND NOT (m.sender_id = ANY (?::uuid[]))
                   AND m.created_at >= ?
                   AND m.created_at > COALESCE((SELECT last_read_at FROM clan_chat_members r WHERE r.clan_id = ? AND r.user_id = ?), 0)
                 LIMIT $CLAN_CHAT_UNREAD_CAP
             ) unread
         """.trimIndent()).use {
             val clan = UUID.fromString(clanId); val user = UUID.fromString(userId)
-            it.setObject(1, clan); it.setObject(2, user); it.setLong(3, sinceMillis); it.setObject(4, clan); it.setObject(5, user)
-            it.executeQuery().use { row -> row.next(); row.getInt(1) }
+            it.setObject(1, clan); it.setObject(2, user); it.setArray(3, excluded); it.setLong(4, sinceMillis)
+            it.setObject(5, clan); it.setObject(6, user)
+            try { it.executeQuery().use { row -> row.next(); row.getInt(1) } } finally { excluded.free() }
         }
     }
 

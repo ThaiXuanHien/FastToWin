@@ -2234,7 +2234,8 @@ private fun GameContent(
                             onDiscard = controller::discardClanChatMessage,
                             onLoadOlder = controller::loadOlderClanChat,
                             onDelete = controller::deleteClanChatMessage,
-                            onMute = controller::muteClanChatMember
+                            onMute = controller::muteClanChatMember,
+                            onBlock = controller::blockClanChatSender
                         )
                     },
                     onUploadLogo = controller::uploadClanLogo,

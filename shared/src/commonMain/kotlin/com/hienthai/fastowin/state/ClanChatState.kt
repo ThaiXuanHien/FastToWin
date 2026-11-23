@@ -76,6 +76,11 @@ data class ClanChatState(
         )
     }
 
+    /** Hides a blocked player's lines at once; the server filters them from then on. */
+    fun withoutSender(senderId: String): ClanChatState = copy(
+        messages = messages.filterNot { it.kind == ClanChatMessageKind.USER && it.senderId == senderId }
+    )
+
     fun withoutMessage(clanId: String, messageId: String): ClanChatState =
         if (clanId != this.clanId) this else copy(messages = messages.filterNot { it.id == messageId })
 

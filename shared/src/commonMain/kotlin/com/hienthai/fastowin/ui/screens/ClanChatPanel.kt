@@ -3,7 +3,9 @@ package com.hienthai.fastowin.ui.screens
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
-import androidx.compose.foundation.clickable
+import androidx.compose.foundation.ExperimentalFoundationApi
+import androidx.compose.foundation.combinedClickable
+import androidx.compose.material.icons.rounded.MoreVert
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -91,7 +93,8 @@ data class ClanChatActions(
     val onDiscard: (String) -> Unit = {},
     val onLoadOlder: () -> Unit = {},
     val onDelete: (String) -> Unit = {},
-    val onMute: (memberId: String, minutes: Int) -> Unit = { _, _ -> }
+    val onMute: (memberId: String, minutes: Int) -> Unit = { _, _ -> },
+    val onBlock: (senderId: String) -> Unit = {}
 )
 
 @Composable
@@ -183,7 +186,7 @@ fun ClanChatPanel(
     }
 
     selected?.let { message ->
-        MessageActionsDialog(
+        ClanChatMessageActionsDialog(
             message = message,
             sender = byId[message.senderId],
             viewerRole = viewerRole,
@@ -229,6 +232,7 @@ private fun ChatEmpty() {
     }
 }
 
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
 private fun MessageBubble(
     message: ClanChatMessageSnapshot,
@@ -256,7 +260,9 @@ private fun MessageBubble(
             Modifier.widthIn(max = 300.dp)
                 .background(if (own) ArcadePalette.Blue600 else ArcadePalette.Navy800, shape)
                 .border(1.dp, if (own) ArcadePalette.Blue300.copy(alpha = 0.6f) else ArcadePalette.OutlineDark, shape)
-                .then(if (onOpen == null) Modifier else Modifier.clickable(onClickLabel = actionLabel, onClick = onOpen))
+                // Tap or long-press opens the options; the ⋮ button below is the visible affordance.
+                .then(if (onOpen == null) Modifier else Modifier.combinedClickable(
+                    onClickLabel = actionLabel, onLongClickLabel = actionLabel, onLongClick = onOpen, onClick = onOpen))
                 .padding(horizontal = 12.dp, vertical = 8.dp),
             verticalArrangement = Arrangement.spacedBy(3.dp)
         ) {
@@ -267,6 +273,11 @@ private fun MessageBubble(
                 sender?.role?.takeIf { it != ClanRole.MEMBER }?.let { RoleTag(it) }
                 if (mutedUntil != null) Icon(Icons.Rounded.VolumeOff, contentDescription = localized(TextKey.ClanChatMutedUntil,
                     "time" to chatTime(mutedUntil, nowMillis, timeZone)), tint = ArcadePalette.Coral400, modifier = Modifier.size(14.dp))
+                if (onOpen != null) IconButton(onClick = onOpen,
+                    modifier = Modifier.size(32.dp).testTag("clan_chat_more:${message.id}")) {
+                    Icon(Icons.Rounded.MoreVert, contentDescription = actionLabel,
+                        tint = if (own) Color.White else ArcadePalette.Blue100, modifier = Modifier.size(18.dp))
+                }
             }
             Text(message.text, style = MaterialTheme.typography.bodyLarge, color = Color.White)
             Text(time, style = MaterialTheme.typography.labelSmall,
@@ -411,14 +422,15 @@ private fun ChatComposer(enabled: Boolean, onSend: (String) -> Boolean) {
 }
 
 @Composable
-private fun MessageActionsDialog(
+fun ClanChatMessageActionsDialog(
     message: ClanChatMessageSnapshot,
     sender: ClanMemberSnapshot?,
     viewerRole: ClanRole?,
     currentUserId: String?,
     mutedUntil: Long?,
     actions: ClanChatActions,
-    onDismiss: () -> Unit
+    onDismiss: () -> Unit,
+    initialBlockConfirmation: Boolean = false
 ) {
     val own = message.senderId == currentUserId
     val moderator = viewerRole?.canModerateClan() == true
@@ -427,6 +439,25 @@ private fun MessageActionsDialog(
     val canMute = !own && moderator && sender != null && targetRole != ClanRole.LEADER &&
         (viewerRole == ClanRole.LEADER || targetRole == ClanRole.MEMBER)
     val report = if (own) null else rememberUgcReport(UgcTargetType.CLAN_MESSAGE, message.id, message.text.take(60))
+    val senderName = sender?.displayName ?: message.senderName
+    var confirmBlock by remember(message.id) { mutableStateOf(initialBlockConfirmation) }
+    if (confirmBlock) {
+        ArcadeDialog(
+            title = localized(TextKey.BlockPlayerTitle, "player" to senderName),
+            subtitle = localized(TextKey.ClanChatBlockDescription, "player" to senderName),
+            onDismissRequest = onDismiss,
+            modifier = Modifier.testTag("clan_chat_block_confirmation")
+        ) {
+            Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                ArcadeActionButton(localized(TextKey.Block), {
+                    message.senderId?.let(actions.onBlock); onDismiss()
+                }, style = ArcadeActionStyle.DANGER, modifier = Modifier.fillMaxWidth().testTag("clan_chat_confirm_block"))
+                ArcadeActionButton(localized(TextKey.Cancel), { confirmBlock = false }, style = ArcadeActionStyle.OUTLINE,
+                    modifier = Modifier.fillMaxWidth())
+            }
+        }
+        return
+    }
     ArcadeDialog(
         title = localized(TextKey.ClanChatMessageActions),
         subtitle = message.text.take(120),
@@ -452,6 +483,9 @@ private fun MessageActionsDialog(
                 ArcadeActionButton(localized(TextKey.ClanChatReport), { onDismiss(); open() },
                     style = ArcadeActionStyle.OUTLINE, modifier = Modifier.fillMaxWidth().testTag("clan_chat_report"))
             }
+            if (!own && message.senderId != null && currentUserId != null) ArcadeActionButton(
+                localized(TextKey.ClanChatBlockSender), { confirmBlock = true }, style = ArcadeActionStyle.DANGER,
+                modifier = Modifier.fillMaxWidth().testTag("clan_chat_block"))
             ArcadeActionButton(localized(TextKey.Close), onDismiss, style = ArcadeActionStyle.OUTLINE,
                 modifier = Modifier.fillMaxWidth())
         }

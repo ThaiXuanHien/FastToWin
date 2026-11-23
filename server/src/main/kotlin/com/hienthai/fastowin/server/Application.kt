@@ -354,6 +354,7 @@ fun Application.gameModule(
         }
     }
 
+    engine.moderationService.onChatMuteRequested = { messageId, until -> deliver(engine.adminClanChatMute(messageId, until)) }
     val previousSuppressionChanged = engine.moderationService.onSuppressionChanged
     engine.moderationService.onSuppressionChanged = { targetType, targetId ->
         try { previousSuppressionChanged(targetType, targetId) }

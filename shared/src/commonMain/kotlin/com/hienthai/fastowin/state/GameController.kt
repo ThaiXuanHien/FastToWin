@@ -675,6 +675,13 @@ class GameController private constructor(
         scope.launch { sendMessage(ClientMessage.SendClanChatMessage(clanId, requestId, line.text)) }
     }
 
+    /** Blocks a chat sender with the shared block flow and hides their lines immediately. */
+    fun blockClanChatSender(senderId: String) {
+        if (senderId == currentChatUserId()) return
+        _uiState.update { it.copy(clanChat = it.clanChat.withoutSender(senderId)) }
+        blockPlayer(senderId)
+    }
+
     fun discardClanChatMessage(requestId: String) {
         _uiState.update { it.copy(clanChat = it.clanChat.discard(requestId)) }
     }
@@ -1783,6 +1790,10 @@ class GameController private constructor(
 
             is ServerMessage.SocialNotice -> {
                 _uiState.update { it.copy(socialNotice = messageMapper.message(message), isFriendsLoading = false, error = null) }
+                // Blocking anywhere changes whose lines the clan chat may show.
+                if (message.code == "PLAYER_BLOCKED" || message.code == "PLAYER_UNBLOCKED") {
+                    _uiState.value.clanChat.clanId?.let { sendMessage(ClientMessage.GetClanChat(it)) }
+                }
             }
 
             is ServerMessage.TournamentHubData -> {

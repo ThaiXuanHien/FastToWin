@@ -5361,6 +5361,22 @@ class GameEngine(
         }
     }
 
+    private suspend fun blockedEitherWay(playerId: String): Set<String> =
+        runCatching { friendRepository.blockedEitherWay(playerId) }
+            .getOrElse { if (it is CancellationException) throw it; emptySet() }
+
+    /** Admin mute from a chat report: applies in the clan where the reported line was posted. */
+    suspend fun adminClanChatMute(messageId: String, untilMillis: Long): List<Delivery> {
+        val message = clanChatRepository.findById(messageId) ?: return emptyList()
+        val sender = message.senderId ?: return emptyList()
+        clanChatRepository.setMute(message.clanId, sender, untilMillis, null)
+        val clan = clanRepository.getClanById(message.clanId) ?: return emptyList()
+        val moderators = clan.members.filter { it.role.canModerateClan() }.map { it.userId }
+        val recipients = chatCapable(moderators + sender)
+        return if (recipients.isEmpty()) emptyList()
+        else listOf(Delivery(ServerMessage.ClanChatMuteChanged(message.clanId, sender, untilMillis), recipients))
+    }
+
     private suspend fun hiddenClanMessageIds(): Set<String> = runCatching { moderationService.suppressions() }
         .getOrDefault(emptyList()).filter { it.targetType == UgcTargetType.CLAN_MESSAGE }.mapTo(mutableSetOf()) { it.targetId }
 
@@ -5377,13 +5393,16 @@ class GameEngine(
             }
             val rows = clanChatRepository.page(command.clanId, before, CLAN_CHAT_PAGE_SIZE + 1, since)
             val hidden = hiddenClanMessageIds()
-            val page = rows.take(CLAN_CHAT_PAGE_SIZE).filterNot { it.id in hidden }.asReversed()
+            // Blocking works both ways in chat: neither player sees the other's lines.
+            val blocked = blockedEitherWay(playerId)
+            val page = rows.take(CLAN_CHAT_PAGE_SIZE)
+                .filterNot { it.id in hidden || (it.kind == ClanChatMessageKind.USER && it.senderId in blocked) }.asReversed()
             val history = ServerMessage.ClanChatHistory(
                 clanId = command.clanId,
                 messages = page,
                 hasMore = rows.size > CLAN_CHAT_PAGE_SIZE,
                 isOlderPage = before != null,
-                unreadCount = if (before == null) clanChatRepository.unreadCount(command.clanId, playerId, since) else 0,
+                unreadCount = if (before == null) clanChatRepository.unreadCount(command.clanId, playerId, since, blocked) else 0,
                 mutedUntilEpochMillis = clanChatRepository.mutedUntil(command.clanId, playerId, now),
                 mutedMembers = if (actor.member.role.canModerateClan()) clanChatRepository.activeMutes(command.clanId, now) else emptyMap()
             )
@@ -5417,9 +5436,10 @@ class GameEngine(
                 senderId = playerId, senderName = actor.member.displayName, text = ClanChatFilter.mask(text)
             ).also { clanChatRepository.append(it) }
             clanChatRepository.markRead(command.clanId, playerId, message.createdAtEpochMillis)
-            val recipients = chatCapable(actor.clan.members.map { it.userId })
+            val blocked = blockedEitherWay(playerId)
+            val recipients = chatCapable(actor.clan.members.map { it.userId }) - blocked
             if (existing == null) {
-                val offline = actor.clan.members.map { it.userId }.filter { it != playerId && it !in recipients }
+                val offline = actor.clan.members.map { it.userId }.filter { it != playerId && it !in recipients && it !in blocked }
                 launchBackground { pushClanChat(actor.clan, message, offline) }
             }
             buildList {

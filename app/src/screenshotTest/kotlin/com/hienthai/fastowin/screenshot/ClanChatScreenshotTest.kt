@@ -23,6 +23,12 @@ import com.hienthai.fastowin.ui.screens.ClanDetailView
 import com.hienthai.fastowin.ui.screens.ClanLogoDialog
 import com.hienthai.fastowin.ui.screens.ClanMemberProfileDialog
 import com.hienthai.fastowin.ui.screens.ClanMemberRoleAction
+import com.hienthai.fastowin.ui.screens.ClanChatMessageActionsDialog
+import com.hienthai.fastowin.ui.components.ProvideUgcReportActions
+import com.hienthai.fastowin.ui.components.UgcReportDialog
+import com.hienthai.fastowin.state.UgcReportDraft
+import com.hienthai.fastowin.protocol.UgcTargetType
+import com.hienthai.fastowin.protocol.UgcReportReason
 
 private const val CHAT_NOW = 1_795_000_000_000L
 private const val chatZone = "UTC"
@@ -126,4 +132,43 @@ fun clanLogoUploadDialog() = ArcadeScreenshotFrame {
 fun clanMemberAppointCoLeader() = ArcadeScreenshotFrame {
     ClanMemberProfileDialog(chatClan.members[2], "player-1", FriendsSnapshot(), false, null, null, {}, { _, _ -> }, {},
         roleAction = ClanMemberRoleAction(appoint = true, enabled = true, onClick = {}))
+}
+
+@PreviewTest
+@Preview(name = "message_actions_vi_phone", widthDp = 375, heightDp = 812)
+@Preview(name = "message_actions_vi_desktop", widthDp = 1024, heightDp = 768)
+@Composable
+fun clanChatMessageActions() = ArcadeScreenshotFrame {
+    ProvideUgcReportActions("player-1", onReport = {}) {
+        ChatDetail(chatState)
+        ClanChatMessageActionsDialog(chatState.messages[2], chatClan.members[2], ClanRole.LEADER, "player-1",
+            mutedUntil = null, actions = ClanChatActions(), onDismiss = {})
+    }
+}
+
+@PreviewTest
+@Preview(name = "message_report_vi_phone", widthDp = 375, heightDp = 812)
+@Preview(name = "message_report_vi_desktop", widthDp = 1024, heightDp = 768)
+@Composable
+fun clanChatReportDialog() = ArcadeScreenshotFrame {
+    ChatDetail(chatState)
+    UgcReportDialog(UgcReportDraft(UgcTargetType.CLAN_MESSAGE, "m2", "Ok, mình vào đúng giờ 👍", UgcReportReason.HARASSMENT),
+        onEdit = { _, _, _ -> }, onSubmit = {}, onDismiss = {})
+}
+
+@PreviewTest
+@Preview(name = "message_block_confirm_vi_phone", widthDp = 375, heightDp = 812)
+@Composable
+fun clanChatBlockConfirmation() = ArcadeScreenshotFrame {
+    ChatDetail(chatState)
+    ClanChatMessageActionsDialog(chatState.messages[2], chatClan.members[2], ClanRole.MEMBER, "player-4",
+        mutedUntil = null, actions = ClanChatActions(), onDismiss = {}, initialBlockConfirmation = true)
+}
+
+@PreviewTest
+@Preview(name = "chat_after_block_vi_phone", widthDp = 375, heightDp = 812)
+@Preview(name = "chat_after_block_vi_desktop", widthDp = 1280, heightDp = 800)
+@Composable
+fun clanChatAfterBlock() = ArcadeScreenshotFrame {
+    ChatDetail(chatState.withoutSender("player-3"))
 }

@@ -90,6 +90,16 @@ class ClanChatStateTest {
     }
 
     @Test
+    fun `blocking a sender hides only that player's lines`() {
+        val state = ClanChatState().loading(clan)
+            .withMessage(line("1", 1, sender = "rude"), null, "me")
+            .withMessage(line("2", 2, sender = "friend"), null, "me")
+            .withMessage(line("3", 3, sender = null, kind = ClanChatMessageKind.SYSTEM), null, "me")
+            .withoutSender("rude")
+        assertEquals(listOf("2", "3"), state.messages.map { it.id })
+    }
+
+    @Test
     fun `chat time shows the clock today and the date otherwise`() {
         val zone = TimeZone.of("Asia/Ho_Chi_Minh")
         val now = 1_795_000_000_000L

@@ -47,6 +47,25 @@ class ModerationServiceTest {
         service.resolve(f.context,id,ModerationResolveRequest(1,UUID.randomUUID().toString(),"remove",ModerationStatus.RESOLVED,removeContent=true))
         assertEquals(listOf(f.targetId),service.suppressions().map { it.targetId })
     }
+    @Test fun `clan chat reports can mute the sender and other reports cannot`() = runTest {
+        val f=Fixture();f.setup()
+        val messageId=UUID.randomUUID().toString();val sender=UUID.randomUUID().toString()
+        f.repo.transaction { putTarget(UgcTarget(UgcTargetType.CLAN_MESSAGE,messageId,sender,"rude line","line-1")) }
+        val muted=mutableListOf<Pair<String,Long>>()
+        f.service.onChatMuteRequested={ id,until -> muted+=id to until }
+        val profile=f.report().reportId
+        assertEquals("INVALID_REQUEST",assertFailsWith<AdminException>{ f.service.resolve(f.context,profile,
+            ModerationResolveRequest(1,"p","mute",ModerationStatus.RESOLVED,chatMuteHours=24)) }.code)
+        val chat=f.service.report(f.reporter,ContentReportRequest(UgcTargetType.CLAN_MESSAGE,messageId,UgcReportReason.HARASSMENT,"",UUID.randomUUID().toString())).reportId
+        assertEquals("INVALID_REQUEST",assertFailsWith<AdminException>{ f.service.resolve(f.context,chat,
+            ModerationResolveRequest(1,"bad-hours","mute",ModerationStatus.RESOLVED,chatMuteHours=5)) }.code)
+        assertEquals("INVALID_REQUEST",assertFailsWith<AdminException>{ f.service.resolve(f.context,chat,
+            ModerationResolveRequest(1,"reviewing","mute",ModerationStatus.REVIEWING,chatMuteHours=24)) }.code)
+        assertTrue(muted.isEmpty())
+        f.service.resolve(f.context,chat,ModerationResolveRequest(1,"mute","Harassment in clan chat",ModerationStatus.RESOLVED,true,chatMuteHours=24))
+        assertEquals(listOf(messageId to f.now+24*3_600_000L),muted)
+        assertEquals(listOf(messageId),f.service.suppressions().filter { it.targetType==UgcTargetType.CLAN_MESSAGE }.map { it.targetId })
+    }
     @Test fun `cache disabled by default reads every time`() = runTest {
         val f=Fixture();f.setup()
         assertFalse(f.service.isBlocked(f.reporter))

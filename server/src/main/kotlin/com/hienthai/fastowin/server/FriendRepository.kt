@@ -47,6 +47,8 @@ interface FriendRepository {
     suspend fun unblockPlayer(userId: String, playerUserId: String): SocialMutationResult
     suspend fun areFriends(firstUserId: String, secondUserId: String): Boolean
     suspend fun isBlockedEitherWay(firstUserId: String, secondUserId: String): Boolean
+    /** Every player [userId] blocked or was blocked by. */
+    suspend fun blockedEitherWay(userId: String): Set<String> = emptySet()
 }
 
 object NoOpFriendRepository : FriendRepository {

@@ -54,7 +54,9 @@ private val vietnamese = mapOf(
     TextKey.PushClanChatTitle to "Tin nhắn mới trong {clan}",
     TextKey.PushClanChatMessage to "{player}: {message}",
     TextKey.UgcClanLogo to "Logo bang hội",
-    TextKey.UgcClanMessage to "Tin nhắn bang hội"
+    TextKey.UgcClanMessage to "Tin nhắn bang hội",
+    TextKey.ClanChatBlockSender to "Chặn người này",
+    TextKey.ClanChatBlockDescription to "Bạn và {player} sẽ không thấy tin nhắn của nhau trong chat bang, không thể kết bạn, gửi lời mời hoặc đấu lại. Bỏ chặn trong mục Bạn bè."
 )
 
 private val english = mapOf(
@@ -104,5 +106,7 @@ private val english = mapOf(
     TextKey.PushClanChatTitle to "New message in {clan}",
     TextKey.PushClanChatMessage to "{player}: {message}",
     TextKey.UgcClanLogo to "Clan logo",
-    TextKey.UgcClanMessage to "Clan chat message"
+    TextKey.UgcClanMessage to "Clan chat message",
+    TextKey.ClanChatBlockSender to "Block this player",
+    TextKey.ClanChatBlockDescription to "You and {player} will not see each other's clan chat messages, add each other, send invites or rematch. Unblock from Friends."
 )
