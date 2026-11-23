@@ -1,5 +1,5 @@
 const CACHE_PREFIX = 'fast-to-win-';
-const SHELL_CACHE = `${CACHE_PREFIX}shell-v9`;
+const SHELL_CACHE = `${CACHE_PREFIX}shell-v10`;
 const APP_SHELL = [
     '/',
     '/index.html',
