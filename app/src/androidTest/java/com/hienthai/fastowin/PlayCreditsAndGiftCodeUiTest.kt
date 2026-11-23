@@ -18,6 +18,7 @@ import com.hienthai.fastowin.localization.AppLanguage
 import com.hienthai.fastowin.localization.ProvideLocalization
 import com.hienthai.fastowin.protocol.*
 import com.hienthai.fastowin.state.GameState
+import com.hienthai.fastowin.state.GiftMailboxState
 import com.hienthai.fastowin.ui.screens.*
 import com.hienthai.fastowin.ui.theme.FastToWinTheme
 import kotlinx.coroutines.CompletableDeferred
@@ -30,6 +31,31 @@ import java.io.File
 /** Real-device UI acceptance with isolated rewards; never spends a live player's gems. */
 class PlayCreditsAndGiftCodeUiTest {
     @get:Rule val composeRule = createComposeRule()
+
+    @Test
+    fun claimedAdminGiftKeepsTheClaimButtonDisabled() {
+        val gift = mutableStateOf(MailboxGift(
+            "admin-gift", "Quà admin", "Admin gift", "Cảm ơn bạn!", "Thank you!",
+            100, 20, 0L, 172_800_000L, GiftState.AVAILABLE
+        ))
+        render {
+            GiftMailboxScreen(
+                state = GiftMailboxState(isOpen = true, items = listOf(gift.value), total = 1),
+                isGuest = false,
+                onBack = {},
+                onRefresh = {},
+                onLoadMore = {},
+                onClaim = { gift.value = gift.value.copy(state = GiftState.CLAIMED) },
+                onClaimAll = {},
+                nowMillis = 0L
+            )
+        }
+
+        val claim = composeRule.onNodeWithTag("gift_claim_admin-gift")
+        claim.performScrollTo().assertIsEnabled().performClick()
+        claim.assertIsNotEnabled()
+        composeRule.onNodeWithText("Đã nhận").assertIsDisplayed()
+    }
 
     @Test
     fun exchangeRequiresConfirmationAndRefreshesBankWithoutChangingDailyPlays() {

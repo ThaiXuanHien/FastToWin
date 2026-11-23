@@ -1,4 +1,7 @@
+import java.awt.RenderingHints
+import java.awt.image.BufferedImage
 import java.security.MessageDigest
+import javax.imageio.ImageIO
 
 plugins {
     alias(libs.plugins.kover)
@@ -49,6 +52,33 @@ dependencies {
 
 tasks.test {
     useJUnitPlatform()
+}
+
+val frameSources = rootProject.fileTree("artwork/avatar-frames") {
+    include("arcade_frame_*.png")
+}
+val preparedFrameArtwork = layout.buildDirectory.dir("generated/avatar-frame-artwork")
+val prepareAvatarFrameArtwork by tasks.registering {
+    inputs.files(frameSources).withPathSensitivity(PathSensitivity.NAME_ONLY)
+    outputs.dir(preparedFrameArtwork)
+    doLast {
+        val output = preparedFrameArtwork.get().asFile
+        output.mkdirs()
+        frameSources.forEach { file ->
+            val artwork = requireNotNull(ImageIO.read(file)) { "Invalid avatar frame artwork: ${file.name}" }
+            // Produce phone-sized overlays and preserve the transparent center.
+            val frame = BufferedImage(320, 320, BufferedImage.TYPE_INT_ARGB)
+            val graphics = frame.createGraphics()
+            try {
+                graphics.setRenderingHint(RenderingHints.KEY_INTERPOLATION, RenderingHints.VALUE_INTERPOLATION_BICUBIC)
+                graphics.drawImage(artwork, 0, 0, frame.width, frame.height, null)
+            } finally { graphics.dispose() }
+            check(ImageIO.write(frame, "png", output.resolve(file.name)))
+        }
+    }
+}
+tasks.processResources {
+    from(prepareAvatarFrameArtwork) { into("avatar-frames") }
 }
 
 kover {

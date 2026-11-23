@@ -45,6 +45,16 @@ const extraPlayers = [
 ];
 
 const allPlayers = [player, ...extraPlayers];
+const previewFrames = new Map([
+  ['frame_default', 'Khung cơ bản', 'Basic frame'],
+  ['frame_bronze', 'Khung Đồng', 'Bronze frame'],
+  ['frame_gold', 'Khung Vàng', 'Gold frame'],
+  ['frame_diamond', 'Kim Cương', 'Diamond'],
+  ['frame_lightning', 'Tia Chớp', 'Lightning'],
+  ['frame_dragon_might', 'Long Uy', 'Dragon Might'],
+].map(([id, nameVi, nameEn]) => [id, {
+  definition: { id, nameVi, nameEn, imagePath: `/api/avatar-frames/${id}/image?v=0` }, builtIn: true, version: 0,
+}]));
 
 const server = createServer(async (req, res) => {
   const url = new URL(req.url, `http://localhost:${port}`);
@@ -59,6 +69,18 @@ const server = createServer(async (req, res) => {
   if (route === '/health') {
     res.writeHead(200, { 'Content-Type': 'text/plain', 'Cache-Control': 'no-store' });
     res.end('OK');
+    return;
+  }
+
+  const frameImage = route.match(/^\/api\/avatar-frames\/(frame_[a-z0-9_]+)\/image$/);
+  if (frameImage) {
+    const id = frameImage[1];
+    const item = previewFrames.get(id);
+    if (!item) { res.writeHead(404); res.end(); return; }
+    const suffix = id.slice('frame_'.length);
+    const png = item.png ?? await readFile(new URL(`../artwork/avatar-frames/arcade_frame_${suffix}.png`, import.meta.url));
+    res.writeHead(200, { ...securityHeaders, 'Content-Type': 'image/png' });
+    res.end(png);
     return;
   }
 
@@ -84,6 +106,7 @@ const server = createServer(async (req, res) => {
       '/admin/admin.js': 'admin.js',
       '/admin/admin-network.js': 'admin-network.js',
       '/admin/admin-gifts.js': 'admin-gifts.js',
+      '/admin/admin-avatar-frames.js': 'admin-avatar-frames.js',
       '/admin/admin-maintenance.js': 'admin-maintenance.js',
       '/admin/admin-analytics.js': 'admin-analytics.js',
       '/admin/admin-events.js': 'admin-events.js',
@@ -153,6 +176,27 @@ const server = createServer(async (req, res) => {
 
   if (!state.signedIn) {
     send(401, { code: 'UNAUTHORIZED', message: 'Vui lòng đăng nhập.' });
+    return;
+  }
+
+  if (route === '/admin/api/avatar-frames' && req.method === 'GET') {
+    send(200, [...previewFrames.values()].map(({ definition, builtIn, version }) => ({ definition, builtIn, version })));
+    return;
+  }
+  const frameEdit = route.match(/^\/admin\/api\/avatar-frames\/(frame_[a-z0-9_]+)$/);
+  if (frameEdit && req.method === 'PUT') {
+    const id = frameEdit[1];
+    const current = previewFrames.get(id);
+    if (call.body.version !== (current?.version ?? null)) {
+      send(409, { code: 'CONFLICT', message: 'Khung đã thay đổi.' });
+      return;
+    }
+    const version = (current?.version ?? 0) + 1;
+    const definition = { id, nameVi: call.body.nameVi, nameEn: call.body.nameEn, imagePath: `/api/avatar-frames/${id}/image?v=${version}` };
+    const updated = { definition, version, builtIn: current?.builtIn ?? false };
+    const png = call.body.pngBase64 ? Buffer.from(call.body.pngBase64, 'base64') : current?.png;
+    previewFrames.set(id, { ...updated, png });
+    send(200, updated);
     return;
   }
 

@@ -40,7 +40,8 @@ fun ProvideUgcReportActions(currentPlayerId: String?, onReport: (UgcTarget) -> U
 @Composable
 fun UgcSafetyProvider(serverUrl: String, revision: Long, controller: GameController,
     isGuest: Boolean, currentPlayerId: String?, suppressedAvatarIds: Set<String> = emptySet(),
-    invalidatedAvatarIds: Set<String> = emptySet(), content: @Composable () -> Unit) {
+    invalidatedAvatarIds: Set<String> = emptySet(), connected: Boolean = true,
+    collectionOpen: Boolean = false, content: @Composable () -> Unit) {
     val state by controller.ugc.state.collectAsState()
     val scope = rememberCoroutineScope()
     var blockTarget by remember(currentPlayerId) { mutableStateOf<UgcReportDraft?>(null) }
@@ -56,7 +57,7 @@ fun UgcSafetyProvider(serverUrl: String, revision: Long, controller: GameControl
     ProvideUgcReportActions(currentPlayerId, { target ->
         target.id?.let { controller.ugc.openReport(target.type, it, target.label) }
     }) {
-        AvatarImageProvider(serverUrl, revision, suppressedAvatarIds, invalidatedAvatarIds, content)
+        AvatarImageProvider(serverUrl, revision, suppressedAvatarIds, invalidatedAvatarIds, connected, collectionOpen, content)
         state.report?.let { draft ->
             UgcReportDialog(draft,
                 onEdit = { reason, note, type -> controller.ugc.editReport(reason, note, type) },

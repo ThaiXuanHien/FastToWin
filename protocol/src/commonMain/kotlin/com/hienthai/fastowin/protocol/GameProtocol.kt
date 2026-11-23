@@ -733,7 +733,8 @@ data class GameSnapshot(
     val eventRewards: MatchRewardEventSnapshot? = null,
     val rewardBreakdowns: Map<String, MatchRewardBreakdown> = emptyMap(),
     val forfeit: MatchForfeitSnapshot? = null,
-    val serverTimeEpochMillis: Long? = null
+    val serverTimeEpochMillis: Long? = null,
+    val isBotMatch: Boolean = false
 )
 
 @Serializable

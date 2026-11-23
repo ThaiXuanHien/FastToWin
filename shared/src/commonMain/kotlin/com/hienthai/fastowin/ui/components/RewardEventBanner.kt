@@ -2,11 +2,8 @@ package com.hienthai.fastowin.ui.components
 
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.BorderStroke
-import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.rounded.KeyboardArrowRight
-import androidx.compose.material.icons.filled.MonetizationOn
-import androidx.compose.material.icons.filled.Star
 import androidx.compose.material3.Icon
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Surface
@@ -96,22 +93,16 @@ fun RewardEventValues(gold: Int, xp: Int, factors: Boolean = false, emphasis: Bo
     val description = localized(if (factors) TextKey.RewardEventFactors else TextKey.RewardResultAmounts,
         "gold" to gold, "xp" to xp)
     val typography = if (emphasis) MaterialTheme.typography.titleLarge else MaterialTheme.typography.bodyMedium
-    FlowRow(modifier = Modifier.clearAndSetSemantics { contentDescription = description },
-        horizontalArrangement = Arrangement.spacedBy(16.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-        listOf(Icons.Default.MonetizationOn to gold, Icons.Default.Star to xp).forEachIndexed { index, (icon, value) ->
-            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-                if (index == 0) {
-                    // The shared navy currency treatment keeps mission gold legible.
-                    Surface(shape = CircleShape, color = ArcadePalette.Navy900) {
-                        Icon(icon, contentDescription = null, modifier = Modifier.padding(2.dp).size(20.dp), tint = GoldColor)
-                    }
-                } else {
-                    Icon(icon, contentDescription = null, modifier = Modifier.size(20.dp), tint = MaterialTheme.colorScheme.primary)
-                }
-                Text(if (factors) localized(TextKey.RewardEventFactorValue, "count" to value) else value.toString(), style = typography,
-                    fontWeight = if (emphasis) FontWeight.Black else FontWeight.Normal)
-            }
-        }
+    val weight = if (emphasis) FontWeight.Black else FontWeight.Bold
+    val goldLabel = if (factors) localized(TextKey.RewardEventFactorValue, "count" to gold) else gold.toString()
+    val xpLabel = if (factors) localized(TextKey.RewardEventFactorValue, "count" to xp) else xp.toString()
+    FlowRow(
+        modifier = Modifier.clearAndSetSemantics { contentDescription = description },
+        horizontalArrangement = Arrangement.spacedBy(12.dp),
+        verticalArrangement = Arrangement.spacedBy(8.dp)
+    ) {
+        RewardAmount(goldLabel, RewardCurrency.GOLD, Modifier.align(Alignment.CenterVertically), typography, weight)
+        RewardAmount("$xpLabel XP", RewardCurrency.XP, Modifier.align(Alignment.CenterVertically), typography, weight)
     }
 }
 

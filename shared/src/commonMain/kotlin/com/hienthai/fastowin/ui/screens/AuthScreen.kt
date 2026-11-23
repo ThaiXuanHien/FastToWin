@@ -61,6 +61,7 @@ import com.hienthai.fastowin.ui.components.ArcadeActionStyle
 import com.hienthai.fastowin.ui.components.ArcadeBrandLockup
 import com.hienthai.fastowin.ui.components.ArcadePanel
 import com.hienthai.fastowin.ui.components.ArcadeSegmentedControl
+import com.hienthai.fastowin.ui.components.AvatarImageProvider
 import com.hienthai.fastowin.ui.components.PlayerAvatar
 import com.hienthai.fastowin.ui.components.SystemBackHandler
 import com.hienthai.fastowin.ui.layout.ResponsiveScreen
@@ -82,7 +83,8 @@ fun AuthScreen(
     onConfirmEmailVerification: (String) -> Unit,
     onBack: () -> Unit,
     onCancelUpgrade: () -> Unit,
-    onCancelEmailVerification: () -> Unit
+    onCancelEmailVerification: () -> Unit,
+    serverUrl: String = ""
 ) {
     SystemBackHandler(
         enabled = state.stage != AuthStage.WELCOME && state.stage != AuthStage.PLAYING
@@ -106,7 +108,9 @@ fun AuthScreen(
                 when (state.stage) {
                     AuthStage.WELCOME -> WelcomeContent(state, onOpenLogin, onOpenRegister, onPlayAsGuest)
                     AuthStage.LOGIN -> LoginContent(state, onLogin, onOpenPasswordReset, onBack)
-                    AuthStage.REGISTER -> RegisterContent(state, onRegister, onBack)
+                    AuthStage.REGISTER -> AvatarImageProvider(serverUrl, revision = 0L) {
+                        RegisterContent(state, onRegister, onBack)
+                    }
                     AuthStage.RESET_PASSWORD -> PasswordResetContent(
                         state,
                         onRequestPasswordReset,

@@ -11,6 +11,8 @@ import com.hienthai.fastowin.server.maintenance.*
 import com.hienthai.fastowin.server.admin.AdminService
 import com.hienthai.fastowin.server.admin.adminRoutes
 import com.hienthai.fastowin.server.admin.adminAssets
+import com.hienthai.fastowin.server.avatars.AvatarFrameSource
+import com.hienthai.fastowin.server.avatars.avatarFrameRoutes
 import com.hienthai.fastowin.server.announcements.AnnouncementService
 import com.hienthai.fastowin.server.announcements.AnnouncementPushDelivery
 import com.hienthai.fastowin.server.announcements.UnavailableAnnouncementRepository
@@ -144,7 +146,8 @@ fun Application.gameModule(
     clanRaceDelivery: ClanRaceDelivery? = null,
     rewardEventService: RewardEventService = RewardEventService(UnavailableRewardEventRepository, adminService),
     compensationIncidentService: CompensationIncidentService? = adminService?.let { CompensationIncidentService(giftService.repository, it) },
-    compensationRoundService: CompensationRoundService? = adminService?.let { CompensationRoundService(giftService.repository, it) }
+    compensationRoundService: CompensationRoundService? = adminService?.let { CompensationRoundService(giftService.repository, it) },
+    avatarFrameSource: AvatarFrameSource? = adminService?.repository
 ) {
     authService.useModerationService(engine.moderationService)
     // The first policy and restored aborts must be applied before any handler/timer can serve game.
@@ -231,6 +234,7 @@ fun Application.gameModule(
     }
 
     adminService?.let { service -> routing { adminAssets(); adminRoutes(service); moderationRoutes(engine.moderationService) } }
+    routing { avatarFrameRoutes(avatarFrameSource) }
     if (adminService != null) analyticsService?.let { service -> routing { analyticsRoutes(service) } }
 
     routing { adMobRoutes(adMobService, authService, rateLimiter, rateLimitPolicies) }
@@ -1410,7 +1414,7 @@ private class SocketConnection(
 internal const val SERVER_RESTARTING_CLOSE_REASON = "Server restarting"
 private const val SESSION_CLEANUP_INTERVAL_MILLIS = 5_000L
 private val PRESENCE_REQUEST_ID = Regex("[A-Za-z0-9_-]{1,64}")
-private const val GAME_TIMER_INTERVAL_MILLIS = 250L
+internal const val GAME_TIMER_INTERVAL_MILLIS = 250L
 private const val MATCHMAKING_INTERVAL_MILLIS = 1_000L
 private const val PUSH_REMINDER_INTERVAL_MILLIS = 15L * 60L * 1_000L
 private const val SEASON_LIFECYCLE_INTERVAL_MILLIS = 60_000L

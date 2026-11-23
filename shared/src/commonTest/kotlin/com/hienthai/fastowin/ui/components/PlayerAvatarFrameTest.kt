@@ -1,38 +1,39 @@
 package com.hienthai.fastowin.ui.components
 
+import com.hienthai.fastowin.protocol.AvatarFrameDefinition
 import kotlin.test.Test
 import kotlin.test.assertEquals
 
 class PlayerAvatarFrameTest {
     @Test
-    fun `each progression frame selects its dedicated arcade asset`() {
-        val expected = mapOf(
-            "frame_lightning" to "arcade_frame_lightning",
-            "frame_wildfire" to "arcade_frame_wildfire",
-            "frame_warrior" to "arcade_frame_warrior",
-            "frame_veteran" to "arcade_frame_veteran",
-            "frame_diamond" to "arcade_frame_diamond",
-            "frame_challenger" to "arcade_frame_challenger",
-            "frame_glory" to "arcade_frame_glory",
-            "frame_unyielding" to "arcade_frame_unyielding",
-            "frame_legend" to "arcade_frame_legend",
-            "frame_emperor" to "arcade_frame_emperor",
-            "frame_speed_shadow" to "arcade_frame_speed_shadow",
-            "frame_champion" to "arcade_frame_champion",
-            "frame_immortal" to "arcade_frame_immortal",
-            "frame_dragon_might" to "arcade_frame_dragon_might",
-            "frame_supreme" to "arcade_frame_supreme",
-            "frame_peerless" to "arcade_frame_peerless"
-        )
+    fun `new and seasonal frames use the versioned artwork from the server catalog`() {
+        val frames = listOf(
+            AvatarFrameDefinition("frame_moonrise", "Trăng lên", "Moonrise", "/api/avatar-frames/frame_moonrise/image?v=2"),
+            AvatarFrameDefinition("frame_gold", "Khung Vàng", "Gold frame", "/api/avatar-frames/frame_gold/image?v=3")
+        ).associateBy { it.id }
 
-        assertEquals(expected, expected.keys.associateWith(::avatarFrameAssetName))
+        assertEquals("https://game.example/api/avatar-frames/frame_moonrise/image?v=2",
+            resolveAvatarFrameImageUrl("wss://game.example/game", "frame_moonrise", frames))
+        assertEquals("https://game.example/api/avatar-frames/frame_gold/image?v=3",
+            resolveAvatarFrameImageUrl("wss://game.example/game", "season_26_gold", frames))
+        assertEquals("", resolveAvatarFrameImageUrl("wss://game.example/game", "frame_unknown", frames))
     }
 
     @Test
-    fun `legacy and unknown frame ids retain their compatible assets`() {
-        assertEquals("arcade_frame_perfect", avatarFrameAssetName("frame_perfect"))
-        assertEquals("arcade_frame_persistent", avatarFrameAssetName("frame_persistent"))
-        assertEquals("arcade_frame_gold", avatarFrameAssetName("season_1_gold"))
-        assertEquals("arcade_frame_default", avatarFrameAssetName("unknown_frame"))
+    fun `default and legacy frame artwork come from the catalog too`() {
+        val frames = listOf(
+            AvatarFrameDefinition("frame_default", "Khung cơ bản", "Basic frame", "/api/avatar-frames/frame_default/image?v=0"),
+            AvatarFrameDefinition("frame_perfect", "Khung Hoàn hảo", "Perfect frame", "/api/avatar-frames/frame_perfect/image?v=4")
+        ).associateBy { it.id }
+
+        assertEquals(
+            "https://game.example/api/avatar-frames/frame_default/image?v=0",
+            resolveAvatarFrameImageUrl("wss://game.example/game", "frame_default", frames)
+        )
+        assertEquals(
+            "https://game.example/api/avatar-frames/frame_perfect/image?v=4",
+            resolveAvatarFrameImageUrl("wss://game.example/game", "frame_perfect", frames)
+        )
+        assertEquals("", resolveAvatarFrameImageUrl("", "frame_default", frames))
     }
 }

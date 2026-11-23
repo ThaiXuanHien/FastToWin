@@ -1,5 +1,7 @@
 package com.hienthai.fastowin.server
 
+import com.hienthai.fastowin.server.admin.PostgresAdminRepository
+import com.hienthai.fastowin.server.avatars.StoredAvatarFrame
 import com.hienthai.fastowin.protocol.FRAME_CATALOG
 import com.hienthai.fastowin.protocol.TITLE_CATALOG
 import com.hienthai.fastowin.protocol.CosmeticType
@@ -9,11 +11,50 @@ import kotlinx.coroutines.test.runTest
 import org.flywaydb.core.Flyway
 import java.util.UUID
 import kotlin.test.Test
+import kotlin.test.assertContentEquals
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 
 class PostgresProgressionCatalogProfileTest {
+    @Test
+    fun `a managed frame persists and can be equipped on an existing profile`() = runTest {
+        val url = System.getenv("TEST_DATABASE_URL") ?: return@runTest
+        testDataSource(url).use { dataSource ->
+            Flyway.configure().dataSource(dataSource).locations("classpath:db/migration").load().migrate()
+            val player = PostgresGuestIdentityRepository(dataSource).resolveGuest("Managed frame", null, 1_000L)
+            val profiles = PostgresPlayerProfileRepository(dataSource)
+            val frameId = "frame_test_${UUID.randomUUID().toString().take(8)}"
+            val frame = StoredAvatarFrame(frameId, "Khung Mới", "New frame", 1)
+            val png = checkNotNull(javaClass.getResourceAsStream("/avatar-frames/arcade_frame_default.png")).use { it.readBytes() }
+            val admin = PostgresAdminRepository(dataSource)
+            try {
+                assertFalse(profiles.equipCosmetics(player.playerId, frameId, "title_rookie"))
+                admin.transaction { saveAvatarFrame(frame, png) }
+                val changed = frame.copy(nameVi = "Khung Mới hơn", version = 2)
+                admin.transaction { saveAvatarFrame(changed, null) }
+
+                val reopened = PostgresAdminRepository(dataSource)
+                assertEquals(changed, reopened.avatarFrameDefinitions().single { it.id == frameId })
+                assertContentEquals(png, checkNotNull(reopened.avatarFrameImage(frameId)))
+                assertTrue(profiles.equipCosmetics(player.playerId, frameId, "title_rookie"))
+                val equipped = checkNotNull(profiles.findByPlayerId(player.playerId)).progression.cosmetics
+                    .single { it.type == CosmeticType.FRAME && it.equipped }
+                assertEquals(frameId, equipped.id)
+                assertEquals(changed.nameVi, equipped.name)
+                assertEquals(frameId, profiles.findAppearance(player.playerId)?.frameId)
+            } finally {
+                deleteUser(dataSource, UUID.fromString(player.playerId))
+                dataSource.connection.use { connection ->
+                    connection.prepareStatement("DELETE FROM avatar_frames WHERE id = ?").use { statement ->
+                        statement.setString(1, frameId)
+                        statement.executeUpdate()
+                    }
+                }
+            }
+        }
+    }
+
     @Test
     fun `profile exposes the complete progression catalogs before items are unlocked`() = runTest {
         val url = System.getenv("TEST_DATABASE_URL") ?: return@runTest

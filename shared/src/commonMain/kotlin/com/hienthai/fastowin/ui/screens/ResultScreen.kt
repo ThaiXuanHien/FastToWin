@@ -58,6 +58,7 @@ import com.hienthai.fastowin.protocol.MATCH_WIN_REWARD_GOLD
 import com.hienthai.fastowin.protocol.MATCH_WIN_REWARD_XP
 import com.hienthai.fastowin.navigation.GameMode
 import com.hienthai.fastowin.state.GameState
+import com.hienthai.fastowin.state.matchTypeLabelKey
 import com.hienthai.fastowin.state.PlayerState
 import com.hienthai.fastowin.state.PostMatchFriendStatus
 import com.hienthai.fastowin.localization.LocalLocalization
@@ -102,8 +103,9 @@ fun ResultScreen(
     val myScore = if (is2v2) state.player.score + state.teammates.sumOf { it.score } else state.player.score
     val opponentScore = if (is2v2) state.opponents.sumOf { it.score } else state.opponent.score
 
-    val isDraw = state.winnerPlayerId == null && myScore == opponentScore
-    val isWinner = state.winnerPlayerId?.let { winnerId ->
+    val winningTeam = state.winnerTeamId?.takeIf { is2v2 && it.isNotBlank() && state.player.teamId != null }
+    val isDraw = winningTeam == null && state.winnerPlayerId == null && myScore == opponentScore
+    val isWinner = winningTeam?.let { it == state.player.teamId } ?: state.winnerPlayerId?.let { winnerId ->
         if (is2v2) {
             winnerId == state.player.id || state.teammates.any { it.id == winnerId }
         } else {
@@ -216,7 +218,7 @@ fun ResultScreen(
                 subtitle = localized(
                     TextKey.GameResultSubtitle,
                     "mode" to localized(state.gameMode.titleKey),
-                    "matchType" to localized(if (state.matchType == MatchType.RANKED) TextKey.Ranked else TextKey.Casual)
+                    "matchType" to localized(state.matchTypeLabelKey)
                 ),
                 gold = 0,
                 gems = 0,
@@ -250,7 +252,9 @@ fun ResultScreen(
                         else -> MaterialTheme.colorScheme.error
                     }
                 )
-                if (state.currentMatchId != null) {
+                if (state.isBotMatch) {
+                    Text(localized(TextKey.BotMatchRules), style = MaterialTheme.typography.bodyMedium)
+                } else if (state.currentMatchId != null) {
                     com.hienthai.fastowin.ui.components.RewardBreakdownCard(state.rewardBreakdowns[state.player.id], onOpenEvent = onOpenRewardEvent)
                 }
                 ScoreBoard(
@@ -265,13 +269,13 @@ fun ResultScreen(
                 )
                 MatchSummaryCard(state)
                 PaceAnalysisCard(state.player)
-                EloCard(state)
-                if (state.profile != null && state.currentMatchId == null) {
+                if (!state.isBotMatch) EloCard(state)
+                if (!state.isBotMatch && state.profile != null && state.currentMatchId == null) {
                     MatchRewardCard(isDraw = isDraw, isWinner = isWinner)
                 }
                 if (state.isTournamentMatch) {
                     TournamentResultCard(state = state, onOpenTournament = onOpenTournament)
-                } else {
+                } else if (!state.isBotMatch) {
                     RematchCard(
                         state = state,
                         onRematch = onRematch
@@ -296,11 +300,10 @@ fun ResultScreen(
                 shareError?.let {
                     Text(it, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall)
                 }
-                OpponentActions(
-                    state = state,
-                    onConnect = onConnectOpponent,
-                    onBlock = { showBlockConfirmation = true }
-                )
+                if (!state.isBotMatch) {
+                    OpponentActions(state = state, onConnect = onConnectOpponent,
+                        onBlock = { showBlockConfirmation = true })
+                }
 
                 if (!state.isTournamentMatch) {
                     ArcadeActionButton(
@@ -329,6 +332,8 @@ private fun ScoreBoard(
     val is2v2 = state.gameMode == GameMode.TEAM_2V2
     val myName = if (is2v2) localized(TextKey.YourTeam) else localized(TextKey.PlayerYou, "player" to state.player.name)
     val opponentName = if (is2v2) localized(TextKey.OpponentTeam) else state.opponent.name
+    val opponent = state.opponents.firstOrNull() ?: state.opponent
+    val opponentAvatar = if (state.isBotMatch) opponent.copy(id = null) else opponent
     val myResult = localized(if (isDraw) TextKey.Draw else if (isPlayerWinner) TextKey.Win else TextKey.Loss)
     val opponentResult = localized(if (isDraw) TextKey.Draw else if (!isPlayerWinner) TextKey.Win else TextKey.Loss)
 
@@ -361,7 +366,7 @@ private fun ScoreBoard(
                         name = opponentName,
                         score = opponentScore,
                         result = opponentResult,
-                        player = state.opponents.firstOrNull() ?: state.opponent,
+                        player = opponentAvatar,
                         isLocal = false,
                         isWinner = !isDraw && !isPlayerWinner,
                         onClick = onOpponentInfo,
@@ -394,7 +399,7 @@ private fun ScoreBoard(
                         name = opponentName,
                         score = opponentScore,
                         result = opponentResult,
-                        player = state.opponents.firstOrNull() ?: state.opponent,
+                        player = opponentAvatar,
                         isLocal = false,
                         isWinner = !isDraw && !isPlayerWinner,
                         onClick = onOpponentInfo,
@@ -892,7 +897,7 @@ private fun resultShareContent(
         opponentName = if (is2v2) localization.text(TextKey.OpponentTeam) else state.opponent.name,
         opponentScore = opponentScore,
         gameMode = localization.text(state.gameMode.titleKey),
-        matchType = localization.text(if (state.matchType == MatchType.RANKED) TextKey.Ranked else TextKey.Casual),
+        matchType = localization.text(state.matchTypeLabelKey),
         duration = formatDuration(state.lastMatchDurationMillis),
         accuracy = "$accuracy%",
         elo = state.lastMatchEloChange?.takeIf { state.matchType == MatchType.RANKED }?.let {
