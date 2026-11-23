@@ -52,6 +52,8 @@ enum class ClanLogoUpdateStatus {
     FAILED
 }
 
+enum class ClanRoleUpdateStatus { UPDATED, UNCHANGED, NOT_OWNER, NOT_MEMBER, LIMIT_REACHED, FAILED }
+
 interface ClanRepository {
     suspend fun createClan(ownerId: String, name: String, description: String): ClanCreationResult
     suspend fun requestJoinClan(userId: String, clanId: String): ClanJoinRequestResult
@@ -69,7 +71,11 @@ interface ClanRepository {
     suspend fun getClanById(clanId: String): ClanSnapshot?
     suspend fun getClanList(limit: Int = 50, offset: Int = 0, query: String? = null): List<ClanSummarySnapshot>
     suspend fun kickMember(clanId: String, currentUserId: String, targetUserId: String): Boolean
+    /** The leader or a co-leader may change the catalog icon. */
     suspend fun updateLogoId(clanId: String, ownerId: String, logoId: String): ClanLogoUpdateStatus
+    /** Only the leader appoints ([ClanRole.CO_LEADER]) or dismisses ([ClanRole.MEMBER]) co-leaders. */
+    suspend fun setMemberRole(clanId: String, leaderId: String, memberId: String, role: com.hienthai.fastowin.protocol.ClanRole): ClanRoleUpdateStatus =
+        ClanRoleUpdateStatus.FAILED
     suspend fun addClanTrophies(clanId: String, amount: Int): Boolean
     suspend fun addQuestProgress(clanId: String, userId: String, amount: Int): Boolean
     suspend fun claimQuestReward(clanId: String, userId: String): Boolean

@@ -60,31 +60,6 @@ jobs:
           chmod 600 "$RUNNER_TEMP/asc/AuthKey.p8"
           echo "ASC_KEY_PATH=$RUNNER_TEMP/asc/AuthKey.p8" >> "$GITHUB_ENV"
 
-      # Automatic signing creates a new Apple Development certificate on every fresh runner
-      # unless one is already in the keychain, and the account allows only a handful. Import the
-      # fixed CI development identity so the archive reuses it; export still uses cloud signing.
-      - name: Install CI development certificate
-        env:
-          DEV_CERT_P12: ${{ secrets.IOS_DEV_CERT_P12_BASE64 }}
-          DEV_CERT_PASSWORD: ${{ secrets.IOS_DEV_CERT_PASSWORD }}
-        run: |
-          if [ -z "$DEV_CERT_P12" ] || [ -z "$DEV_CERT_PASSWORD" ]; then
-            echo "::error::Missing IOS_DEV_CERT_P12_BASE64 / IOS_DEV_CERT_PASSWORD secrets."
-            exit 1
-          fi
-          keychain="$RUNNER_TEMP/ci-signing.keychain-db"
-          keychain_password=$(uuidgen)
-          printf '%s' "$DEV_CERT_P12" | base64 --decode > "$RUNNER_TEMP/ci-dev.p12"
-          security create-keychain -p "$keychain_password" "$keychain"
-          security set-keychain-settings -lut 21600 "$keychain"
-          security unlock-keychain -p "$keychain_password" "$keychain"
-          security import "$RUNNER_TEMP/ci-dev.p12" -k "$keychain" -P "$DEV_CERT_PASSWORD" -T /usr/bin/codesign -T /usr/bin/security
-          security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k "$keychain_password" "$keychain" > /dev/null
-          security list-keychains -d user -s "$keychain" $(security list-keychains -d user | tr -d '"')
-          rm -f "$RUNNER_TEMP/ci-dev.p12"
-          echo "CI_KEYCHAIN=$keychain" >> "$GITHUB_ENV"
-          security find-identity -v -p codesigning "$keychain"
-
       - name: Archive release build
         run: |
           chmod +x gradlew
@@ -142,8 +117,6 @@ jobs:
             -authenticationKeyIssuerID "$ASC_ISSUER_ID"
           echo "Uploaded version ${{ inputs.marketing_version }} build $BUILD_NUMBER to App Store Connect." >> "$GITHUB_STEP_SUMMARY"
 
-      - name: Remove API key and CI keychain
+      - name: Remove API key
         if: always()
-        run: |
-          rm -rf "$RUNNER_TEMP/asc"
-          if [ -n "${CI_KEYCHAIN:-}" ]; then security delete-keychain "$CI_KEYCHAIN" || true; fi
+        run: rm -rf "$RUNNER_TEMP/asc"

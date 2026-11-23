@@ -4,7 +4,7 @@ import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
 
-const val PROTOCOL_VERSION = 45
+const val PROTOCOL_VERSION = 46
 const val MIN_COMPATIBLE_PROTOCOL_VERSION = 38
 const val TOURNAMENT_REWARD_PROTOCOL_VERSION = 45
 
@@ -617,7 +617,8 @@ data class LeaderboardEntrySnapshot(
     val lifetimeEarnedGems: Long = 0,
     val clanId: String? = null,
     val clanName: String? = null,
-    val clanLogoId: String? = null
+    val clanLogoId: String? = null,
+    val clanLogoRevision: String? = null
 )
 
 @Serializable
@@ -631,7 +632,8 @@ data class ClanLeaderboardEntrySnapshot(
     val experiencePoints: Long = 0,
     val donatedGold: Long = 0,
     val donatedGems: Long = 0,
-    val logoId: String? = null
+    val logoId: String? = null,
+    val logoRevision: String? = null
 )
 
 @Serializable
@@ -1135,6 +1137,39 @@ sealed class ClientMessage {
     data class UpdateClanLogo(val clanId: String, val logoId: String) : ClientMessage()
 
     @Serializable
+    @SerialName("upload_clan_logo")
+    data class UploadClanLogo(val clanId: String, val base64Data: String) : ClientMessage()
+
+    @Serializable
+    @SerialName("remove_clan_logo")
+    data class RemoveClanLogo(val clanId: String) : ClientMessage()
+
+    @Serializable
+    @SerialName("set_clan_member_role")
+    data class SetClanMemberRole(val clanId: String, val memberId: String, val role: ClanRole) : ClientMessage()
+
+    /** Opens chat for this socket. Without [beforeMessageId] it returns the newest page and unread count. */
+    @Serializable
+    @SerialName("get_clan_chat")
+    data class GetClanChat(val clanId: String, val beforeMessageId: String? = null) : ClientMessage()
+
+    @Serializable
+    @SerialName("send_clan_chat_message")
+    data class SendClanChatMessage(val clanId: String, val requestId: String, val text: String) : ClientMessage()
+
+    @Serializable
+    @SerialName("delete_clan_chat_message")
+    data class DeleteClanChatMessage(val clanId: String, val messageId: String) : ClientMessage()
+
+    @Serializable
+    @SerialName("mute_clan_chat_member")
+    data class MuteClanChatMember(val clanId: String, val memberId: String, val durationMinutes: Int) : ClientMessage()
+
+    @Serializable
+    @SerialName("mark_clan_chat_read")
+    data class MarkClanChatRead(val clanId: String, val messageId: String) : ClientMessage()
+
+    @Serializable
     @SerialName("buy_cosmetic")
     data class BuyCosmetic(val cosmeticId: String) : ClientMessage()
 
@@ -1409,6 +1444,40 @@ sealed class ServerMessage {
     ) : ServerMessage()
 
     @Serializable
+    @SerialName("clan_chat_history")
+    data class ClanChatHistory(
+        val clanId: String,
+        /** Oldest first. */
+        val messages: List<ClanChatMessageSnapshot>,
+        val hasMore: Boolean,
+        val isOlderPage: Boolean = false,
+        val unreadCount: Int = 0,
+        val mutedUntilEpochMillis: Long? = null,
+        /** Active mutes, sent only to the leader and co-leaders. */
+        val mutedMembers: Map<String, Long> = emptyMap()
+    ) : ServerMessage()
+
+    @Serializable
+    @SerialName("clan_chat_message")
+    data class ClanChatMessageReceived(
+        val clanId: String,
+        val message: ClanChatMessageSnapshot,
+        val requestId: String? = null
+    ) : ServerMessage()
+
+    @Serializable
+    @SerialName("clan_chat_message_removed")
+    data class ClanChatMessageRemoved(val clanId: String, val messageId: String) : ServerMessage()
+
+    @Serializable
+    @SerialName("clan_chat_mute_changed")
+    data class ClanChatMuteChanged(
+        val clanId: String,
+        val memberId: String,
+        val mutedUntilEpochMillis: Long? = null
+    ) : ServerMessage()
+
+    @Serializable
     @SerialName("clan_list_data")
     data class ClanListData(
         val clans: List<ClanSummarySnapshot>,
@@ -1521,6 +1590,8 @@ data class ClanSnapshot(
     val members: List<ClanMemberSnapshot>,
     val trophies: Int,
     val logoId: String? = null,
+    /** Present while an uploaded logo is shown; it changes with every upload. */
+    val logoRevision: String? = null,
     val maxMembers: Int = 50,
     val quest: ClanQuestSnapshot? = null,
     val joinRequests: List<ClanJoinRequestSnapshot> = emptyList(),
@@ -1540,6 +1611,7 @@ data class ClanSummarySnapshot(
     val maxMembers: Int,
     val trophies: Int,
     val logoId: String? = null,
+    val logoRevision: String? = null,
     val level: Int = 1,
     val experiencePoints: Long = 0,
     val donatedGold: Long = 0,

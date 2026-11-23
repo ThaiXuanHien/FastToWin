@@ -30,6 +30,7 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import com.hienthai.fastowin.data.network.AvatarFrameApiClient
 import com.hienthai.fastowin.data.network.toAvatarImageUrl
+import com.hienthai.fastowin.data.network.toClanLogoImageUrl
 import com.hienthai.fastowin.data.network.toHttpBaseUrl
 import com.hienthai.fastowin.protocol.AvatarFrameDefinition
 import com.hienthai.fastowin.protocol.MODERATED_AVATAR_ID
@@ -135,6 +136,14 @@ internal fun resolvePlayerAvatarImageUrl(avatarId: String?, userId: String?, ima
         userId?.takeIf { it.isNotBlank() && serverUrl.isNotBlank() }
             ?.let { serverUrl.toAvatarImageUrl(it, revision) }.orEmpty()
     }
+}
+
+/** The uploaded logo URL, or "" when the clan shows its catalog icon or no server is known. */
+@Composable
+fun clanLogoImageUrl(clanId: String?, revision: String?): String {
+    val server = LocalAvatarServerUrl.current
+    if (clanId.isNullOrBlank() || revision.isNullOrBlank()) return ""
+    return server.toClanLogoImageUrl(clanId, revision)
 }
 
 private val LocalAvatarServerUrl = staticCompositionLocalOf { "" }

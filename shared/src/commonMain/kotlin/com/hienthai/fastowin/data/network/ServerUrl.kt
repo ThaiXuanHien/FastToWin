@@ -15,3 +15,8 @@ internal fun String.toAvatarImageUrl(userId: String, revision: Long = 0L): Strin
     if (isBlank() || userId.isBlank()) return ""
     return "${toHttpBaseUrl()}/api/avatar/$userId?v=$revision"
 }
+
+internal fun String.toClanLogoImageUrl(clanId: String, revision: String): String {
+    if (isBlank() || clanId.isBlank() || revision.isBlank()) return ""
+    return "${toHttpBaseUrl()}/api/clan-logo/$clanId?v=$revision"
+}

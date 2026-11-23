@@ -84,6 +84,15 @@ class JdbcModerationTransaction(private val connection:Connection):ModerationTra
             val text=it.getString(1)+"\n"+it.getString(2).orEmpty()
             UgcTarget(type,id,it.getString(3),text,contentRevision(text))
         }.singleOrNull()
+        UgcTargetType.CLAN_LOGO -> rows("""SELECT l.revision,l.object_key,c.owner_id FROM clan_logos l JOIN clans c ON c.id=l.clan_id
+            WHERE l.clan_id=? AND (l.object_key IS NOT NULL OR l.legacy_data IS NOT NULL)""",uuid(id)) {
+            val revision=it.getLong(1).toString()
+            // References only, as for avatars: image bytes never enter a report.
+            UgcTarget(type,id,it.getString(3),"",revision,it.getString(2) ?: "clan-logo-revision:$revision")
+        }.singleOrNull()
+        UgcTargetType.CLAN_MESSAGE -> rows("SELECT body,sender_id FROM clan_chat_messages WHERE id=? AND kind='USER' AND deleted_at IS NULL",uuid(id)) {
+            val text=it.getString(1);UgcTarget(type,id,it.getString(2),text,contentRevision(text))
+        }.singleOrNull()
         UgcTargetType.ROOM -> rows("SELECT state_json::text FROM active_room_snapshots WHERE room_id=?",uuid(id)) {
             val json=Json.parseToJsonElement(it.getString(1)).jsonObject
             val text=json["roomName"]?.jsonPrimitive?.contentOrNull.orEmpty()

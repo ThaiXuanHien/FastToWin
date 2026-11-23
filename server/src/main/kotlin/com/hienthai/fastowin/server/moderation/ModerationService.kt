@@ -153,7 +153,7 @@ class ModerationService(
                 val target=current.targetId?.let { target(current.targetType,it) } ?: conflict()
                 if(target.revision!=current.targetRevision) conflict()
                 putSuppression(ContentSuppression(target.type,target.id,target.revision,target.ownerId,nowMillis(),
-                    if(target.type==UgcTargetType.PLAYER_AVATAR) null else contentRevision(target.text.substringBefore('\n'))))
+                    if(target.type==UgcTargetType.PLAYER_AVATAR || target.type==UgcTargetType.CLAN_LOGO) null else contentRevision(target.text.substringBefore('\n'))))
             }
             val next=current.copy(version=current.version+1,status=request.status,
                 closedAtEpochMillis=if(request.status.closed()) nowMillis() else null)

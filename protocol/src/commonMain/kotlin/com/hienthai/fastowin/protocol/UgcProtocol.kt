@@ -4,7 +4,7 @@ import kotlinx.serialization.Serializable
 
 const val CONTENT_TERMS_VERSION: String = "2026-10-20"
 const val MODERATED_AVATAR_ID: String = "avatar_moderated"
-@Serializable enum class UgcTargetType { PLAYER_PROFILE, PLAYER_AVATAR, CLAN, ROOM, TOURNAMENT }
+@Serializable enum class UgcTargetType { PLAYER_PROFILE, PLAYER_AVATAR, CLAN, ROOM, TOURNAMENT, CLAN_LOGO, CLAN_MESSAGE }
 @Serializable enum class UgcReportReason { HARASSMENT, HATE, SEXUAL_CONTENT, VIOLENCE, SPAM, PERSONAL_INFORMATION, OTHER }
 @Serializable data class ContentReportRequest(
     val targetType: UgcTargetType, val targetId: String, val reason: UgcReportReason,

@@ -175,7 +175,9 @@ fun ArcadeIconHero(
     modifier: Modifier = Modifier,
     accent: Color = ArcadePalette.Violet600,
     onIconClick: (() -> Unit)? = null,
-    iconContentDescription: String? = null
+    iconContentDescription: String? = null,
+    /** An uploaded image shown in the badge instead of [icon]; the icon stays as its fallback. */
+    iconImageUrl: String = ""
 ) {
     val shape = RoundedCornerShape(24.dp)
     BoxWithConstraints(
@@ -232,12 +234,20 @@ fun ArcadeIconHero(
                     ),
                 contentAlignment = Alignment.Center
             ) {
-                Icon(
+                if (iconImageUrl.isBlank()) Icon(
                     icon,
                     contentDescription = iconContentDescription,
                     tint = ArcadePalette.Navy800,
                     modifier = Modifier.size(30.dp)
-                )
+                ) else NetworkImage(
+                    iconImageUrl,
+                    Modifier.fillMaxSize().padding(3.dp).clip(RoundedCornerShape(18.dp)),
+                    contentDescription = iconContentDescription,
+                    contentScale = androidx.compose.ui.layout.ContentScale.Crop
+                ) {
+                    Icon(icon, contentDescription = iconContentDescription, tint = ArcadePalette.Navy800,
+                        modifier = Modifier.size(30.dp))
+                }
             }
         } else {
             Box(
@@ -255,12 +265,20 @@ fun ArcadeIconHero(
                     ),
                 contentAlignment = Alignment.Center
             ) {
-                Icon(
+                if (iconImageUrl.isBlank()) Icon(
                     icon,
                     contentDescription = iconContentDescription,
                     tint = ArcadePalette.Navy800,
                     modifier = Modifier.size(40.dp)
-                )
+                ) else NetworkImage(
+                    iconImageUrl,
+                    Modifier.fillMaxSize().padding(3.dp).clip(RoundedCornerShape(23.dp)),
+                    contentDescription = iconContentDescription,
+                    contentScale = androidx.compose.ui.layout.ContentScale.Crop
+                ) {
+                    Icon(icon, contentDescription = iconContentDescription, tint = ArcadePalette.Navy800,
+                        modifier = Modifier.size(40.dp))
+                }
             }
         }
     }

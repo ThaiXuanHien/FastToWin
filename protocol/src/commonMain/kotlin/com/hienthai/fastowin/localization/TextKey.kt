@@ -437,5 +437,16 @@ ClanRaceTitle, ClanRacePrizes, ClanRacePerMember, ClanRaceEligibility, ClanRaceW
     PushStreakAtRiskTitle, PushStreakAtRiskMessage, PushClanRaceEndingTitle, PushClanRaceEndingMessage,
     SettingsFriendActivityTitle, SettingsFriendActivitySubtitle, SettingsTournamentRemindersTitle, SettingsTournamentRemindersSubtitle,
     SettingsGiftsTitle, SettingsGiftsSubtitle, SettingsSeasonUpdatesTitle, SettingsSeasonUpdatesSubtitle,
-    SettingsClanActivityTitle, SettingsClanActivitySubtitle
+    SettingsClanActivityTitle, SettingsClanActivitySubtitle,
+    ClanTabOverview, ClanTabChat, ClanTabChatUnread, ClanChatTitle, ClanChatEmpty, ClanChatInputHint, ClanChatSend,
+    ClanChatLoadOlder, ClanChatLoading, ClanChatMutedBanner, ClanChatMessageActions, ClanChatDelete, ClanChatReport,
+    ClanChatMuteHour, ClanChatMuteDay, ClanChatUnmute, ClanChatMutedUntil, ClanChatCharacterCount, ClanChatYou,
+    ClanChatToday, ClanChatRetention, ClanChatNewMessages,
+    ClanChatSystemJoined, ClanChatSystemLeft, ClanChatSystemKicked, ClanChatSystemLogoChanged, ClanChatSystemLevelUp,
+    ClanChatSystemCoLeaderAppointed, ClanChatSystemCoLeaderDismissed,
+    ClanAppointCoLeader, ClanDismissCoLeader, ClanCoLeaderLimitHint,
+    ClanLogoUpload, ClanLogoRemoveUpload, ClanLogoUploadHint, ClanLogoUploadedImage, ClanLogoUploading,
+    ServerClanPermissionDenied, ServerClanChatMuted, ServerClanChatInvalidMessage, ServerClanLogoDailyLimit,
+    ServerClanLogoUploadFailed, ServerClanCoLeaderLimit, PushClanChatTitle, PushClanChatMessage,
+    UgcClanLogo, UgcClanMessage
 }

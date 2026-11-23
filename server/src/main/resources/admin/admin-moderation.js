@@ -1,7 +1,7 @@
 'use strict';
 
 const states = { NEW: 'Mới', REVIEWING: 'Đang xem xét', RESOLVED: 'Đã xử lý', DISMISSED: 'Bỏ qua' };
-const types = { PLAYER_PROFILE: 'Hồ sơ người chơi', PLAYER_AVATAR: 'Ảnh đại diện', CLAN: 'Bang hội', ROOM: 'Phòng chơi', TOURNAMENT: 'Giải đấu' };
+const types = { PLAYER_PROFILE: 'Hồ sơ người chơi', PLAYER_AVATAR: 'Ảnh đại diện', CLAN: 'Bang hội', ROOM: 'Phòng chơi', TOURNAMENT: 'Giải đấu', CLAN_LOGO: 'Logo bang', CLAN_MESSAGE: 'Tin nhắn bang' };
 const reasons = { HARASSMENT: 'Quấy rối', HATE: 'Thù ghét', SEXUAL_CONTENT: 'Nội dung tình dục', VIOLENCE: 'Bạo lực / đe dọa', SPAM: 'Spam', PERSONAL_INFORMATION: 'Thông tin riêng tư', OTHER: 'Khác' };
 const writable = role => role === 'OWNER' || role === 'OPERATOR';
 const readable = role => writable(role) || role === 'SUPPORT';
@@ -89,13 +89,14 @@ export function openModeration(ui) {
       // All untrusted text uses the shared text-only node factory, never innerHTML.
       if (view.lastActionReason) body.append(node('h3', 'Lý do xử lý gần nhất'), node('p', view.lastActionReason, { class: 'announcement-body moderation-copy' }));
       body.append(node('h3', 'Nội dung được ghi nhận'), node('p', report.evidenceText || 'Không có bản chụp văn bản.', { class: 'announcement-body moderation-copy' }), node('h3', 'Ghi chú của người báo cáo'), node('p', report.note || 'Không có ghi chú.', { class: 'announcement-body moderation-copy' }));
-      if (report.targetType === 'PLAYER_AVATAR') {
+      if (report.targetType === 'PLAYER_AVATAR' || report.targetType === 'CLAN_LOGO') {
+        const imagePath = report.targetType === 'CLAN_LOGO' ? '/api/clan-logo/' : '/api/avatar/';
         body.append(node('p', 'Không lưu bản sao ảnh làm bằng chứng. Kiểm tra ảnh hiện tại trước khi xử lý.', { class: 'muted' }));
         if (!view.targetMissing && report.targetId) {
           const imageArea = node('div', null, { class: 'moderation-avatar' });
           const loadImage = button('Xem ảnh hiện tại', () => {
             loadImage.disabled = true;
-            const image = node('img', null, { src: '/api/avatar/' + encodeURIComponent(report.targetId), alt: 'Ảnh đại diện hiện tại của đối tượng báo cáo', width: '160', height: '160', referrerpolicy: 'no-referrer' });
+            const image = node('img', null, { src: imagePath + encodeURIComponent(report.targetId), alt: report.targetType === 'CLAN_LOGO' ? 'Logo bang hiện tại của đối tượng báo cáo' : 'Ảnh đại diện hiện tại của đối tượng báo cáo', width: '160', height: '160', referrerpolicy: 'no-referrer' });
             image.addEventListener('error', () => { imageArea.replaceChildren(node('p', 'Không tải được ảnh hiện tại. Ảnh có thể đã được thay hoặc gỡ.', { role: 'status' })); });
             imageArea.append(image);
           });

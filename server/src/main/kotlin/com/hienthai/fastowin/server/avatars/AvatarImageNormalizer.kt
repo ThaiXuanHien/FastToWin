@@ -12,8 +12,12 @@ import kotlin.math.roundToInt
 
 data class NormalizedAvatar(val bytes: ByteArray, val width: Int, val height: Int, val contentType: String = "image/jpeg")
 
-/** Reject dimensions from the header before ImageIO allocates the decoded raster. */
-class AvatarImageNormalizer {
+/**
+ * Reject dimensions from the header before ImageIO allocates the decoded raster.
+ * [squareCrop] keeps the centered square (clan logos); avatars keep their aspect ratio.
+ */
+class AvatarImageNormalizer(private val maxEdge: Int = 512, private val squareCrop: Boolean = false) {
+    init { require(maxEdge in 1..512) }
     fun normalize(base64: String): NormalizedAvatar? = normalize(base64, MAX_BYTES)
 
     // Historical WS payloads could decode slightly above 45 KiB. The output and raster limits stay identical.
@@ -46,9 +50,14 @@ class AvatarImageNormalizer {
                     val height = reader.getHeight(0)
                     if (width !in 1..4096 || height !in 1..4096 || width.toLong() * height > 8_000_000L) return null
                     val source = reader.read(0) ?: return null
-                    val scale = minOf(1.0, 512.0 / maxOf(width, height))
-                    var targetWidth = (width * scale).roundToInt().coerceAtLeast(1)
-                    var targetHeight = (height * scale).roundToInt().coerceAtLeast(1)
+                    val side = minOf(width, height)
+                    val cropX = if (squareCrop) (width - side) / 2 else 0
+                    val cropY = if (squareCrop) (height - side) / 2 else 0
+                    val cropWidth = if (squareCrop) side else width
+                    val cropHeight = if (squareCrop) side else height
+                    val scale = minOf(1.0, maxEdge.toDouble() / maxOf(cropWidth, cropHeight))
+                    var targetWidth = (cropWidth * scale).roundToInt().coerceAtLeast(1)
+                    var targetHeight = (cropHeight * scale).roundToInt().coerceAtLeast(1)
                     repeat(5) {
                         val target = BufferedImage(targetWidth, targetHeight, BufferedImage.TYPE_INT_RGB)
                         target.createGraphics().let { graphics ->
@@ -56,7 +65,7 @@ class AvatarImageNormalizer {
                                 graphics.color = Color.WHITE
                                 graphics.fillRect(0, 0, targetWidth, targetHeight)
                                 graphics.setRenderingHint(RenderingHints.KEY_INTERPOLATION, RenderingHints.VALUE_INTERPOLATION_BICUBIC)
-                                graphics.drawImage(source, 0, 0, targetWidth, targetHeight, null)
+                                graphics.drawImage(source, 0, 0, targetWidth, targetHeight, cropX, cropY, cropX + cropWidth, cropY + cropHeight, null)
                             } finally { graphics.dispose() }
                         }
                         for (quality in listOf(0.85f, 0.7f, 0.55f, 0.4f)) {

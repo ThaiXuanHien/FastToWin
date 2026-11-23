@@ -53,6 +53,9 @@ data class ServerRateLimitPolicies(
     val adMobCallbackPerIp: RateLimitPolicy = RateLimitPolicy(300, 60_000L),
     val avatarPerPlayer: RateLimitPolicy = RateLimitPolicy(3, 10 * 60_000L),
     val avatarPerIp: RateLimitPolicy = RateLimitPolicy(10, 10 * 60_000L),
+    // Clan chat: one line every two seconds and at most twenty a minute per player.
+    val clanChatBurstPerPlayer: RateLimitPolicy = RateLimitPolicy(1, 2_000L),
+    val clanChatPerMinutePerPlayer: RateLimitPolicy = RateLimitPolicy(20, 60_000L),
     val reportPerIp: RateLimitPolicy = RateLimitPolicy(30, 10 * 60_000L)
 )
 
@@ -178,6 +181,8 @@ class InMemoryRateLimiter(
 internal object RateLimitBuckets {
     const val AVATAR_PLAYER = "avatar-player"
     const val AVATAR_IP = "avatar-ip"
+    const val CLAN_CHAT_BURST_PLAYER = "clan-chat-burst-player"
+    const val CLAN_CHAT_MINUTE_PLAYER = "clan-chat-minute-player"
     const val LOGIN_IP = "login-ip"
     const val LOGIN_ACCOUNT = "login-account"
     const val REGISTER_IP = "register-ip"

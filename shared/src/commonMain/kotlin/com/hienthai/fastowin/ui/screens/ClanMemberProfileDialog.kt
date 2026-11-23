@@ -83,7 +83,8 @@ fun ClanMemberProfileDialog(
     onRespondFriendRequest: (String, Boolean) -> Unit,
     onDismiss: () -> Unit,
     isSocialReady: Boolean = true,
-    onRefreshSocial: () -> Unit = {}
+    onRefreshSocial: () -> Unit = {},
+    roleAction: ClanMemberRoleAction? = null
 ) {
     val action = clanMemberFriendAction(member.userId, member.playerCode, currentUserId, social, isSocialLoading, isSocialReady)
     ArcadeDialog(
@@ -93,6 +94,15 @@ fun ClanMemberProfileDialog(
         scrollableContent = true,
         fixedActions = {
             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                roleAction?.let { role ->
+                    ArcadeActionButton(
+                        label = localized(if (role.appoint) TextKey.ClanAppointCoLeader else TextKey.ClanDismissCoLeader),
+                        enabled = role.enabled,
+                        onClick = { role.onClick(); onDismiss() },
+                        style = if (role.appoint) ArcadeActionStyle.GOLD else ArcadeActionStyle.OUTLINE,
+                        modifier = Modifier.fillMaxWidth().testTag("clan_member_role_action")
+                    )
+                }
                 action?.let {
                     ArcadeActionButton(
                         label = localized(if (isSocialLoading) TextKey.Processing else it.textKey),
@@ -147,6 +157,10 @@ fun ClanMemberProfileDialog(
         ArcadePanel(modifier = Modifier.fillMaxWidth(), accent = ArcadePalette.Blue300) {
             Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
                 MemberProfileStat(localized(TextKey.ClanMemberRole), member.role.localizedName())
+                roleAction?.let {
+                    Text(localized(TextKey.ClanCoLeaderLimitHint, "count" to com.hienthai.fastowin.protocol.CLAN_MAX_CO_LEADERS),
+                        style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
                 MemberProfileStat(localized(TextKey.MemberTrophies), member.trophies.toString())
                 MemberProfileStat(localized(TextKey.ClanQuestContribution), member.questContribution.toString())
                 MemberProfileStat(localized(TextKey.ClanDonatedGold), member.donatedGold.toString())
@@ -155,6 +169,9 @@ fun ClanMemberProfileDialog(
         }
     }
 }
+
+/** Leader-only appointment shown in a member's profile. */
+data class ClanMemberRoleAction(val appoint: Boolean, val enabled: Boolean, val onClick: () -> Unit)
 
 @Composable
 private fun MemberProfileStat(label: String, value: String) {

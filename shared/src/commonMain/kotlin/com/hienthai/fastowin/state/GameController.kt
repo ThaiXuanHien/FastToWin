@@ -387,6 +387,8 @@ class GameController private constructor(
                     sendMessage(ClientMessage.GetClanList())
                     (requestedClanId ?: state.currentClan?.id)?.let { sendMessage(ClientMessage.GetClanInfo(it)) }
                 }
+                // Lines sent while the socket was away arrive with the fresh first page.
+                state.clanChat.clanId?.let { sendMessage(ClientMessage.GetClanChat(it)) }
                 if (state.isShopOpen) {
                     sendMessage(ClientMessage.GetGemStoreCatalog)
                     sendMessage(ClientMessage.GetWalletHistory)
@@ -622,6 +624,99 @@ class GameController private constructor(
         val base64String = Base64.Default.encode(bytes)
         _uiState.update { it.copy(isProfileSaving = true, profileNotice = null, error = null) }
         scope.launch { sendMessage(ClientMessage.UpdateAvatar(base64String)) }
+    }
+
+    private fun currentChatUserId(): String? = _uiState.value.profile?.userId ?: playerId
+
+    /** The own clan's chat is loaded once per clan so the Chat tab can show unread lines. */
+    private suspend fun ensureClanChatLoaded() {
+        val clanId = _uiState.value.profile?.clanId ?: return
+        if (_uiState.value.clanChat.clanId == clanId) return
+        _uiState.update { it.copy(clanChat = it.clanChat.loading(clanId)) }
+        sendMessage(ClientMessage.GetClanChat(clanId))
+    }
+
+    private fun markClanChatReadIfVisible() {
+        val chat = _uiState.value.clanChat
+        val clanId = chat.clanId ?: return
+        val newest = chat.newestMessageId ?: return
+        if (!chat.isVisible || newest == lastMarkedClanChatId) return
+        lastMarkedClanChatId = newest
+        scope.launch { sendMessage(ClientMessage.MarkClanChatRead(clanId, newest)) }
+    }
+
+    private var lastMarkedClanChatId: String? = null
+
+    fun setClanChatVisible(visible: Boolean) {
+        _uiState.update { it.copy(clanChat = it.clanChat.shown(visible)) }
+        if (visible) {
+            scope.launch { ensureClanChatLoaded() }
+            markClanChatReadIfVisible()
+        }
+    }
+
+    fun sendClanChatMessage(text: String): Boolean {
+        val chat = _uiState.value.clanChat
+        val clanId = chat.clanId ?: return false
+        val normalized = com.hienthai.fastowin.protocol.normalizeClanChatText(text)
+        if (normalized.isEmpty() || normalized.length > com.hienthai.fastowin.protocol.CLAN_CHAT_MAX_LENGTH) return false
+        val requestId = randomUuid().replace("-", "")
+        _uiState.update { it.copy(clanChat = it.clanChat.sending(requestId, normalized, epochMillis())) }
+        scope.launch { sendMessage(ClientMessage.SendClanChatMessage(clanId, requestId, normalized)) }
+        return true
+    }
+
+    /** Resends a failed line with its original request, so a line the server did store is not doubled. */
+    fun retryClanChatMessage(requestId: String) {
+        val chat = _uiState.value.clanChat
+        val clanId = chat.clanId ?: return
+        val line = chat.pending.firstOrNull { it.requestId == requestId } ?: return
+        _uiState.update { it.copy(clanChat = it.clanChat.discard(requestId).sending(requestId, line.text, line.createdAtEpochMillis)) }
+        scope.launch { sendMessage(ClientMessage.SendClanChatMessage(clanId, requestId, line.text)) }
+    }
+
+    fun discardClanChatMessage(requestId: String) {
+        _uiState.update { it.copy(clanChat = it.clanChat.discard(requestId)) }
+    }
+
+    fun loadOlderClanChat() {
+        val chat = _uiState.value.clanChat
+        val clanId = chat.clanId ?: return
+        val oldest = chat.messages.firstOrNull()?.id ?: return
+        if (!chat.hasMore || chat.isLoadingOlder) return
+        _uiState.update { it.copy(clanChat = it.clanChat.copy(isLoadingOlder = true)) }
+        scope.launch { sendMessage(ClientMessage.GetClanChat(clanId, oldest)) }
+    }
+
+    fun deleteClanChatMessage(messageId: String) {
+        val clanId = _uiState.value.clanChat.clanId ?: return
+        scope.launch { sendMessage(ClientMessage.DeleteClanChatMessage(clanId, messageId)) }
+    }
+
+    fun muteClanChatMember(memberId: String, durationMinutes: Int) {
+        val clanId = _uiState.value.clanChat.clanId ?: return
+        _uiState.update { it.copy(error = null, clanNotice = null) }
+        scope.launch { sendMessage(ClientMessage.MuteClanChatMember(clanId, memberId, durationMinutes)) }
+    }
+
+    fun setClanMemberRole(clanId: String, memberId: String, role: com.hienthai.fastowin.protocol.ClanRole) {
+        _uiState.update { it.copy(error = null, clanNotice = null) }
+        scope.launch { sendMessage(ClientMessage.SetClanMemberRole(clanId, memberId, role)) }
+    }
+
+    @OptIn(ExperimentalEncodingApi::class)
+    fun uploadClanLogo(clanId: String, bytes: ByteArray) {
+        if (bytes.isEmpty() || bytes.size > AVATAR_UPLOAD_MAX_BYTES) {
+            _uiState.update { it.copy(error = messageMapper.text(TextKey.ServerClanLogoUploadFailed)) }
+            return
+        }
+        _uiState.update { it.copy(isClanLogoUploading = true, error = null, clanNotice = null) }
+        scope.launch { sendMessage(ClientMessage.UploadClanLogo(clanId, Base64.Default.encode(bytes))) }
+    }
+
+    fun removeClanLogo(clanId: String) {
+        _uiState.update { it.copy(error = null, clanNotice = null) }
+        scope.launch { sendMessage(ClientMessage.RemoveClanLogo(clanId)) }
     }
 
     fun updateClanLogo(clanId: String, logoId: String) {
@@ -1444,6 +1539,8 @@ class GameController private constructor(
                             previousClanId != message.profile.clanId && it.id == previousClanId
                         },
                         clanLoadError = state.clanLoadError.takeIf { previousClanId == message.profile.clanId },
+                        clanChat = state.clanChat.takeIf { it.clanId == null || it.clanId == message.profile.clanId }
+                            ?: ClanChatState(isVisible = state.clanChat.isVisible),
                         avatarRevision = state.avatarRevision + 1,
                         player = state.player.copy(
                             name = message.profile.displayName,
@@ -1499,6 +1596,7 @@ class GameController private constructor(
                     requestProfileRefresh()
                 }
                 dispatchPendingGiftProfileRefresh()
+                ensureClanChatLoaded()
             }
             is ServerMessage.WalletHistory -> {
                 _uiState.update {
@@ -1836,6 +1934,24 @@ class GameController private constructor(
                     }
                 }
                 if (!message.isPresenceRefresh && requestedClanId == message.clan.id) requestedClanId = null
+                if (!message.isPresenceRefresh) {
+                    _uiState.update { it.copy(isClanLogoUploading = false) }
+                    ensureClanChatLoaded()
+                }
+            }
+            is ServerMessage.ClanChatHistory -> {
+                _uiState.update { it.copy(clanChat = it.clanChat.withHistory(message)) }
+                if (!message.isOlderPage) markClanChatReadIfVisible()
+            }
+            is ServerMessage.ClanChatMessageReceived -> {
+                _uiState.update { it.copy(clanChat = it.clanChat.withMessage(message.message, message.requestId, currentChatUserId())) }
+                markClanChatReadIfVisible()
+            }
+            is ServerMessage.ClanChatMessageRemoved -> _uiState.update {
+                it.copy(clanChat = it.clanChat.withoutMessage(message.clanId, message.messageId))
+            }
+            is ServerMessage.ClanChatMuteChanged -> _uiState.update {
+                it.copy(clanChat = it.clanChat.withMute(message, currentChatUserId()))
             }
             is ServerMessage.ClanListData -> {
                 _uiState.update {
@@ -2061,6 +2177,12 @@ class GameController private constructor(
 
     private fun handleServerError(error: ServerMessage.Error) {
         val localizedError = messageMapper.message(error)
+        val chatRequest = error.requestId
+        if (chatRequest != null && _uiState.value.clanChat.hasPending(chatRequest)) {
+            _uiState.update { it.copy(clanChat = it.clanChat.failed(chatRequest, localizedError)) }
+            return
+        }
+        if (error.code in CLAN_LOGO_ERROR_CODES) _uiState.update { it.copy(isClanLogoUploading = false) }
         when (error.code) {
             "FRIENDS_PRESENCE_UNAVAILABLE" -> {
                 _uiState.update { state ->
@@ -2745,3 +2867,8 @@ class GameController private constructor(
         )
     }
 }
+
+private val CLAN_LOGO_ERROR_CODES = setOf(
+    "CLAN_LOGO_DAILY_LIMIT", "CLAN_LOGO_UPLOAD_FAILED", "CLAN_PERMISSION_DENIED", "RATE_LIMITED",
+    "CONTENT_TERMS_REQUIRED", "NOT_IN_CLAN", "CONNECTION_NOT_READY", "CONNECTION_FAILED", "SEND_FAILED"
+)

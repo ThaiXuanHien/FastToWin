@@ -5,11 +5,30 @@ import com.hienthai.fastowin.server.presence.PresenceStore
 import com.hienthai.fastowin.server.maintenance.*
 import com.hienthai.fastowin.server.moderation.*
 import com.hienthai.fastowin.protocol.UgcTargetType
+import com.hienthai.fastowin.protocol.CLAN_CHAT_MAX_LENGTH
+import com.hienthai.fastowin.protocol.CLAN_CHAT_MUTE_MINUTES
+import com.hienthai.fastowin.protocol.CLAN_CHAT_PAGE_SIZE
+import com.hienthai.fastowin.protocol.CLAN_CHAT_PROTOCOL_VERSION
+import com.hienthai.fastowin.protocol.CLAN_CHAT_PUSH_INTERVAL_MILLIS
+import com.hienthai.fastowin.protocol.CLAN_CHAT_RETENTION_MILLIS
+import com.hienthai.fastowin.protocol.CLAN_LOGO_DAILY_CHANGE_LIMIT
+import com.hienthai.fastowin.protocol.CLAN_MAX_CO_LEADERS
+import com.hienthai.fastowin.protocol.ClanChatMessageKind
+import com.hienthai.fastowin.protocol.ClanChatMessageSnapshot
+import com.hienthai.fastowin.protocol.ClanChatSystemEvent
+import com.hienthai.fastowin.protocol.canModerateClan
+import com.hienthai.fastowin.protocol.normalizeClanChatText
+import com.hienthai.fastowin.server.avatars.ClanLogoService
+import com.hienthai.fastowin.server.avatars.ClanLogoUploadStatus
+import com.hienthai.fastowin.server.avatars.inMemoryClanLogoService
+import kotlinx.coroutines.launch
 import com.hienthai.fastowin.protocol.MaintenanceState
 
 import com.hienthai.fastowin.protocol.ClientMessage
 import com.hienthai.fastowin.protocol.ClanDonationStatus
 import com.hienthai.fastowin.protocol.ClanSnapshot
+import com.hienthai.fastowin.protocol.ClanMemberSnapshot
+import com.hienthai.fastowin.protocol.ClanRole
 import com.hienthai.fastowin.protocol.clanLogoRequiredLevel
 import com.hienthai.fastowin.localization.protocolTextKeyForCode
 import com.hienthai.fastowin.localization.TextKey
@@ -117,7 +136,12 @@ class GameEngine(
             publicationAllowed = { moderationService.requireContentTerms(it) },
             contentSuppressed = { id, revision -> moderationService.isSuppressed(UgcTargetType.PLAYER_AVATAR, id, revision) }),
     internal val presenceStore: PresenceStore? = null,
-    internal val productionPresenceFailClosed: Boolean = false
+    internal val productionPresenceFailClosed: Boolean = false,
+    private val clanChatRepository: ClanChatRepository = InMemoryClanChatRepository(),
+    /** Tests run background work inline; production uses the engine's supervisor scope. */
+    private val backgroundRunner: ((suspend () -> Unit) -> Unit)? = null,
+    // Keep a non-function parameter last so `GameEngine { now }` still selects the clock constructor.
+    val clanLogoService: ClanLogoService = inMemoryClanLogoService(clanRepository, nowMillis)
 ) {
     constructor(nowMillis: () -> Long) : this(nowMillis = nowMillis, eventRewardSource = com.hienthai.fastowin.server.events.NoRewardEventSource)
 
@@ -138,6 +162,7 @@ class GameEngine(
     }
 
     private val mutex = Mutex()
+    private val backgroundScope = kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.SupervisorJob() + kotlinx.coroutines.Dispatchers.Default)
     private val restorationMutex = Mutex()
     private val persistenceMutex = PersistenceLock()
     private val matchmakingSweepMutex = Mutex()
@@ -622,7 +647,11 @@ class GameEngine(
     }
 
     suspend fun suppressionsForProjection(): List<ContentSuppression> = moderationService.suppressions().filter {
-        it.targetType != UgcTargetType.PLAYER_AVATAR || avatarService.currentRevision(it.targetId) == it.revision
+        when (it.targetType) {
+            UgcTargetType.PLAYER_AVATAR -> avatarService.currentRevision(it.targetId) == it.revision
+            UgcTargetType.CLAN_LOGO -> clanLogoService.currentRevision(it.targetId) == it.revision
+            else -> true
+        }
     }
 
     private suspend fun publishMemoryTarget(type: UgcTargetType, id: String) {
@@ -646,6 +675,12 @@ class GameEngine(
                 }
             }
             UgcTargetType.TOURNAMENT -> mutex.withLock { tournaments[id]?.let { UgcTarget(type, id, it.hostId, it.name, contentRevision(it.name)) } }
+            UgcTargetType.CLAN_LOGO -> clanLogoService.currentRevision(id)?.let { revision ->
+                clanRepository.getClanById(id)?.let { UgcTarget(type, id, it.ownerId, "", revision, "clan-logo-revision:$revision") }
+            }
+            UgcTargetType.CLAN_MESSAGE -> clanChatRepository.findById(id)?.takeIf { it.kind == ClanChatMessageKind.USER }?.let {
+                UgcTarget(type, id, it.senderId, it.text, contentRevision(it.text))
+            }
         }
         moderationService.repository.transaction {
             if (target == null || (target.ownerId != null && !playerExists(target.ownerId))) removeTarget(type, id)
@@ -682,6 +717,7 @@ class GameEngine(
                     return listOf(Delivery(ServerMessage.ContentReportResult(message.request.requestId, moderationService.report(playerId, message.request)), setOf(playerId)))
                 }
                 is ClientMessage.UpdateProfile, is ClientMessage.UpdateAvatar, is ClientMessage.UpdateClanLogo,
+                is ClientMessage.UploadClanLogo, is ClientMessage.SendClanChatMessage,
                 is ClientMessage.CreateClan, is ClientMessage.CreateRoom, is ClientMessage.CreateTournament -> moderationService.requireContentTerms(playerId)
                 else -> Unit
             }
@@ -761,6 +797,14 @@ class GameEngine(
         if (message is ClientMessage.DonateToClan) return donateToClan(playerId, message)
         if (message is ClientMessage.UpdateAvatar) return updateAvatar(playerId, message.base64Data)
         if (message is ClientMessage.UpdateClanLogo) return updateClanLogo(playerId, message.clanId, message.logoId)
+        if (message is ClientMessage.UploadClanLogo) return uploadClanLogo(playerId, message.clanId, message.base64Data)
+        if (message is ClientMessage.RemoveClanLogo) return removeClanLogo(playerId, message.clanId)
+        if (message is ClientMessage.SetClanMemberRole) return setClanMemberRole(playerId, message)
+        if (message is ClientMessage.GetClanChat) return getClanChat(playerId, message)
+        if (message is ClientMessage.SendClanChatMessage) return sendClanChatMessage(playerId, message)
+        if (message is ClientMessage.DeleteClanChatMessage) return deleteClanChatMessage(playerId, message)
+        if (message is ClientMessage.MuteClanChatMember) return muteClanChatMember(playerId, message)
+        if (message is ClientMessage.MarkClanChatRead) return markClanChatRead(playerId, message)
         if (message is ClientMessage.BuyCosmetic) return rejectLegacyCosmeticPurchase(playerId)
         if (message is ClientMessage.EquipCosmetic) return equipCosmetic(playerId, message.cosmeticId)
         if (message is ClientMessage.JoinMatchmaking) return joinMatchmaking(playerId, message)
@@ -863,7 +907,10 @@ class GameEngine(
                 is ClientMessage.MarkNotificationsRead -> HandleResult(emptyList())
                 is ClientMessage.DismissNotifications -> HandleResult(emptyList())
                 is ClientMessage.UpdateAvatar -> HandleResult(emptyList())
-                is ClientMessage.UpdateClanLogo -> HandleResult(emptyList())
+                is ClientMessage.UpdateClanLogo, is ClientMessage.UploadClanLogo, is ClientMessage.RemoveClanLogo,
+                is ClientMessage.SetClanMemberRole, is ClientMessage.GetClanChat, is ClientMessage.SendClanChatMessage,
+                is ClientMessage.DeleteClanChatMessage, is ClientMessage.MuteClanChatMember,
+                is ClientMessage.MarkClanChatRead -> HandleResult(emptyList())
                 is ClientMessage.BuyCosmetic -> HandleResult(emptyList())
                 is ClientMessage.EquipCosmetic -> HandleResult(emptyList())
                 is ClientMessage.MeasureLatency -> HandleResult(listOf(
@@ -4589,6 +4636,8 @@ class GameEngine(
         setOf(playerId)
     )
 
+    private val CHAT_REQUEST_ID = Regex("[A-Za-z0-9_-]{1,64}")
+
     private data class GuestSession(
         val playerId: String,
         var resumeToken: String?,
@@ -5061,6 +5110,8 @@ class GameEngine(
                         if (approved) addAll(clanMemberUpdate(it))
                         else clanInfo(it)?.let { message -> add(Delivery(message, setOf(playerId))) }
                     }
+                    if (approved) addAll(postClanSystemMessage(command.clanId, ClanChatSystemEvent.MEMBER_JOINED,
+                        playerArgs(command.userId, requester.displayName)))
                     add(Delivery(
                         ServerMessage.NotificationsData(notificationRepository.loadNotifications(command.userId)),
                         setOf(command.userId)
@@ -5080,7 +5131,9 @@ class GameEngine(
     }
 
     private suspend fun leaveClan(playerId: String): List<Delivery> {
-        val clanId = clanRepository.getClanByUserId(playerId)?.id
+        val previous = clanRepository.getClanByUserId(playerId)
+        val clanId = previous?.id
+        val leaverName = previous?.members?.firstOrNull { it.userId == playerId }?.displayName
         val success = clanRepository.leaveClan(playerId)
         return if (success) {
             listOf(Delivery(ServerMessage.ClanActionResult(
@@ -5088,7 +5141,9 @@ class GameEngine(
                 legacyFallback("Đã rời clan"),
                 "leave_clan",
                 TextKey.ClanLeftNotice.name
-            ), setOf(playerId))) + clanId?.let { refreshClanMembers(it) }.orEmpty()
+            ), setOf(playerId))) + clanId?.let { refreshClanMembers(it) }.orEmpty() +
+                if (clanId != null && leaverName != null) postClanSystemMessage(
+                    clanId, ClanChatSystemEvent.MEMBER_LEFT, playerArgs(playerId, leaverName)) else emptyList()
         } else {
             listOf(error(playerId, "LEAVE_CLAN_FAILED", legacyFallback("Rời clan thất bại.")))
         }
@@ -5118,6 +5173,7 @@ class GameEngine(
         playerId: String,
         command: ClientMessage.DonateToClan
     ): List<Delivery> {
+        val levelBefore = runCatching { clanRepository.getClanById(command.clanId)?.level }.getOrNull()
         val result = clanRepository.donateToClan(
             userId = playerId,
             clanId = command.clanId,
@@ -5143,6 +5199,10 @@ class GameEngine(
                     clanInfo(clan)?.let { add(Delivery(it, setOf(playerId))) }
                 }
                 addAll(loadProfile(playerId))
+                if (result.status == ClanDonationStatus.APPLIED && levelBefore != null && result.clanLevel > levelBefore) {
+                    addAll(postClanSystemMessage(command.clanId, ClanChatSystemEvent.LEVEL_UP,
+                        mapOf("level" to result.clanLevel.toString())))
+                }
             }
         }
     }
@@ -5160,8 +5220,11 @@ class GameEngine(
             return listOf(error(playerId, "NOT_CLAN_OWNER", legacyFallback("Chỉ bang chủ mới có thể mời thành viên rời bang.")))
         }
         val success = clanRepository.kickMember(clanId, playerId, memberId)
+        val kicked = clan.members.firstOrNull { it.userId == memberId }
         return if (success) {
-            refreshClanMembers(clanId) + loadProfile(memberId)
+            refreshClanMembers(clanId) + loadProfile(memberId) + (kicked?.let {
+                postClanSystemMessage(clanId, ClanChatSystemEvent.MEMBER_KICKED, playerArgs(it.userId, it.displayName))
+            } ?: emptyList())
         } else {
             listOf(error(playerId, "KICK_FAILED", legacyFallback("Không thể mời thành viên này rời bang.")))
         }
@@ -5241,8 +5304,16 @@ class GameEngine(
         return emptyList()
     }
     private suspend fun updateClanLogo(playerId: String, clanId: String, logoId: String): List<Delivery> {
+        val before = clanActor(playerId, clanId)
         return when (clanRepository.updateLogoId(clanId, playerId, logoId)) {
-            ClanLogoUpdateStatus.UPDATED -> getClanInfo(playerId, clanId)
+            ClanLogoUpdateStatus.UPDATED -> {
+                // Choosing an icon replaces an uploaded image, so the choice is what members see.
+                val replacedUpload = before?.clan?.logoRevision != null && clanLogoService.remove(clanId)
+                val changed = before != null && (replacedUpload || before.clan.logoId != logoId)
+                if (!changed) getClanInfo(playerId, clanId)
+                else refreshClanMembers(clanId) + postClanSystemMessage(clanId, ClanChatSystemEvent.LOGO_CHANGED,
+                    playerArgs(playerId, before?.member?.displayName ?: "Player"))
+            }
             ClanLogoUpdateStatus.LOCKED -> listOf(error(
                 playerId, "CLAN_LOGO_LOCKED", legacyFallback("Logo chưa được mở khóa."),
                 messageArgs = mapOf("level" to clanLogoRequiredLevel(logoId).toString())
@@ -5259,6 +5330,270 @@ class GameEngine(
             ClanLogoUpdateStatus.FAILED -> listOf(error(
                 playerId, "UPLOAD_FAILED", legacyFallback("Không thể cập nhật logo.")
             ))
+        }
+    }
+
+    // ---- Clan chat, uploaded logos and co-leaders -------------------------------------------------
+
+    private data class ClanActor(val clan: ClanSnapshot, val member: ClanMemberSnapshot)
+
+    private suspend fun clanActor(playerId: String, clanId: String): ClanActor? {
+        if (!isCanonicalUuid(clanId)) return null
+        val clan = clanRepository.getClanById(clanId) ?: return null
+        val member = clan.members.firstOrNull { it.userId == playerId } ?: return null
+        return ClanActor(clan, member)
+    }
+
+    private fun isCanonicalUuid(value: String) = runCatching { UUID.fromString(value).toString() == value }.getOrDefault(false)
+
+    private fun notInClan(playerId: String, requestId: String? = null) =
+        error(playerId, "NOT_IN_CLAN", legacyFallback("Bạn không nằm trong bang này."), requestId = requestId)
+
+    private fun clanPermissionDenied(playerId: String, requestId: String? = null) = error(
+        playerId, "CLAN_PERMISSION_DENIED", legacyFallback("Chỉ chủ bang và phó bang mới làm được việc này."), requestId = requestId)
+
+    /** Connected account sockets of [memberIds] whose client understands chat messages. */
+    private suspend fun chatCapable(memberIds: Collection<String>): Set<String> = mutex.withLock {
+        memberIds.filterTo(mutableSetOf()) { id ->
+            sessionsByPlayerId[id]?.let {
+                it.isConnected && it.resumeToken == null && it.protocolVersion >= CLAN_CHAT_PROTOCOL_VERSION
+            } == true
+        }
+    }
+
+    private suspend fun hiddenClanMessageIds(): Set<String> = runCatching { moderationService.suppressions() }
+        .getOrDefault(emptyList()).filter { it.targetType == UgcTargetType.CLAN_MESSAGE }.mapTo(mutableSetOf()) { it.targetId }
+
+    private suspend fun getClanChat(playerId: String, command: ClientMessage.GetClanChat): List<Delivery> {
+        val actor = clanActor(playerId, command.clanId) ?: return listOf(notInClan(playerId))
+        val now = nowMillis()
+        val since = now - CLAN_CHAT_RETENTION_MILLIS
+        return try {
+            val before = command.beforeMessageId?.let { id ->
+                if (!isCanonicalUuid(id)) null else clanChatRepository.find(command.clanId, id)
+            }
+            if (command.beforeMessageId != null && before == null) {
+                return listOf(Delivery(ServerMessage.ClanChatHistory(command.clanId, emptyList(), hasMore = false, isOlderPage = true), setOf(playerId)))
+            }
+            val rows = clanChatRepository.page(command.clanId, before, CLAN_CHAT_PAGE_SIZE + 1, since)
+            val hidden = hiddenClanMessageIds()
+            val page = rows.take(CLAN_CHAT_PAGE_SIZE).filterNot { it.id in hidden }.asReversed()
+            val history = ServerMessage.ClanChatHistory(
+                clanId = command.clanId,
+                messages = page,
+                hasMore = rows.size > CLAN_CHAT_PAGE_SIZE,
+                isOlderPage = before != null,
+                unreadCount = if (before == null) clanChatRepository.unreadCount(command.clanId, playerId, since) else 0,
+                mutedUntilEpochMillis = clanChatRepository.mutedUntil(command.clanId, playerId, now),
+                mutedMembers = if (actor.member.role.canModerateClan()) clanChatRepository.activeMutes(command.clanId, now) else emptyMap()
+            )
+            listOf(Delivery(history, setOf(playerId)))
+        } catch (cancelled: CancellationException) {
+            throw cancelled
+        } catch (failure: Exception) {
+            System.err.println("Clan chat history unavailable: ${failure.javaClass.simpleName}")
+            listOf(error(playerId, "CLAN_PRESENCE_UNAVAILABLE", legacyFallback("Chưa tải được tin nhắn. Vui lòng thử lại.")))
+        }
+    }
+
+    private suspend fun sendClanChatMessage(playerId: String, command: ClientMessage.SendClanChatMessage): List<Delivery> {
+        val requestId = command.requestId.takeIf { it.matches(CHAT_REQUEST_ID) }
+            ?: return listOf(error(playerId, "INVALID_REQUEST_ID", legacyFallback("Yêu cầu không hợp lệ.")))
+        val actor = clanActor(playerId, command.clanId) ?: return listOf(notInClan(playerId, requestId))
+        val text = normalizeClanChatText(command.text)
+        if (text.isEmpty() || text.length > CLAN_CHAT_MAX_LENGTH) return listOf(error(
+            playerId, "CLAN_CHAT_INVALID_MESSAGE", legacyFallback("Tin nhắn trống hoặc quá dài."), requestId = requestId))
+        val now = nowMillis()
+        return try {
+            clanChatRepository.mutedUntil(command.clanId, playerId, now)?.let { until ->
+                return listOf(error(playerId, "CLAN_CHAT_MUTED", legacyFallback("Bạn đang bị cấm chat trong bang."),
+                    requestId = requestId, messageArgs = mapOf("until" to until.toString())))
+            }
+            // A retried request maps to the same line, so a reconnect never posts twice.
+            val id = UUID.nameUUIDFromBytes("clan-chat:$playerId:$requestId".toByteArray()).toString()
+            val existing = clanChatRepository.find(command.clanId, id)
+            val message = existing ?: ClanChatMessageSnapshot(
+                id = id, clanId = command.clanId, kind = ClanChatMessageKind.USER, createdAtEpochMillis = now,
+                senderId = playerId, senderName = actor.member.displayName, text = ClanChatFilter.mask(text)
+            ).also { clanChatRepository.append(it) }
+            clanChatRepository.markRead(command.clanId, playerId, message.createdAtEpochMillis)
+            val recipients = chatCapable(actor.clan.members.map { it.userId })
+            if (existing == null) {
+                val offline = actor.clan.members.map { it.userId }.filter { it != playerId && it !in recipients }
+                launchBackground { pushClanChat(actor.clan, message, offline) }
+            }
+            buildList {
+                add(Delivery(ServerMessage.ClanChatMessageReceived(command.clanId, message, requestId), setOf(playerId)))
+                if (existing == null) (recipients - playerId).takeIf { it.isNotEmpty() }?.let {
+                    add(Delivery(ServerMessage.ClanChatMessageReceived(command.clanId, message), it))
+                }
+            }
+        } catch (cancelled: CancellationException) {
+            throw cancelled
+        } catch (failure: Exception) {
+            System.err.println("Clan chat send failed: ${failure.javaClass.simpleName}")
+            listOf(error(playerId, "SEND_FAILED", legacyFallback("Chưa gửi được tin nhắn."), requestId = requestId))
+        }
+    }
+
+    /** One push per member per 30 minutes, only to members without a connected socket. */
+    private suspend fun pushClanChat(clan: ClanSnapshot, message: ClanChatMessageSnapshot, offline: List<String>) {
+        if (offline.isEmpty()) return
+        val due = clanChatRepository.claimPush(clan.id, offline, message.createdAtEpochMillis, CLAN_CHAT_PUSH_INTERVAL_MILLIS)
+        if (due.isEmpty()) return
+        val clanName = moderatedName(UgcTargetType.CLAN, clan.id, clan.name, "Clan")
+        val sender = moderatedName(UgcTargetType.PLAYER_PROFILE, message.senderId.orEmpty(), message.senderName, "Player")
+        val snippet = message.text.replace('\n', ' ').let { if (it.length > 80) it.take(79) + "…" else it }
+        due.forEach { memberId ->
+            pushIfEnabled(memberId, PushNotificationCategory.CLAN_ACTIVITY, LocalizedPushContent(
+                titleKey = TextKey.PushClanChatTitle,
+                bodyKey = TextKey.PushClanChatMessage,
+                titleArguments = mapOf("clan" to clanName),
+                bodyArguments = mapOf("player" to sender, "message" to snippet)
+            ), destinationPath = "/clan")
+        }
+    }
+
+    private suspend fun deleteClanChatMessage(playerId: String, command: ClientMessage.DeleteClanChatMessage): List<Delivery> {
+        val actor = clanActor(playerId, command.clanId) ?: return listOf(notInClan(playerId))
+        val message = command.messageId.takeIf(::isCanonicalUuid)?.let { clanChatRepository.find(command.clanId, it) }
+            ?: return listOf(error(playerId, "CLAN_CHAT_MESSAGE_NOT_FOUND", legacyFallback("Tin nhắn không còn tồn tại.")))
+        val ownLine = message.kind == ClanChatMessageKind.USER && message.senderId == playerId
+        if (!ownLine && !actor.member.role.canModerateClan()) return listOf(clanPermissionDenied(playerId))
+        if (!clanChatRepository.delete(command.clanId, message.id, nowMillis())) {
+            return listOf(error(playerId, "CLAN_CHAT_MESSAGE_NOT_FOUND", legacyFallback("Tin nhắn không còn tồn tại.")))
+        }
+        val recipients = chatCapable(actor.clan.members.map { it.userId } + playerId)
+        return listOf(Delivery(ServerMessage.ClanChatMessageRemoved(command.clanId, message.id), recipients))
+    }
+
+    private suspend fun muteClanChatMember(playerId: String, command: ClientMessage.MuteClanChatMember): List<Delivery> {
+        val actor = clanActor(playerId, command.clanId) ?: return listOf(notInClan(playerId))
+        if (!actor.member.role.canModerateClan()) return listOf(clanPermissionDenied(playerId))
+        if (command.durationMinutes !in CLAN_CHAT_MUTE_MINUTES) return listOf(error(
+            playerId, "INVALID_REQUEST", legacyFallback("Yêu cầu không hợp lệ.")))
+        val target = actor.clan.members.firstOrNull { it.userId == command.memberId }
+            ?: return listOf(error(playerId, "PLAYER_NOT_FOUND", legacyFallback("Không tìm thấy thành viên này.")))
+        // Nobody mutes themselves or the leader; co-leaders only mute regular members.
+        val allowed = target.userId != playerId && target.role != ClanRole.LEADER &&
+            (actor.member.role == ClanRole.LEADER || target.role == ClanRole.MEMBER)
+        if (!allowed) return listOf(clanPermissionDenied(playerId))
+        val until = if (command.durationMinutes == 0) null else nowMillis() + command.durationMinutes * 60_000L
+        return try {
+            clanChatRepository.setMute(command.clanId, target.userId, until, playerId)
+            val moderators = actor.clan.members.filter { it.role.canModerateClan() }.map { it.userId }
+            listOf(Delivery(ServerMessage.ClanChatMuteChanged(command.clanId, target.userId, until),
+                chatCapable(moderators + target.userId)))
+        } catch (cancelled: CancellationException) {
+            throw cancelled
+        } catch (_: Exception) {
+            listOf(error(playerId, "SEND_FAILED", legacyFallback("Chưa cập nhật được trạng thái chat.")))
+        }
+    }
+
+    private suspend fun markClanChatRead(playerId: String, command: ClientMessage.MarkClanChatRead): List<Delivery> {
+        if (!isCanonicalUuid(command.clanId) || !isCanonicalUuid(command.messageId)) return emptyList()
+        runCatching {
+            val message = clanChatRepository.find(command.clanId, command.messageId) ?: return emptyList()
+            if (clanActor(playerId, command.clanId) == null) return emptyList()
+            clanChatRepository.markRead(command.clanId, playerId, message.createdAtEpochMillis)
+        }.onFailure { if (it is CancellationException) throw it }
+        return emptyList()
+    }
+
+    /** Best effort: a failing chat store never fails the clan action that produced the line. */
+    private suspend fun postClanSystemMessage(
+        clanId: String,
+        event: ClanChatSystemEvent,
+        args: Map<String, String> = emptyMap()
+    ): List<Delivery> = try {
+        val message = ClanChatMessageSnapshot(
+            id = UUID.randomUUID().toString(), clanId = clanId, kind = ClanChatMessageKind.SYSTEM,
+            createdAtEpochMillis = nowMillis(), systemEvent = event, systemArgs = args
+        )
+        clanChatRepository.append(message)
+        val members = clanRepository.getClanById(clanId)?.members?.map { it.userId }.orEmpty()
+        val recipients = chatCapable(members)
+        if (recipients.isEmpty()) emptyList()
+        else listOf(Delivery(ServerMessage.ClanChatMessageReceived(clanId, message), recipients))
+    } catch (cancelled: CancellationException) {
+        throw cancelled
+    } catch (_: Exception) {
+        emptyList()
+    }
+
+    private fun playerArgs(playerId: String, name: String) = mapOf("player" to name, "playerId" to playerId)
+
+    private suspend fun setClanMemberRole(playerId: String, command: ClientMessage.SetClanMemberRole): List<Delivery> {
+        val actor = clanActor(playerId, command.clanId) ?: return listOf(notInClan(playerId))
+        if (actor.member.role != ClanRole.LEADER) return listOf(error(
+            playerId, "NOT_CLAN_OWNER", legacyFallback("Chỉ bang chủ mới có thể bổ nhiệm phó bang.")))
+        if (command.role == ClanRole.LEADER || command.memberId == playerId) return listOf(error(
+            playerId, "INVALID_REQUEST", legacyFallback("Yêu cầu không hợp lệ.")))
+        return when (clanRepository.setMemberRole(command.clanId, playerId, command.memberId, command.role)) {
+            ClanRoleUpdateStatus.UPDATED -> {
+                val target = actor.clan.members.first { it.userId == command.memberId }
+                val event = if (command.role == ClanRole.CO_LEADER) ClanChatSystemEvent.CO_LEADER_APPOINTED
+                    else ClanChatSystemEvent.CO_LEADER_DISMISSED
+                refreshClanMembers(command.clanId) +
+                    postClanSystemMessage(command.clanId, event, playerArgs(target.userId, target.displayName))
+            }
+            ClanRoleUpdateStatus.UNCHANGED -> getClanInfo(playerId, command.clanId)
+            ClanRoleUpdateStatus.LIMIT_REACHED -> listOf(error(playerId, "CLAN_CO_LEADER_LIMIT",
+                legacyFallback("Bang chỉ có tối đa $CLAN_MAX_CO_LEADERS phó bang."),
+                messageArgs = mapOf("limit" to CLAN_MAX_CO_LEADERS.toString())))
+            ClanRoleUpdateStatus.NOT_OWNER -> listOf(error(
+                playerId, "NOT_CLAN_OWNER", legacyFallback("Chỉ bang chủ mới có thể bổ nhiệm phó bang.")))
+            ClanRoleUpdateStatus.NOT_MEMBER -> listOf(error(
+                playerId, "PLAYER_NOT_FOUND", legacyFallback("Không tìm thấy thành viên này.")))
+            ClanRoleUpdateStatus.FAILED -> listOf(error(
+                playerId, "CLAN_JOIN_RESPONSE_FAILED", legacyFallback("Không thể xử lý yêu cầu lúc này.")))
+        }
+    }
+
+    private suspend fun uploadClanLogo(playerId: String, clanId: String, base64: String): List<Delivery> {
+        val actor = clanActor(playerId, clanId) ?: return listOf(notInClan(playerId))
+        if (!actor.member.role.canModerateClan()) return listOf(clanPermissionDenied(playerId))
+        return when (clanLogoService.upload(clanId, base64)) {
+            ClanLogoUploadStatus.UPDATED -> refreshClanMembers(clanId) + postClanSystemMessage(
+                clanId, ClanChatSystemEvent.LOGO_CHANGED, playerArgs(playerId, actor.member.displayName))
+            ClanLogoUploadStatus.DAILY_LIMIT -> listOf(error(playerId, "CLAN_LOGO_DAILY_LIMIT",
+                legacyFallback("Bang đã đổi logo quá số lần cho phép hôm nay."),
+                messageArgs = mapOf("limit" to CLAN_LOGO_DAILY_CHANGE_LIMIT.toString())))
+            ClanLogoUploadStatus.INVALID_IMAGE -> listOf(error(
+                playerId, "CLAN_LOGO_UPLOAD_FAILED", legacyFallback("Không thể tải logo lên.")))
+        }
+    }
+
+    private suspend fun removeClanLogo(playerId: String, clanId: String): List<Delivery> {
+        val actor = clanActor(playerId, clanId) ?: return listOf(notInClan(playerId))
+        if (!actor.member.role.canModerateClan()) return listOf(clanPermissionDenied(playerId))
+        val hadUpload = actor.clan.logoRevision != null
+        if (!clanLogoService.remove(clanId)) return listOf(error(
+            playerId, "CLAN_LOGO_UPLOAD_FAILED", legacyFallback("Không thể gỡ logo.")))
+        return refreshClanMembers(clanId) + if (hadUpload) postClanSystemMessage(
+            clanId, ClanChatSystemEvent.LOGO_CHANGED, playerArgs(playerId, actor.member.displayName)) else emptyList()
+    }
+
+    /** Clients learn about removed chat lines and logos right after an admin removes them. */
+    suspend fun moderationDeliveries(type: UgcTargetType, targetId: String): List<Delivery> = when (type) {
+        UgcTargetType.CLAN_LOGO -> refreshClanMembers(targetId)
+        UgcTargetType.CLAN_MESSAGE -> runCatching {
+            val message = clanChatRepository.findById(targetId) ?: return emptyList()
+            val members = clanRepository.getClanById(message.clanId)?.members?.map { it.userId }.orEmpty()
+            listOf(Delivery(ServerMessage.ClanChatMessageRemoved(message.clanId, message.id), chatCapable(members)))
+        }.getOrElse { if (it is CancellationException) throw it; emptyList() }
+        else -> emptyList()
+    }
+
+    suspend fun cleanupClanChat(): Int = clanChatRepository.cleanup(nowMillis() - CLAN_CHAT_RETENTION_MILLIS)
+
+    private fun launchBackground(block: suspend () -> Unit) {
+        val runner = backgroundRunner
+        if (runner != null) runner(block) else backgroundScope.launch {
+            try { block() }
+            catch (cancelled: CancellationException) { throw cancelled }
+            catch (_: Exception) { System.err.println("Background clan task failed") }
         }
     }
 
