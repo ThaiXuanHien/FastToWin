@@ -13,7 +13,9 @@ class AvatarService(
     private val objectWrites: Boolean = false,
     private val normalizer: AvatarImageNormalizer = AvatarImageNormalizer(),
     private val publicationAllowed: suspend (String) -> Unit = {},
-    private val contentSuppressed: suspend (String, String) -> Boolean = { _, _ -> false }
+    private val contentSuppressed: suspend (String, String) -> Boolean = { _, _ -> false },
+    /** Object keys are `<prefix>/<owner id>/<random>.jpg`; clan logos use their own prefix. */
+    private val keyPrefix: String = "avatars"
 ) {
     init { require(!objectWrites || objectStore != null) { "Object avatar writes require configured object storage." } }
 
@@ -26,13 +28,27 @@ class AvatarService(
             if (!objectWrites) {
                 repository.writeLegacy(playerId, previous.revision, Base64.getEncoder().encodeToString(image.bytes))
             } else {
-                val key = "avatars/${UUID.fromString(playerId)}/${UUID.randomUUID()}.jpg"
+                val key = "$keyPrefix/${UUID.fromString(playerId)}/${UUID.randomUUID()}.jpg"
                 if (!repository.beginIntent(playerId, previous.revision, key)) return false
                 // The durable intent already exists if this call fails or the process stops.
                 objectStore!!.put(key, image.bytes, image.contentType)
                 repository.commit(playerId, previous.revision, AvatarMetadata(
                     key, image.contentType, image.bytes.size, avatarSha256(image.bytes), image.width, image.height))
             }
+        } catch (cancelled: CancellationException) {
+            throw cancelled
+        } catch (_: Exception) {
+            false
+        }
+    }
+
+    /** Drops the stored image. The old object stays readable for a day, then the cleaner deletes it. */
+    suspend fun remove(ownerId: String): Boolean {
+        if (!isAvatarPlayerId(ownerId)) return false
+        return try {
+            val previous = repository.current(ownerId) ?: return false
+            if (previous.metadata == null && previous.legacyBase64 == null) return true
+            repository.clear(ownerId, previous.revision)
         } catch (cancelled: CancellationException) {
             throw cancelled
         } catch (_: Exception) {

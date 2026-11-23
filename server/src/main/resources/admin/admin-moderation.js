@@ -1,7 +1,7 @@
 'use strict';
 
 const states = { NEW: 'Mới', REVIEWING: 'Đang xem xét', RESOLVED: 'Đã xử lý', DISMISSED: 'Bỏ qua' };
-const types = { PLAYER_PROFILE: 'Hồ sơ người chơi', PLAYER_AVATAR: 'Ảnh đại diện', CLAN: 'Bang hội', ROOM: 'Phòng chơi', TOURNAMENT: 'Giải đấu' };
+const types = { PLAYER_PROFILE: 'Hồ sơ người chơi', PLAYER_AVATAR: 'Ảnh đại diện', CLAN: 'Bang hội', ROOM: 'Phòng chơi', TOURNAMENT: 'Giải đấu', CLAN_LOGO: 'Logo bang', CLAN_MESSAGE: 'Tin nhắn bang' };
 const reasons = { HARASSMENT: 'Quấy rối', HATE: 'Thù ghét', SEXUAL_CONTENT: 'Nội dung tình dục', VIOLENCE: 'Bạo lực / đe dọa', SPAM: 'Spam', PERSONAL_INFORMATION: 'Thông tin riêng tư', OTHER: 'Khác' };
 const writable = role => role === 'OWNER' || role === 'OPERATOR';
 const readable = role => writable(role) || role === 'SUPPORT';
@@ -89,13 +89,14 @@ export function openModeration(ui) {
       // All untrusted text uses the shared text-only node factory, never innerHTML.
       if (view.lastActionReason) body.append(node('h3', 'Lý do xử lý gần nhất'), node('p', view.lastActionReason, { class: 'announcement-body moderation-copy' }));
       body.append(node('h3', 'Nội dung được ghi nhận'), node('p', report.evidenceText || 'Không có bản chụp văn bản.', { class: 'announcement-body moderation-copy' }), node('h3', 'Ghi chú của người báo cáo'), node('p', report.note || 'Không có ghi chú.', { class: 'announcement-body moderation-copy' }));
-      if (report.targetType === 'PLAYER_AVATAR') {
+      if (report.targetType === 'PLAYER_AVATAR' || report.targetType === 'CLAN_LOGO') {
+        const imagePath = report.targetType === 'CLAN_LOGO' ? '/api/clan-logo/' : '/api/avatar/';
         body.append(node('p', 'Không lưu bản sao ảnh làm bằng chứng. Kiểm tra ảnh hiện tại trước khi xử lý.', { class: 'muted' }));
         if (!view.targetMissing && report.targetId) {
           const imageArea = node('div', null, { class: 'moderation-avatar' });
           const loadImage = button('Xem ảnh hiện tại', () => {
             loadImage.disabled = true;
-            const image = node('img', null, { src: '/api/avatar/' + encodeURIComponent(report.targetId), alt: 'Ảnh đại diện hiện tại của đối tượng báo cáo', width: '160', height: '160', referrerpolicy: 'no-referrer' });
+            const image = node('img', null, { src: imagePath + encodeURIComponent(report.targetId), alt: report.targetType === 'CLAN_LOGO' ? 'Logo bang hiện tại của đối tượng báo cáo' : 'Ảnh đại diện hiện tại của đối tượng báo cáo', width: '160', height: '160', referrerpolicy: 'no-referrer' });
             image.addEventListener('error', () => { imageArea.replaceChildren(node('p', 'Không tải được ảnh hiện tại. Ảnh có thể đã được thay hoặc gỡ.', { role: 'status' })); });
             imageArea.append(image);
           });
@@ -121,11 +122,15 @@ export function openModeration(ui) {
       if (view.targetMissing || view.targetChanged) { remove.disabled = true; form.append(node('p', 'Nội dung đã đổi hoặc không còn tồn tại; không thể gỡ từ phiên bản báo cáo cũ.', { class: 'muted' })); }
     }
     form.append(node('p', 'Chỉ gỡ phần nội dung vi phạm. Không hủy trận/giải hoặc thay đổi số dư.', { class: 'muted' }));
+    // Clan chat reports can also mute the sender in that clan (requires "Đã xử lý").
+    const chatMute = writable(role()) && report.targetType === 'CLAN_MESSAGE' && !view.targetMissing
+      ? select(form, 'Cấm chat người gửi trong bang', { 0: 'Không cấm', 24: '24 giờ', 168: '7 ngày' }, '0') : null;
+    chatMute?.addEventListener('change', () => { if (chatMute.value !== '0') status.value = 'RESOLVED'; });
     const reason = field(form, 'Lý do xử lý nội bộ', 'moderation-reason', 'textarea', { required: '', maxlength: '500', rows: '3' }), notices = feedback(form);
     const submit = button('Lưu xử lý', null, { type: 'submit', class: 'primary' }); form.append(append(node('div', null, { class: 'modal-actions' }), dialog.cancel, submit));
-    status.addEventListener('change', () => { if (status.value !== 'RESOLVED' && remove) remove.checked = false; });
+    status.addEventListener('change', () => { if (status.value !== 'RESOLVED') { if (remove) remove.checked = false; if (chatMute) chatMute.value = '0'; } });
     remove?.addEventListener('change', () => { if (remove.checked) status.value = 'RESOLVED'; });
-    bindMutation(dialog, form, submit, notices, path(report.id) + '/resolve', () => ({ expectedVersion: report.version, status: status.value, reason: reason.value, removeContent: Boolean(remove?.checked) }), () => { dialog.finish(); list('Đã lưu kết quả xử lý báo cáo.'); });
+    bindMutation(dialog, form, submit, notices, path(report.id) + '/resolve', () => ({ expectedVersion: report.version, status: status.value, reason: reason.value, removeContent: Boolean(remove?.checked), ...(chatMute && chatMute.value !== '0' ? { chatMuteHours: Number(chatMute.value) } : {}) }), () => { dialog.finish(); list('Đã lưu kết quả xử lý báo cáo.'); });
     dialog.show(status);
   }
   function restriction(view) {

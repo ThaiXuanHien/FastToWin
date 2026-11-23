@@ -395,6 +395,22 @@ class PostgresFriendRepository(private val dataSource: DataSource) : FriendRepos
         }
     }
 
+    override suspend fun blockedEitherWay(userId: String): Set<String> = withContext(Dispatchers.IO) {
+        val id = userId.toUuidOrNull() ?: return@withContext emptySet()
+        dataSource.connection.use { connection ->
+            connection.prepareStatement(
+                """
+                SELECT blocked_id AS other FROM player_blocks WHERE blocker_id = ?
+                UNION SELECT blocker_id AS other FROM player_blocks WHERE blocked_id = ?
+                """.trimIndent()
+            ).use { statement ->
+                statement.setObject(1, id)
+                statement.setObject(2, id)
+                statement.executeQuery().use { row -> buildSet { while (row.next()) add(row.getString(1)) } }
+            }
+        }
+    }
+
     private fun isBlockedEitherWay(connection: Connection, first: UUID, second: UUID): Boolean =
         connection.prepareStatement(
             """

@@ -1,5 +1,7 @@
 package com.hienthai.fastowin.server
 
+import com.hienthai.fastowin.protocol.CLAN_MAX_CO_LEADERS
+
 import com.hienthai.fastowin.protocol.ClanMemberSnapshot
 import com.hienthai.fastowin.protocol.ClanDonationCurrency
 import com.hienthai.fastowin.protocol.ClanDonationStatus
@@ -460,7 +462,7 @@ class PostgresClanRepository(
         dataSource.connection.use { connection ->
             val clanUuid = UUID.fromString(clanId)
             var clan: ClanSnapshot? = null
-            connection.prepareStatement("SELECT c.*, EXISTS(SELECT 1 FROM mission_legacy_clans m WHERE m.clan_id=c.id) AS legacy_quest FROM clans c WHERE c.id = ?").use {
+            connection.prepareStatement("SELECT c.*, EXISTS(SELECT 1 FROM mission_legacy_clans m WHERE m.clan_id=c.id) AS legacy_quest, (SELECT l.revision::text FROM clan_logos l WHERE l.clan_id = c.id AND (l.object_key IS NOT NULL OR l.legacy_data IS NOT NULL)) AS logo_revision FROM clans c WHERE c.id = ?").use {
                 it.setObject(1, clanUuid)
                 it.executeQuery().use { rs ->
                     if (rs.next()) {
@@ -474,6 +476,7 @@ class PostgresClanRepository(
                             members = emptyList(),
                             trophies = rs.getInt("trophies"),
                             logoId = rs.getString("logo_id"),
+                            logoRevision = rs.getString("logo_revision"),
                             maxMembers = 50,
                             quest = if (rs.getBoolean("legacy_quest")) ClanQuestSnapshot(
                                 progress = rs.getInt("quest_progress"),
@@ -557,12 +560,14 @@ class PostgresClanRepository(
         dataSource.connection.use { connection ->
             val sql = if (query != null && query.isNotBlank()) {
                 "SELECT c.id, c.name, c.trophies, c.logo_id, c.level, c.experience_points, " +
+                    "(SELECT l.revision::text FROM clan_logos l WHERE l.clan_id = c.id AND (l.object_key IS NOT NULL OR l.legacy_data IS NOT NULL)) AS logo_revision, " +
                     "c.donated_gold, c.donated_gems, COUNT(cm.user_id) AS member_count " +
                 "FROM clans c LEFT JOIN clan_members cm ON c.id = cm.clan_id " +
                 "WHERE c.name ILIKE ? " +
                 "GROUP BY c.id ORDER BY c.trophies DESC LIMIT ? OFFSET ?"
             } else {
                 "SELECT c.id, c.name, c.trophies, c.logo_id, c.level, c.experience_points, " +
+                    "(SELECT l.revision::text FROM clan_logos l WHERE l.clan_id = c.id AND (l.object_key IS NOT NULL OR l.legacy_data IS NOT NULL)) AS logo_revision, " +
                     "c.donated_gold, c.donated_gems, COUNT(cm.user_id) AS member_count " +
                 "FROM clans c LEFT JOIN clan_members cm ON c.id = cm.clan_id " +
                 "GROUP BY c.id ORDER BY c.trophies DESC LIMIT ? OFFSET ?"
@@ -584,6 +589,7 @@ class PostgresClanRepository(
                                 maxMembers = 50,
                                 trophies = rs.getInt("trophies"),
                                 logoId = rs.getString("logo_id"),
+                                logoRevision = rs.getString("logo_revision"),
                                 level = rs.getInt("level"),
                                 experiencePoints = rs.getLong("experience_points"),
                                 donatedGold = rs.getLong("donated_gold"),
@@ -626,9 +632,15 @@ class PostgresClanRepository(
                         ) else null
                     }
                 }
+                val coLeader = clan != null && clan.first != ownerUuid && connection.prepareStatement(
+                    "SELECT 1 FROM clan_members WHERE clan_id = ? AND user_id = ? AND role = 'CO_LEADER'"
+                ).use { statement ->
+                    statement.setObject(1, clanUuid); statement.setObject(2, ownerUuid)
+                    statement.executeQuery().use { it.next() }
+                }
                 val status = when {
                     clan == null -> ClanLogoUpdateStatus.CLAN_NOT_FOUND
-                    clan.first != ownerUuid -> ClanLogoUpdateStatus.NOT_OWNER
+                    clan.first != ownerUuid && !coLeader -> ClanLogoUpdateStatus.NOT_OWNER
                     clan.second == logoId -> ClanLogoUpdateStatus.UPDATED
                     ClanProgression.levelForExperience(clan.third) < requiredLevel -> ClanLogoUpdateStatus.LOCKED
                     else -> ClanLogoUpdateStatus.UPDATED
@@ -648,6 +660,29 @@ class PostgresClanRepository(
             }
         }
     }
+
+    override suspend fun setMemberRole(clanId: String, leaderId: String, memberId: String, role: ClanRole): ClanRoleUpdateStatus = try {
+        if (role == ClanRole.LEADER || leaderId == memberId) ClanRoleUpdateStatus.FAILED
+        else PostgresClanRaceRepository(dataSource).transaction {
+            setTime(nowMillis())
+            // Lock the clan row first, matching departures and logo changes.
+            val owner = rows("SELECT owner_id FROM clans WHERE id=? FOR UPDATE", listOf(uuid(clanId))) { it.getString(1) }.singleOrNull()
+            val current = rows("SELECT role FROM clan_members WHERE clan_id=? AND user_id=? FOR UPDATE",
+                listOf(uuid(clanId), uuid(memberId))) { it.getString(1) }.singleOrNull()
+            val coLeaders = rows("SELECT COUNT(*) FROM clan_members WHERE clan_id=? AND role='CO_LEADER'",
+                listOf(uuid(clanId))) { it.getInt(1) }.single()
+            when {
+                owner == null || owner != leaderId -> ClanRoleUpdateStatus.NOT_OWNER
+                current == null || current == ClanRole.LEADER.name -> ClanRoleUpdateStatus.NOT_MEMBER
+                current == role.name -> ClanRoleUpdateStatus.UNCHANGED
+                role == ClanRole.CO_LEADER && coLeaders >= CLAN_MAX_CO_LEADERS -> ClanRoleUpdateStatus.LIMIT_REACHED
+                else -> {
+                    update("UPDATE clan_members SET role=? WHERE clan_id=? AND user_id=?", role.name, uuid(clanId), uuid(memberId))
+                    ClanRoleUpdateStatus.UPDATED
+                }
+            }
+        }
+    } catch (_: Exception) { ClanRoleUpdateStatus.FAILED }
 
     override suspend fun addClanTrophies(clanId: String, amount: Int): Boolean = withContext(Dispatchers.IO) {
         dataSource.connection.use { connection ->

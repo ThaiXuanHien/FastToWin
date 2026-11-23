@@ -32,6 +32,12 @@ fun protocolTextKeyForCode(code: String): TextKey? = when (code) {
     "CLAN_CREATION_INSUFFICIENT_FUNDS" -> TextKey.ServerClanCreationInsufficientFunds
     "CLAN_CREATION_LEVEL_TOO_LOW" -> TextKey.ServerClanCreationLevelTooLow
     "CLAN_LOGO_LOCKED" -> TextKey.ServerClanLogoLocked
+    "CLAN_PERMISSION_DENIED" -> TextKey.ServerClanPermissionDenied
+    "CLAN_CHAT_MUTED" -> TextKey.ServerClanChatMuted
+    "CLAN_CHAT_INVALID_MESSAGE" -> TextKey.ServerClanChatInvalidMessage
+    "CLAN_LOGO_DAILY_LIMIT" -> TextKey.ServerClanLogoDailyLimit
+    "CLAN_LOGO_UPLOAD_FAILED" -> TextKey.ServerClanLogoUploadFailed
+    "CLAN_CO_LEADER_LIMIT" -> TextKey.ServerClanCoLeaderLimit
     "INVALID_CLAN_LOGO" -> TextKey.ServerInvalidClanLogo
     "TOURNAMENT_ACTIVE" -> TextKey.ServerTournamentActive
     "PLAYER_BUSY" -> TextKey.ServerPlayerActivityConflict
@@ -40,7 +46,7 @@ fun protocolTextKeyForCode(code: String): TextKey? = when (code) {
     "FRIEND_BUSY" -> TextKey.ServerPlayerBusy
     "PLAYER_NOT_FOUND", "PROFILE_NOT_FOUND", "FRIEND_PROFILE_NOT_FOUND", "MATCH_NOT_FOUND",
     "CLAN_NOT_FOUND", "TOURNAMENT_NOT_FOUND", "FRIEND_REQUEST_NOT_FOUND",
-    "CLAN_JOIN_REQUEST_NOT_FOUND", "FRIEND_NOT_FOUND", "BLOCK_NOT_FOUND",
+    "CLAN_JOIN_REQUEST_NOT_FOUND", "FRIEND_NOT_FOUND", "BLOCK_NOT_FOUND", "CLAN_CHAT_MESSAGE_NOT_FOUND",
     "SEASON_REWARD_NOT_FOUND" -> TextKey.ServerResourceNotFound
     "ALREADY_CONNECTED", "FRIENDSHIP_EXISTS", "ALREADY_IN_CLAN",
     "TOURNAMENT_ALREADY_CREATED", "TOURNAMENT_ENTRY_ALREADY_PAID",

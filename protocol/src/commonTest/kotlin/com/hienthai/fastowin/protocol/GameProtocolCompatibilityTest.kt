@@ -48,7 +48,7 @@ class GameProtocolCompatibilityTest {
         val current = ProtocolJson.decodeFromString<ServerMessage>(oldPayload) as ServerMessage.ProfileData
         assertFalse(current.isBackgroundRefresh)
         assertEquals(profile, current.profile)
-        assertEquals(45, PROTOCOL_VERSION)
+        assertEquals(46, PROTOCOL_VERSION)
         assertEquals(38, MIN_COMPATIBLE_PROTOCOL_VERSION)
     }
 
@@ -69,7 +69,7 @@ class GameProtocolCompatibilityTest {
             """{"type":"tournament_hub_data","hub":{}}""") as ServerMessage.TournamentHubData
         assertFalse(legacy.isHistoryRefresh)
         assertEquals(TournamentHubSnapshot(), legacy.hub)
-        assertEquals(45, PROTOCOL_VERSION)
+        assertEquals(46, PROTOCOL_VERSION)
         assertEquals(38, MIN_COMPATIBLE_PROTOCOL_VERSION)
     }
 

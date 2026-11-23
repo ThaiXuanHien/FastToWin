@@ -58,6 +58,14 @@ fun main() {
             avatarObjects, objectWrites = avatarConfiguration.mode == AvatarStorageMode.R2,
             publicationAllowed = { moderationService.requireContentTerms(it) },
             contentSuppressed = { id, revision -> moderationService.isSuppressed(com.hienthai.fastowin.protocol.UgcTargetType.PLAYER_AVATAR, id, revision) })
+        val clanLogoService = database?.let { db ->
+            com.hienthai.fastowin.server.avatars.ClanLogoService(
+                AvatarService(db.clanLogoRepository, avatarObjects, objectWrites = avatarConfiguration.mode == AvatarStorageMode.R2,
+                    normalizer = com.hienthai.fastowin.server.avatars.ClanLogoService.normalizer(),
+                    contentSuppressed = { id, revision -> moderationService.isSuppressed(com.hienthai.fastowin.protocol.UgcTargetType.CLAN_LOGO, id, revision) },
+                    keyPrefix = com.hienthai.fastowin.server.avatars.ClanLogoService.KEY_PREFIX),
+                db.clanLogoRepository)
+        }
         val leaderboardRepository = database?.leaderboardRepository ?: NoOpLeaderboardRepository
         val friendRepository = database?.friendRepository ?: NoOpFriendRepository
         val notificationRepository = database?.notificationRepository ?: NoOpNotificationRepository
@@ -106,7 +114,9 @@ fun main() {
             storeSandboxEnabled = environment == "dev",
             eventRewardSource = database?.rewardEventRepository ?: com.hienthai.fastowin.server.events.NoRewardEventSource,
             presenceStore = presenceStore,
-            productionPresenceFailClosed = environment == "prod"
+            productionPresenceFailClosed = environment == "prod",
+            clanChatRepository = database?.clanChatRepository ?: InMemoryClanChatRepository(),
+            clanLogoService = clanLogoService ?: com.hienthai.fastowin.server.avatars.inMemoryClanLogoService(clanRepository)
         )
         runBlocking {
             seasonLifecycleRepository.maintain()

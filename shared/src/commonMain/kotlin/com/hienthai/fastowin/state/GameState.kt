@@ -193,6 +193,8 @@ data class GameState(
     val viewedLeaderboardClanId: String? = null,
     val clanNotice: String? = null,
     val clanLoadError: String? = null,
+    val clanChat: ClanChatState = ClanChatState(),
+    val isClanLogoUploading: Boolean = false,
     val donatingClanRequestId: String? = null,
     val clanDonationResult: com.hienthai.fastowin.protocol.ServerMessage.ClanDonationResult? = null,
     val clanQuestRewardResult: ServerMessage.ClanQuestRewardResult? = null,

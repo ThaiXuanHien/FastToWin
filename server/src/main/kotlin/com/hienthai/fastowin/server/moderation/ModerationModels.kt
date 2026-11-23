@@ -34,7 +34,10 @@ internal fun ModerationStatus.closed() = this == ModerationStatus.RESOLVED || th
 @Serializable data class ModerationAdminPage(val items: List<ModerationAdminView>, val page: Int, val pageSize: Int, val total: String)
 data class ModerationAdminContext(val token: String?, val csrfToken: String? = null, val origin: String? = null)
 @Serializable data class ModerationResolveRequest(val expectedVersion: Int, val requestId: String, val reason: String,
-    val status: ModerationStatus, val removeContent: Boolean = false)
+    val status: ModerationStatus, val removeContent: Boolean = false,
+    /** Clan chat reports only: also mute the sender in that clan for 24 or 168 hours. */
+    val chatMuteHours: Int = 0)
+val ADMIN_CHAT_MUTE_HOURS: Set<Int> = setOf(0, 24, 168)
 @Serializable data class ModerationRestrictionRequest(val expectedVersion: Int, val requestId: String, val reason: String, val blocked: Boolean)
 @Serializable data class ContentSuppression(val targetType: UgcTargetType, val targetId: String, val revision: String,
     val ownerId: String? = null, val createdAtEpochMillis: Long = 0, val nameRevision: String? = null)

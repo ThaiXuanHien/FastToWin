@@ -1,0 +1,49 @@
+# Whole words or phrases masked in clan chat, one per line, lowercase NFC.
+# Keep accented Vietnamese spellings; never add accent-free forms of ordinary words.
+địt
+đụ
+đéo
+lồn
+buồi
+cặc
+đĩ
+đcm
+đkm
+đmm
+đm
+dm
+dmm
+dcm
+dkm
+vcl
+vkl
+vl
+clgt
+cmm
+cmn
+loz
+djt
+cak
+ditme
+địtmẹ
+đjt
+óc chó
+oc cho
+chó đẻ
+con đĩ
+fuck
+fucking
+fucker
+motherfucker
+shit
+bitch
+bastard
+cunt
+dick
+pussy
+asshole
+nigger
+nigga
+faggot
+whore
+slut

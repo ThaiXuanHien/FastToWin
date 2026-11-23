@@ -660,7 +660,7 @@ private fun ClanLeaderboardCard(
         ) {
             ArcadeRankBadge(entry.rank)
             LeaderboardClanEmblem(entry.logoId, entry.clanName,
-                Modifier.size(40.dp).testTag(logoTestTag))
+                Modifier.size(40.dp).testTag(logoTestTag), entry.clanId, entry.logoRevision)
             Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
                 Text(entry.clanName, modifier = Modifier.testTag("${testTag}_name"),
                     fontWeight = FontWeight.Black, maxLines = 2, overflow = TextOverflow.Ellipsis)
@@ -731,9 +731,10 @@ private fun LeaderboardCard(
 }
 
 @Composable
-private fun LeaderboardClanEmblem(logoId: String?, clanName: String, modifier: Modifier = Modifier) {
+private fun LeaderboardClanEmblem(logoId: String?, clanName: String, modifier: Modifier = Modifier,
+    clanId: String? = null, logoRevision: String? = null) {
     val description = localized(TextKey.ClanLogoForClan, "clan" to clanName)
-    ClanLogoMark(logoId, modifier.semantics { contentDescription = description })
+    ClanLogoMark(logoId, modifier.semantics { contentDescription = description }, clanId, logoRevision)
 }
 
 @Composable

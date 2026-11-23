@@ -90,6 +90,7 @@ class PostgresAvatarRepository(private val source: DataSource, private val nowMi
                 SELECT q.object_key FROM avatar_cleanup q
                 WHERE q.state IN ('pending', 'deleting') AND q.available_at <= ? AND q.attempts < 8
                   AND NOT EXISTS (SELECT 1 FROM avatar_objects a WHERE a.object_key = q.object_key)
+                  AND NOT EXISTS (SELECT 1 FROM clan_logos l WHERE l.object_key = q.object_key)
                 ORDER BY q.available_at LIMIT ? FOR UPDATE OF q SKIP LOCKED
             )
             UPDATE avatar_cleanup q SET state = 'deleting', attempts = q.attempts + 1,

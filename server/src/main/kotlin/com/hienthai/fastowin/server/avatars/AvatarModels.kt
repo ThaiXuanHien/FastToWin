@@ -22,6 +22,8 @@ interface AvatarRepository {
     suspend fun writeLegacy(playerId: String, expectedRevision: Long, base64: String): Boolean
     suspend fun beginIntent(playerId: String, expectedRevision: Long, key: String): Boolean
     suspend fun commit(playerId: String, expectedRevision: Long, metadata: AvatarMetadata): Boolean
+    /** Removes the current image (legacy or object) when the revision still matches. */
+    suspend fun clear(ownerId: String, expectedRevision: Long): Boolean = false
     suspend fun claimCleanup(limit: Int): List<AvatarCleanupItem>
     suspend fun completeCleanup(key: String)
     suspend fun retryCleanup(key: String)

@@ -111,6 +111,14 @@ fun UgcReportMenuItem(type: UgcTargetType, id: String?, label: String, onDismiss
     )
 }
 
+/** A report opener for [type]/[id], or null when reporting is unavailable (signed out, own content). */
+@Composable
+fun rememberUgcReport(type: UgcTargetType, id: String?, label: String): (() -> Unit)? {
+    val actions = LocalUgcActions.current ?: return null
+    if (!canReportUgcTarget(type, id)) return null
+    return { actions.report(UgcTarget(type, id, label)) }
+}
+
 @Composable
 fun UgcClanReportAction(id: String, label: String, modifier: Modifier = Modifier) {
     val actions = LocalUgcActions.current ?: return
@@ -249,6 +257,8 @@ private fun UgcTargetType.labelKey(): TextKey = when (this) {
     UgcTargetType.CLAN -> TextKey.UgcClan
     UgcTargetType.ROOM -> TextKey.UgcRoom
     UgcTargetType.TOURNAMENT -> TextKey.UgcTournament
+    UgcTargetType.CLAN_LOGO -> TextKey.UgcClanLogo
+    UgcTargetType.CLAN_MESSAGE -> TextKey.UgcClanMessage
 }
 private fun UgcReportReason.labelKey(): TextKey = when (this) {
     UgcReportReason.HARASSMENT -> TextKey.UgcHarassment

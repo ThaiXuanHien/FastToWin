@@ -30,6 +30,8 @@ class ModerationService(
     /** Memory notification delivery runs after commit and uses reportId as a stable deduplication key. */
     var onContentRemoved: suspend (ownerId: String, reportId: String) -> Unit = { _, _ -> }
     var onSuppressionChanged: suspend (type: UgcTargetType, targetId: String) -> Unit = { _, _ -> }
+    /** Applies an admin chat mute decided while resolving a clan chat report. */
+    var onChatMuteRequested: suspend (messageId: String, untilMillis: Long) -> Unit = { _, _ -> }
     fun validateAcceptedVersion(version: String?) {
         if (version != null && version != CONTENT_TERMS_VERSION) moderationError(400,"CONTENT_TERMS_VERSION_INVALID")
         if (version == null && enforcementEnabled()) moderationError(403,"CONTENT_TERMS_REQUIRED")
@@ -140,7 +142,8 @@ class ModerationService(
             validateRequest(request.requestId);validateReason(request.reason)
             if(!canonical(id) || request.expectedVersion<=0 || request.status==ModerationStatus.NEW ||
                 (request.removeContent && request.status!=ModerationStatus.RESOLVED)) invalid()
-            if(actor.role==AdminRole.SUPPORT && (request.status!=ModerationStatus.REVIEWING || request.removeContent)) forbidden()
+            if(actor.role==AdminRole.SUPPORT && (request.status!=ModerationStatus.REVIEWING || request.removeContent || request.chatMuteHours!=0)) forbidden()
+            if(request.chatMuteHours !in ADMIN_CHAT_MUTE_HOURS) invalid()
             val fingerprint=hashToken("resolve:$id:${Json.encodeToString(request)}")
             replay(actor.id,request.requestId)?.let {
                 if(it.fingerprint!=fingerprint || it.responseType!="ADMIN_REPORT") conflict()
@@ -149,11 +152,13 @@ class ModerationService(
             }
             val current=report(id) ?: missing()
             if(current.version!=request.expectedVersion || current.status.closed() || current.version==Int.MAX_VALUE) conflict()
+            if(request.chatMuteHours>0 && (current.targetType!=UgcTargetType.CLAN_MESSAGE || request.status!=ModerationStatus.RESOLVED ||
+                current.targetId==null)) invalid()
             if(request.removeContent) {
                 val target=current.targetId?.let { target(current.targetType,it) } ?: conflict()
                 if(target.revision!=current.targetRevision) conflict()
                 putSuppression(ContentSuppression(target.type,target.id,target.revision,target.ownerId,nowMillis(),
-                    if(target.type==UgcTargetType.PLAYER_AVATAR) null else contentRevision(target.text.substringBefore('\n'))))
+                    if(target.type==UgcTargetType.PLAYER_AVATAR || target.type==UgcTargetType.CLAN_LOGO) null else contentRevision(target.text.substringBefore('\n'))))
             }
             val next=current.copy(version=current.version+1,status=request.status,
                 closedAtEpochMillis=if(request.status.closed()) nowMillis() else null)
@@ -161,6 +166,10 @@ class ModerationService(
             val action=if(request.removeContent) "MODERATION_REMOVE" else "MODERATION_${request.status}"
             appendAction(ModerationActionRecord(UUID.randomUUID().toString(),id,current.targetOwnerId,actor.id,action,request.reason,nowMillis()))
             audit(actor.id,action)
+            if(request.chatMuteHours>0) {
+                appendAction(ModerationActionRecord(UUID.randomUUID().toString(),id,current.targetOwnerId,actor.id,"MODERATION_CHAT_MUTE",request.reason,nowMillis()))
+                audit(actor.id,"MODERATION_CHAT_MUTE")
+            }
             putReplay(ModerationReplay(actor.id,request.requestId,fingerprint,"ADMIN_REPORT","",id,nowMillis()+91L*86_400_000))
             view(next)
         }
@@ -169,6 +178,11 @@ class ModerationService(
             try { onContentRemoved(it,id) }
             catch(cancelled:CancellationException) { throw cancelled }
             catch(_:Exception) { /* Committed moderation must still invalidate public content. */ }
+        }
+        if(request.chatMuteHours>0) result.report.targetId?.let {
+            try { onChatMuteRequested(it,nowMillis()+request.chatMuteHours*3_600_000L) }
+            catch(cancelled:CancellationException) { throw cancelled }
+            catch(_:Exception) { System.err.println("Clan chat mute from moderation failed") }
         }
         if(request.removeContent) result.report.targetId?.let {
             try { onSuppressionChanged(result.report.targetType,it) }

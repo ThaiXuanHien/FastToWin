@@ -34,6 +34,7 @@ internal fun sanitizeContent(message: ServerMessage, suppressions: List<ContentS
         neutralName("hostDisplayName", UgcTargetType.PLAYER_PROFILE, text("hostPlayerId"), "Player")
         neutralName("fromDisplayName", UgcTargetType.PLAYER_PROFILE, text("fromUserId"), "Player")
         neutralName("hostName", UgcTargetType.PLAYER_PROFILE, text("hostId"), "Player", legacy = true)
+        neutralName("senderName", UgcTargetType.PLAYER_PROFILE, text("senderId"), "Player")
         if ("avatarId" in element && suppressed(UgcTargetType.PLAYER_AVATAR, playerId)) result["avatarId"] = JsonPrimitive(MODERATED_AVATAR_ID)
         val tournamentId = text("tournamentId")
         neutralName("tournamentName", UgcTargetType.TOURNAMENT, tournamentId, "Tournament")
@@ -41,6 +42,10 @@ internal fun sanitizeContent(message: ServerMessage, suppressions: List<ContentS
         neutralName("roomName", UgcTargetType.ROOM, text("roomId"), "Room", legacy = "opponentName" in element)
         if ("hostName" in element) neutralName("name", UgcTargetType.ROOM, text("id"), "Room")
         val clanId = text("clanId") ?: text("id").takeIf { "members" in element || "memberCount" in element }
+        for (field in listOf("logoRevision", "clanLogoRevision")) {
+            val revision = text(field) ?: continue
+            if (byType[UgcTargetType.CLAN_LOGO].orEmpty().any { it.targetId == clanId && it.revision == revision }) result[field] = JsonNull
+        }
         neutralName("clanName", UgcTargetType.CLAN, clanId, "Clan")
         if (clanId != null && "name" in element) {
             val fullText = text("description")?.let { text("name").orEmpty() + "\n" + it } ?: text("name")
@@ -53,7 +58,7 @@ internal fun sanitizeContent(message: ServerMessage, suppressions: List<ContentS
         // Trusted target references scope new notifications precisely. Historical notifications
         // without references retain exact content-fingerprint matching.
         var changedArgs = false
-        for (field in listOf("titleArgs", "messageArgs")) {
+        for (field in listOf("titleArgs", "messageArgs", "systemArgs")) {
             val args = result[field] as? JsonObject ?: continue
             val safe = args.mapValues { (key, value) ->
                 val kind = when (key) {

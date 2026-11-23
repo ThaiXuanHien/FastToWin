@@ -56,6 +56,7 @@ import io.ktor.http.HttpStatusCode
 import io.ktor.http.CookieEncoding
 import io.ktor.http.ContentType
 import com.hienthai.fastowin.server.avatars.avatarRoutes
+import com.hienthai.fastowin.server.avatars.clanLogoRoutes
 import io.ktor.server.application.ApplicationCall
 import io.ktor.server.application.Application
 import io.ktor.server.application.call
@@ -160,6 +161,14 @@ fun Application.gameModule(
             catch (cancelled: CancellationException) { throw cancelled }
             catch (_: Exception) { System.err.println("Avatar cleanup unavailable") }
             delay(60_000)
+        }
+    }
+    launch {
+        while (isActive) {
+            try { engine.cleanupClanChat() }
+            catch (cancelled: CancellationException) { throw cancelled }
+            catch (_: Exception) { System.err.println("Clan chat cleanup unavailable") }
+            delay(60 * 60_000L)
         }
     }
     financialSyncService?.let { service -> launch {
@@ -300,9 +309,13 @@ fun Application.gameModule(
         deliveries.forEach { delivery ->
             val message = sanitizeContent(delivery.message, suppressions)
             val connectedTargets = delivery.recipients?.mapNotNull(connections::get) ?: connections.values.toList()
-            val targets = if (message is ServerMessage.TournamentRewardResult) {
-                connectedTargets.filter { it.protocolVersion >= TOURNAMENT_REWARD_PROTOCOL_VERSION }
-            } else connectedTargets
+            val targets = when {
+                message is ServerMessage.TournamentRewardResult ->
+                    connectedTargets.filter { it.protocolVersion >= TOURNAMENT_REWARD_PROTOCOL_VERSION }
+                message.requiresClanChatClient() ->
+                    connectedTargets.filter { it.protocolVersion >= com.hienthai.fastowin.protocol.CLAN_CHAT_PROTOCOL_VERSION }
+                else -> connectedTargets
+            }
             if (targets.isEmpty()) return@forEach
             // SCL-01: encode once per delivery, not once per recipient (a lobby broadcast to N sockets).
             val encoded = ProtocolJson.encodeToString<ServerMessage>(message)
@@ -341,6 +354,7 @@ fun Application.gameModule(
         }
     }
 
+    engine.moderationService.onChatMuteRequested = { messageId, until -> deliver(engine.adminClanChatMute(messageId, until)) }
     val previousSuppressionChanged = engine.moderationService.onSuppressionChanged
     engine.moderationService.onSuppressionChanged = { targetType, targetId ->
         try { previousSuppressionChanged(targetType, targetId) }
@@ -348,7 +362,10 @@ fun Application.gameModule(
         catch (_: Exception) { /* Other listeners cannot suppress delivery to connected clients. */ }
         val event = ServerMessage.ContentModerationChanged(targetType, targetId)
         val suppressions = engine.suppressionsForProjection()
-        connections.entries.filter { it.value.moderationAware }.forEach { (playerId, connection) ->
+        try { deliver(engine.moderationDeliveries(targetType, targetId)) }
+        catch (cancelled: CancellationException) { throw cancelled }
+        catch (_: Exception) { /* Projection on the next read still hides the content. */ }
+        connections.entries.filter { it.value.moderationAware && event.readableBy(it.value.protocolVersion) }.forEach { (playerId, connection) ->
             try {
                 connection.send(event)
                 engine.currentModerationSnapshot(playerId)?.let { connection.send(sanitizeContent(it, suppressions)) }
@@ -767,6 +784,7 @@ fun Application.gameModule(
         }
 
         avatarRoutes(engine.avatarService)
+        clanLogoRoutes(engine.clanLogoService)
 
         webSocket("/game") {
             metrics.webSocketOpened()
@@ -990,6 +1008,7 @@ fun Application.gameModule(
                             requestId = when (message) {
                                 is ClientMessage.SelectNumber -> message.requestId
                                 is ClientMessage.VerifyStorePurchase -> message.requestId
+                                is ClientMessage.SendClanChatMessage -> message.requestId
                                 else -> null
                             }
                         )
@@ -1164,10 +1183,16 @@ private suspend fun RateLimiter.consumeActionLimit(
             policies.selectNumberPerIp
         ).takeUnless(RateLimitResult::allowed)
 
-        is ClientMessage.UpdateAvatar -> consume(
+        is ClientMessage.UpdateAvatar, is ClientMessage.UploadClanLogo -> consume(
             RateLimitBuckets.AVATAR_PLAYER, playerKey, policies.avatarPerPlayer
         ).takeUnless(RateLimitResult::allowed) ?: consume(
             RateLimitBuckets.AVATAR_IP, clientKey, policies.avatarPerIp
+        ).takeUnless(RateLimitResult::allowed)
+
+        is ClientMessage.SendClanChatMessage -> consume(
+            RateLimitBuckets.CLAN_CHAT_BURST_PLAYER, playerKey, policies.clanChatBurstPerPlayer
+        ).takeUnless(RateLimitResult::allowed) ?: consume(
+            RateLimitBuckets.CLAN_CHAT_MINUTE_PLAYER, playerKey, policies.clanChatPerMinutePerPlayer
         ).takeUnless(RateLimitResult::allowed)
 
         is ClientMessage.VerifyStorePurchase -> consume(

@@ -221,7 +221,8 @@ class PostgresLeaderboardRepository(
         try {
             return prepareStatement(
                 """
-                SELECT m.user_id, c.id, c.name, c.logo_id
+                SELECT m.user_id, c.id, c.name, c.logo_id,
+                       (SELECT l.revision::text FROM clan_logos l WHERE l.clan_id = c.id AND (l.object_key IS NOT NULL OR l.legacy_data IS NOT NULL)) AS logo_revision
                 FROM clan_members m
                 JOIN clans c ON c.id = m.clan_id
                 WHERE m.user_id = ANY (?)
@@ -234,7 +235,8 @@ class PostgresLeaderboardRepository(
                             put(result.getObject("user_id", UUID::class.java).toString(), PlayerClan(
                                 id = result.getObject("id", UUID::class.java).toString(),
                                 name = result.getString("name"),
-                                logoId = result.getString("logo_id")
+                                logoId = result.getString("logo_id"),
+                                logoRevision = result.getString("logo_revision")
                             ))
                         }
                     }
@@ -247,10 +249,10 @@ class PostgresLeaderboardRepository(
 
     private fun LeaderboardEntrySnapshot.withClan(clans: Map<String, PlayerClan>): LeaderboardEntrySnapshot {
         val clan = userId?.let(clans::get)
-        return copy(clanId = clan?.id, clanName = clan?.name, clanLogoId = clan?.logoId)
+        return copy(clanId = clan?.id, clanName = clan?.name, clanLogoId = clan?.logoId, clanLogoRevision = clan?.logoRevision)
     }
 
-    private data class PlayerClan(val id: String, val name: String, val logoId: String?)
+    private data class PlayerClan(val id: String, val name: String, val logoId: String?, val logoRevision: String?)
 
     private fun Connection.loadAssetLeaderboard(
         currentPlayerId: UUID,
@@ -318,6 +320,7 @@ class PostgresLeaderboardRepository(
             """
             WITH clan_stats AS (
                 SELECT c.id, c.name, c.logo_id, c.level, c.experience_points,
+                       (SELECT l.revision::text FROM clan_logos l WHERE l.clan_id = c.id AND (l.object_key IS NOT NULL OR l.legacy_data IS NOT NULL)) AS logo_revision,
                        c.donated_gold, c.donated_gems, c.level_reached_at,
                        COUNT(m.user_id) AS member_count,
                        COALESCE(SUM(ps.elo_rating), 0) AS total_elo
@@ -350,7 +353,8 @@ class PostgresLeaderboardRepository(
                         experiencePoints = result.getLong("experience_points"),
                         donatedGold = result.getLong("donated_gold"),
                         donatedGems = result.getLong("donated_gems"),
-                        logoId = result.getString("logo_id")
+                        logoId = result.getString("logo_id"),
+                        logoRevision = result.getString("logo_revision")
                     )
                     if (clanUuid == currentClanId) current = entry
                     if (entry.rank <= limit) entries += entry

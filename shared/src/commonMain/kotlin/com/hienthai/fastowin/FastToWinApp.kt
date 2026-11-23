@@ -2216,7 +2216,24 @@ private fun GameContent(
                     onDismissMissionReward = { clanMissions?.clearLastClaimedReward() },
                     onOpenRace = if (state.viewedLeaderboardClanId == null && !isGuest) {
                         { navigateToAppRoute("/clan/race") { showClanRace = true } }
-                    } else null
+                    } else null,
+                    clanChat = state.clanChat.takeUnless { isGuest },
+                    chatActions = remember(controller) {
+                        com.hienthai.fastowin.ui.screens.ClanChatActions(
+                            onVisible = controller::setClanChatVisible,
+                            onSend = controller::sendClanChatMessage,
+                            onRetry = controller::retryClanChatMessage,
+                            onDiscard = controller::discardClanChatMessage,
+                            onLoadOlder = controller::loadOlderClanChat,
+                            onDelete = controller::deleteClanChatMessage,
+                            onMute = controller::muteClanChatMember,
+                            onBlock = controller::blockClanChatSender
+                        )
+                    },
+                    onUploadLogo = controller::uploadClanLogo,
+                    onRemoveLogo = controller::removeClanLogo,
+                    onSetMemberRole = controller::setClanMemberRole,
+                    isLogoUploading = state.isClanLogoUploading
                 ) }
 
                 state.isGameOver -> ResultScreen(

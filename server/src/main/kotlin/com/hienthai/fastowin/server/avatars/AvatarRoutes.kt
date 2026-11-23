@@ -23,3 +23,17 @@ fun Route.avatarRoutes(service: AvatarService) {
         }
     }
 }
+
+fun Route.clanLogoRoutes(service: ClanLogoService) {
+    get("/api/clan-logo/{clanId}") {
+        call.response.header(HttpHeaders.CacheControl, "no-store, max-age=0")
+        call.response.header("X-Content-Type-Options", "nosniff")
+        val clanId = call.parameters["clanId"]
+        if (clanId == null || !isAvatarPlayerId(clanId)) return@get call.respond(HttpStatusCode.BadRequest)
+        when (val result = service.read(clanId)) {
+            is AvatarReadResult.Found -> call.respondBytes(result.bytes, ContentType.parse(result.contentType))
+            AvatarReadResult.NotFound -> call.respond(HttpStatusCode.NotFound)
+            AvatarReadResult.Unavailable -> call.respond(HttpStatusCode.ServiceUnavailable)
+        }
+    }
+}
