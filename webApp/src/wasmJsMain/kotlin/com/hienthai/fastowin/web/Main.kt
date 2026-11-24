@@ -31,10 +31,7 @@ fun main() {
         val resumeTokenStore = remember { WebResumeTokenStore() }
         val authSessionStore = remember { WebAuthSessionStore() }
         val preferencesStore = remember { WebAppPreferencesStore() }
-        ArcadeBackdrop(
-            modifier = Modifier.fillMaxSize(),
-            darkBackdrop = true
-        ) {
+        ArcadeBackdrop(modifier = Modifier.fillMaxSize()) {
             Box(
                 modifier = Modifier
                     .fillMaxSize()
