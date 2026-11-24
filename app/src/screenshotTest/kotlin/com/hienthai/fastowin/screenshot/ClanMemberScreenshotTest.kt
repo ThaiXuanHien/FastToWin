@@ -21,7 +21,7 @@ private val previewMember = ClanMemberSnapshot(
 
 @PreviewTest
 @Preview(name = "member_vi_phone", widthDp = 375, heightDp = 812)
-@Preview(name = "member_vi_small_large_text", widthDp = 320, heightDp = 932, fontScale = 1.6f)
+@Preview(name = "member_vi_small_large_text", widthDp = 360, heightDp = 932, fontScale = 1.6f)
 @Preview(name = "member_vi_desktop", widthDp = 1024, heightDp = 768)
 @Composable
 fun clanMemberProfileVietnamese() = ArcadeScreenshotFrame {

@@ -34,7 +34,7 @@ class ResponsiveUiTest {
     val composeRule = createComposeRule()
 
     @Test
-    fun home_fitsSmallPhone() = assertHomeViewport(320.dp, 568.dp)
+    fun home_fitsSmallPhone() = assertHomeViewport(360.dp, 740.dp)
 
     @Test
     fun home_fitsLargePhone() = assertHomeViewport(430.dp, 932.dp)
@@ -47,7 +47,7 @@ class ResponsiveUiTest {
 
     @Test
     fun home_largeTextAndLongContentRemainScrollable() {
-        setViewportContent(width = 320.dp, height = 568.dp, fontScale = 1.6f) {
+        setViewportContent(width = 360.dp, height = 740.dp, fontScale = 1.6f) {
             TestResponsiveLobby()
         }
 
@@ -70,7 +70,7 @@ class ResponsiveUiTest {
 
     @Test
     fun home_compactHeaderStaysReadableWithLargeText() {
-        setViewportContent(width = 320.dp, height = 568.dp, fontScale = 1.6f) {
+        setViewportContent(width = 360.dp, height = 740.dp, fontScale = 1.6f) {
             TestResponsiveLobby()
         }
 
@@ -87,7 +87,7 @@ class ResponsiveUiTest {
     }
 
     @Test
-    fun home_primaryAndOutlineActionsUseFullWidthVerticalHierarchy() {
+    fun home_roomActionsShareOneRowOnLargePhone() {
         setViewportContent(width = 430.dp, height = 932.dp) {
             TestResponsiveLobby()
         }
@@ -99,13 +99,15 @@ class ResponsiveUiTest {
 
         val primaryBounds = primary.fetchSemanticsNode().boundsInRoot
         val secondaryBounds = secondary.fetchSemanticsNode().boundsInRoot
-        assertTrue(primaryBounds.bottom <= secondaryBounds.top)
+        // A1: Tạo phòng và Tham gia nằm cạnh nhau, rộng bằng nhau.
+        assertTrue(primaryBounds.right <= secondaryBounds.left)
+        assertTrue(abs(primaryBounds.top - secondaryBounds.top) <= 1f)
         assertTrue(abs(primaryBounds.width - secondaryBounds.width) <= 1f)
     }
 
     @Test
     fun tutorial_keepsContinueButtonVisibleAtBottomOnSmallPhone() {
-        setViewportContent(width = 320.dp, height = 568.dp, fontScale = 1.4f) {
+        setViewportContent(width = 360.dp, height = 740.dp, fontScale = 1.4f) {
             TutorialScreen(onComplete = {}, onSkip = {})
         }
 

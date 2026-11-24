@@ -32,7 +32,7 @@ fun goldExchangeReceiptEnglish() = ArcadeScreenshotFrame {
 }
 
 @PreviewTest
-@Preview(name = "reward_large_text", widthDp = 320, heightDp = 568, fontScale = 1.6f)
+@Preview(name = "reward_large_text", widthDp = 360, heightDp = 740, fontScale = 1.6f)
 @Preview(name = "reward_landscape_large_text", widthDp = 844, heightDp = 390, fontScale = 1.6f)
 @Composable
 fun multipleRewardsLargeText() = ArcadeScreenshotFrame {

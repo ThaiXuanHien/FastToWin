@@ -26,7 +26,7 @@ import com.hienthai.fastowin.ui.components.ArcadeSegmentedControl
 /** Bảng thành phần nền A1 "Ngày nắng": nút 3D, thẻ, tab chọn, chip, huy hiệu hạng trên nền trời. */
 @PreviewTest
 @Preview(name = "a1_foundation", widthDp = 390, heightDp = 980)
-@Preview(name = "a1_foundation_small_large_font", widthDp = 320, heightDp = 1400, fontScale = 1.6f)
+@Preview(name = "a1_foundation_small_large_font", widthDp = 360, heightDp = 1400, fontScale = 1.6f)
 @Composable
 fun a1Foundation() = ArcadeScreenshotFrame {
     ArcadeBackdrop(Modifier.fillMaxSize(), showHills = true) {

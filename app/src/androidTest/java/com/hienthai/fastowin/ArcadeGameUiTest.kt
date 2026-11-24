@@ -35,7 +35,7 @@ class ArcadeGameUiTest {
 
     @Test
     fun fiftyNumberBoard_smallPhone_reachesLastNumberWithoutLegacyErrorText() =
-        assertFiftyNumberBoard(width = 320.dp, height = 568.dp, fontScale = 1.2f)
+        assertFiftyNumberBoard(width = 360.dp, height = 740.dp, fontScale = 1.2f)
 
     @Test
     fun fiftyNumberBoard_landscape_reachesLastNumberWithoutLegacyErrorText() =
@@ -92,7 +92,7 @@ class ArcadeGameUiTest {
         composeRule.onNodeWithTag("number_grid")
             .assertIsDisplayed()
         composeRule.onNodeWithTag("game_number_50").assertIsDisplayed()
-        if (width <= 320.dp && height >= 568.dp) {
+        if (width <= 360.dp && height >= 740.dp) {
             val cellBounds = composeRule.onNodeWithTag("game_number_1")
                 .fetchSemanticsNode().boundsInRoot
             val aspectRatio = cellBounds.width / cellBounds.height

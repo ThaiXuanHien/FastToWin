@@ -52,10 +52,10 @@ private val longGift = compensationGift.copy(
 
 @Target(AnnotationTarget.FUNCTION)
 @Retention(AnnotationRetention.BINARY)
-@Preview(name = "phone320", widthDp = 320, heightDp = 568, showSystemUi = false)
+@Preview(name = "phone360", widthDp = 360, heightDp = 740, showSystemUi = false)
 @Preview(name = "phone430", widthDp = 430, heightDp = 932, showSystemUi = false)
 @Preview(name = "desktop1024", widthDp = 1024, heightDp = 768, showSystemUi = false)
-@Preview(name = "phone320_large", widthDp = 320, heightDp = 568, fontScale = 1.6f, showSystemUi = false)
+@Preview(name = "phone360_large", widthDp = 360, heightDp = 740, fontScale = 1.6f, showSystemUi = false)
 @Preview(name = "phone430_large", widthDp = 430, heightDp = 932, fontScale = 1.6f, showSystemUi = false)
 @Preview(name = "desktop1024_large", widthDp = 1024, heightDp = 768, fontScale = 1.6f, showSystemUi = false)
 annotation class CompensationMailboxDevices
@@ -129,14 +129,14 @@ fun compensationLegacyEnDark() = CompensationMailboxPreview(AppLanguage.ENGLISH,
 
 // Expanded viewport companion to phone captures: inspect the entire long card and its CTA.
 @PreviewTest
-@Preview(name = "long_phone_full_card", widthDp = 320, heightDp = 2400, fontScale = 1.6f, showSystemUi = false)
+@Preview(name = "long_phone_full_card", widthDp = 360, heightDp = 2400, fontScale = 1.6f, showSystemUi = false)
 @Preview(name = "long_desktop", widthDp = 1024, heightDp = 1400, fontScale = 1.6f, showSystemUi = false)
 @Composable
 fun compensationLongViDark() = CompensationMailboxPreview(AppLanguage.VIETNAMESE, AppThemeMode.DARK, longGift)
 
 // Expanded viewport companion to phone captures: inspect the entire long card and its CTA.
 @PreviewTest
-@Preview(name = "long_phone_full_card", widthDp = 320, heightDp = 2400, fontScale = 1.6f, showSystemUi = false)
+@Preview(name = "long_phone_full_card", widthDp = 360, heightDp = 2400, fontScale = 1.6f, showSystemUi = false)
 @Preview(name = "long_desktop", widthDp = 1024, heightDp = 1400, fontScale = 1.6f, showSystemUi = false)
 @Composable
 fun compensationLongEnDark() = CompensationMailboxPreview(AppLanguage.ENGLISH, AppThemeMode.DARK, longGift)

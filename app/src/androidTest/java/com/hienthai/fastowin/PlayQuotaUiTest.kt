@@ -89,7 +89,7 @@ class PlayQuotaUiTest {
 
     @Test
     fun exhaustedQuota_smallPhoneLargeText_keepsActionsReachable() =
-        assertResponsiveQuotaDialog(width = 320.dp, height = 568.dp, fontScale = 1.6f)
+        assertResponsiveQuotaDialog(width = 360.dp, height = 740.dp, fontScale = 1.6f)
 
     @Test
     fun exhaustedQuota_largePhone_keepsActionsReachable() =

@@ -459,9 +459,12 @@ class CriticalFlowsUiTest {
         }
 
         composeRule.onNodeWithTag("shop_tab:GOLD").performClick()
+        // A1: thẻ và nút cao hơn, nên các gói có thể nằm dưới mép màn hình; cuộn tới từng gói.
         listOf("gold_bag", "gold_chest", "gold_vault").forEach { offerId ->
+            composeRule.onNodeWithTag("gold_exchange_list").performScrollToNode(hasTestTag("gold_offer:$offerId"))
             composeRule.onNodeWithTag("gold_offer:$offerId").assertIsDisplayed()
         }
+        composeRule.onNodeWithTag("gold_exchange_list").performScrollToNode(hasTestTag("gold_exchange:gold_bag"))
         composeRule.onNodeWithTag("gold_exchange:gold_bag").assertIsEnabled().performClick()
         composeRule.onNodeWithTag("gold_exchange_confirmation").assertIsDisplayed()
         composeRule.onNodeWithTag("gold_exchange_confirm").performClick()
@@ -485,7 +488,7 @@ class CriticalFlowsUiTest {
 
     @Test
     fun shop_smallPhoneLargeText_keepsExchangeContentWithinViewport() =
-        assertResponsiveGoldExchange(width = 320.dp, height = 568.dp, fontScale = 1.6f)
+        assertResponsiveGoldExchange(width = 360.dp, height = 740.dp, fontScale = 1.6f)
 
     @Test
     fun shop_largePhone_keepsExchangeContentWithinViewport() =

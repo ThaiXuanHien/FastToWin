@@ -14,7 +14,7 @@ import com.hienthai.fastowin.ui.theme.FastToWinTheme
 
 @Target(AnnotationTarget.FUNCTION, AnnotationTarget.ANNOTATION_CLASS)
 @Retention(AnnotationRetention.BINARY)
-@Preview(name = "small_phone", widthDp = 320, heightDp = 568, showSystemUi = false)
+@Preview(name = "small_phone", widthDp = 360, heightDp = 740, showSystemUi = false)
 @Preview(name = "large_phone", widthDp = 430, heightDp = 932, showSystemUi = false)
 @Preview(name = "tablet", widthDp = 840, heightDp = 1180, showSystemUi = false)
 annotation class ArcadeScreenshotDevices

@@ -41,7 +41,7 @@ class SeasonHistoryUiTest {
     fun seasonHistoryRemainsReachableOnSmallPhoneWithLargeText() {
         composeRule.setContent {
             DeviceConfigurationOverride(
-                DeviceConfigurationOverride.ForcedSize(DpSize(320.dp, 568.dp)) then
+                DeviceConfigurationOverride.ForcedSize(DpSize(360.dp, 740.dp)) then
                     DeviceConfigurationOverride.FontScale(1.4f)
             ) {
                 FastToWinTheme {

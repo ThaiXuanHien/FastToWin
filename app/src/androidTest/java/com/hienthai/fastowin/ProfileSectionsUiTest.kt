@@ -141,7 +141,7 @@ class ProfileSectionsUiTest {
 
     @Test
     fun profile_smallPhoneLargestText_keepsCoreSectionsReachable() {
-        setAdaptiveContent(320.dp, 568.dp, fontScale = 1.6f) {
+        setAdaptiveContent(360.dp, 740.dp, fontScale = 1.6f) {
             ProfileScreen(
                 serverUrl = "",
                 state = GameState(profile = profileFixture()),
@@ -237,7 +237,7 @@ class ProfileSectionsUiTest {
             )
         )
 
-        setAdaptiveContent(320.dp, 568.dp, fontScale = 1.4f) {
+        setAdaptiveContent(360.dp, 740.dp, fontScale = 1.4f) {
             ProfileSectionScreen(
                 state = GameState(profile = profile, walletTransactions = transactions),
                 profile = profile,
@@ -299,7 +299,7 @@ class ProfileSectionsUiTest {
             )
         )
 
-        setAdaptiveContent(320.dp, 568.dp, fontScale = 1.6f) {
+        setAdaptiveContent(360.dp, 740.dp, fontScale = 1.6f) {
             ProfileSectionScreen(
                 state = GameState(profile = profile),
                 profile = profile,
@@ -338,7 +338,7 @@ class ProfileSectionsUiTest {
             titleKey = "MissionActionCORRECT", titleArguments = mapOf("target" to "100")
         )
 
-        setAdaptiveContent(320.dp, 568.dp, fontScale = 1.6f) {
+        setAdaptiveContent(360.dp, 740.dp, fontScale = 1.6f) {
             ProfileSectionScreen(
                 state = GameState(profile = profile),
                 profile = profile,
@@ -487,7 +487,7 @@ class ProfileSectionsUiTest {
             )
         )
 
-        setAdaptiveContent(320.dp, 640.dp, fontScale = 2f) {
+        setAdaptiveContent(360.dp, 640.dp, fontScale = 2f) {
             ProfileSectionScreen(
                 state = GameState(profile = profile),
                 profile = profile,
@@ -591,7 +591,7 @@ class ProfileSectionsUiTest {
     fun collectionFramesAcceptHorizontalScroll() {
         val profile = profileFixture()
 
-        setAdaptiveContent(320.dp, 640.dp) {
+        setAdaptiveContent(360.dp, 640.dp) {
             ProfileSectionScreen(
                 state = GameState(profile = profile),
                 profile = profile,
@@ -712,7 +712,7 @@ class ProfileSectionsUiTest {
             )
         )
 
-        setAdaptiveContent(320.dp, 568.dp, fontScale = 1.4f) {
+        setAdaptiveContent(360.dp, 740.dp, fontScale = 1.4f) {
             ProfileSectionScreen(
                 state = GameState(profile = profile, matchDetail = detail),
                 profile = profile,

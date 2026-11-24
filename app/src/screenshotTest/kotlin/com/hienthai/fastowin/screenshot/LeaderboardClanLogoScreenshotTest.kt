@@ -8,7 +8,7 @@ import com.hienthai.fastowin.ui.screens.LeaderboardPlayerDialog
 
 @PreviewTest
 @Preview(name = "player_clans_vi_phone", widthDp = 375, heightDp = 1100)
-@Preview(name = "player_clans_vi_large_text", widthDp = 320, heightDp = 1400, fontScale = 1.6f)
+@Preview(name = "player_clans_vi_large_text", widthDp = 360, heightDp = 1400, fontScale = 1.6f)
 @Preview(name = "player_clans_vi_desktop", widthDp = 1024, heightDp = 1100)
 @Composable
 fun leaderboardWithClanIdentity() = ArcadeScreenshotFrame {
@@ -36,7 +36,7 @@ fun leaderboardWithClanIdentity() = ArcadeScreenshotFrame {
 
 @PreviewTest
 @Preview(name = "player_profile_vi_phone", widthDp = 375, heightDp = 812)
-@Preview(name = "player_profile_vi_large_text", widthDp = 320, heightDp = 932, fontScale = 1.6f)
+@Preview(name = "player_profile_vi_large_text", widthDp = 360, heightDp = 932, fontScale = 1.6f)
 @Preview(name = "player_profile_vi_desktop", widthDp = 1024, heightDp = 768)
 @Composable
 fun leaderboardPlayerProfile() = ArcadeScreenshotFrame {

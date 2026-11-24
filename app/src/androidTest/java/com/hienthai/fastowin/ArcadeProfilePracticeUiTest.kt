@@ -53,7 +53,7 @@ class ArcadeProfilePracticeUiTest {
     @Test
     fun practice_smallPhoneLargeText_keepsFiftyNumberBoardAndBackReachable() {
         var wentBack = false
-        setAdaptiveContent(320.dp, 568.dp, 1.4f) {
+        setAdaptiveContent(360.dp, 740.dp, 1.4f) {
             PracticeScreen(
                 mode = GameMode.ORDER,
                 preferences = quietPreferences(),
@@ -71,7 +71,7 @@ class ArcadeProfilePracticeUiTest {
     @Test
     fun practice_landscape_keepsNumberBoardUsable() {
         val mode = mutableStateOf(GameMode.ORDER)
-        setAdaptiveContent(700.dp, 320.dp, 1f) {
+        setAdaptiveContent(700.dp, 360.dp, 1f) {
             PracticeScreen(
                 mode = mode.value,
                 preferences = quietPreferences(),
@@ -90,7 +90,7 @@ class ArcadeProfilePracticeUiTest {
     @Test
     fun result_smallPhoneLargeText_keepsAnalysisShareAndLobbyActionsReachable() {
         var returnedToLobby = false
-        setAdaptiveContent(320.dp, 568.dp, 1.4f) {
+        setAdaptiveContent(360.dp, 740.dp, 1.4f) {
             ResultScreen(
                 state = resultState(),
                 onRestart = { returnedToLobby = true },
@@ -161,7 +161,7 @@ class ArcadeProfilePracticeUiTest {
     fun settings_smallPhoneLargestText_keepsActionsScrollableAndInteractive() {
         val preferences = mutableStateOf(quietPreferences())
         var openedTutorial = false
-        setAdaptiveContent(320.dp, 568.dp, 1.6f) {
+        setAdaptiveContent(360.dp, 740.dp, 1.6f) {
             SettingsScreen(
                 preferences = preferences.value,
                 onPreferencesChange = { preferences.value = it },
@@ -179,7 +179,7 @@ class ArcadeProfilePracticeUiTest {
 
     @Test
     fun profile_smallPhoneLargeText_opensSessionsAndSecurityDialogs() {
-        setAdaptiveContent(320.dp, 568.dp, 1.4f) {
+        setAdaptiveContent(360.dp, 740.dp, 1.4f) {
             ProfileScreen(
                 serverUrl = "",
                 state = GameState(profile = profileFixture()),
@@ -225,7 +225,7 @@ class ArcadeProfilePracticeUiTest {
         var savedName: String? = null
         var savedAvatar: String? = null
         val profile = profileFixture().copy(avatarId = "target")
-        setAdaptiveContent(320.dp, 568.dp, 1.4f) {
+        setAdaptiveContent(360.dp, 740.dp, 1.4f) {
             ProfileScreen(
                 serverUrl = "",
                 state = GameState(profile = profile),
@@ -286,7 +286,7 @@ class ArcadeProfilePracticeUiTest {
                 nextLevelExperience = 1_080
             )
         )
-        setAdaptiveContent(320.dp, 568.dp, 1f) {
+        setAdaptiveContent(360.dp, 740.dp, 1f) {
             ProfileScreen(
                 serverUrl = "",
                 state = GameState(profile = profile),

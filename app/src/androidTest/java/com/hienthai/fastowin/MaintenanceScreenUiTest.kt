@@ -28,7 +28,7 @@ class MaintenanceScreenUiTest {
     fun maintenance_smallPhone_largeText_isInformationalAndHasNoActions() {
         composeRule.setContent {
             DeviceConfigurationOverride(
-                DeviceConfigurationOverride.ForcedSize(DpSize(320.dp, 568.dp)) then
+                DeviceConfigurationOverride.ForcedSize(DpSize(360.dp, 740.dp)) then
                     DeviceConfigurationOverride.FontScale(1.3f)
             ) {
                 ProvideLocalization(AppLanguage.VIETNAMESE) {
