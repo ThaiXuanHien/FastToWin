@@ -68,7 +68,7 @@ fun FastToWinTheme(
     CompositionLocalProvider(LocalDensity provides scaledDensity) {
         MaterialTheme(
             colorScheme = A1LightColorScheme,
-            typography = Typography,
+            typography = a1Typography(),
             shapes = ArcadeShapes,
             content = content
         )
