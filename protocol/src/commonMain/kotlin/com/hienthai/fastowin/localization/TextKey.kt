@@ -72,6 +72,7 @@ ClanRaceTitle, ClanRacePrizes, ClanRacePerMember, ClanRaceEligibility, ClanRaceW
     ShowPassword, PasswordTooShort, PasswordTooLong, PasswordMismatch,
 
     Rooms, Leaderboard, Clan, Account,
+    TabRank, TabPlay, TabClan, TabMe, HomeEvents, HomeGifts,
     FinishCurrentMatchBeforeChallenge, ModeUnlockLevel, CannotOpenChallenge, Understood,
     ChoosePracticeMode, ShareRoom,
 

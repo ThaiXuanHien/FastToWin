@@ -171,14 +171,15 @@ fun LobbyScreen(
     Column(modifier = modifier.fillMaxSize().imePadding().testTag("lobby_screen")) {
         FastToWinHeader(
             title = when (state.lobbyStage) {
-                LobbyStage.SELECT_MODE -> localized(TextKey.GreetingPlayer, "player" to displayName)
+                // A1: trang chủ không có tiêu đề; lời chào nằm trong bong bóng của linh vật.
+                LobbyStage.SELECT_MODE -> ""
                 LobbyStage.ENTER_NAME -> localized(TextKey.DisplayName)
                 LobbyStage.ROOM_BROWSER -> localized(TextKey.GameRooms)
                 LobbyStage.ROOM_WAITING -> localized(TextKey.Ready)
                 LobbyStage.MATCHMAKING -> localized(TextKey.Matchmaking)
                 LobbyStage.MATCHED -> localized(TextKey.MatchFound)
             },
-            subtitle = if (state.lobbyStage == LobbyStage.SELECT_MODE) localized(TextKey.ReadyForRecord) else null,
+            subtitle = null,
             gold = state.profile?.progression?.gold ?: 0,
             gems = state.profile?.progression?.gems ?: 0,
             unreadNotifications = state.unreadNotificationCount,

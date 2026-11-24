@@ -165,6 +165,8 @@ class CriticalFlowsUiTest {
         composeRule.onNodeWithTag("home_missions").performScrollTo()
             .assert(SemanticsMatcher.expectValue(SemanticsProperties.StateDescription, "3 nhiệm vụ đã hoàn thành chưa nhận thưởng"))
             .performClick()
+        // A1: lịch điểm danh mở từ ô "Điểm danh" cạnh linh vật.
+        composeRule.onNodeWithTag("home_check_in").performScrollTo().performClick()
         composeRule.onNodeWithTag("daily_check_in_reward:31").assertDoesNotExist()
         composeRule.onNodeWithTag("daily_check_in_details").performScrollTo().performClick()
         composeRule.onNodeWithContentDescription("Tháng trước").performScrollTo().performClick()

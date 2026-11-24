@@ -75,7 +75,8 @@ class ResponsiveUiTest {
         }
 
         composeRule.onNodeWithTag("app_header").assertIsDisplayed()
-        composeRule.onNodeWithText("Xin chào,", substring = true).assertIsDisplayed()
+        // A1: lời chào nằm trong bong bóng của linh vật trên trang chủ.
+        composeRule.onNodeWithText("Xin chào,", substring = true).performScrollTo().assertIsDisplayed()
         assertTrue(composeRule.onAllNodesWithText("FAST TO WIN").fetchSemanticsNodes().isEmpty())
         assertTrue(composeRule.onAllNodesWithContentDescription("Cài đặt").fetchSemanticsNodes().isEmpty())
 
@@ -114,7 +115,7 @@ class ResponsiveUiTest {
     private fun assertHomeViewport(width: Dp, height: Dp) {
         setViewportContent(width, height) { TestResponsiveLobby() }
         composeRule.onNodeWithTag("home_screen").assertExists()
-        composeRule.onNodeWithTag("daily_check_in_card").assertExists()
+        composeRule.onNodeWithTag("home_check_in").assertExists()
         composeRule.onNodeWithTag("home_quick_match").assertExists()
         composeRule.onNodeWithTag("home_action:create_room").assertExists()
     }

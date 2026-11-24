@@ -104,12 +104,31 @@ import com.hienthai.fastowin.state.ConnectionStatus
 import com.hienthai.fastowin.state.GameState
 import com.hienthai.fastowin.ui.components.CrossedSwordsIcon
 import com.hienthai.fastowin.ui.components.PlayerAvatar
-import com.hienthai.fastowin.ui.theme.ArcadePalette
+import com.hienthai.fastowin.ui.theme.A1Palette
+import com.hienthai.fastowin.ui.components.A1Dimens
+import com.hienthai.fastowin.ui.components.TiaMascot
+import com.hienthai.fastowin.ui.components.TiaMood
+import com.hienthai.fastowin.ui.components.a1Card
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
+import androidx.compose.foundation.layout.widthIn
+import androidx.compose.material.icons.automirrored.filled.Login
+import androidx.compose.material.icons.filled.AddCircle
+import androidx.compose.material.icons.filled.CalendarMonth
+import androidx.compose.material.icons.filled.Celebration
+import androidx.compose.material.icons.filled.Leaderboard
+import androidx.compose.material.icons.filled.Mail
+import androidx.compose.material.icons.filled.Shield
+import androidx.compose.material.icons.filled.TaskAlt
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.drawBehind
 import kotlinx.coroutines.delay
 
 internal enum class MainTab { HOME, ROOMS, LEADERBOARD, CLAN, ACCOUNT }
 
 @Composable
+@OptIn(ExperimentalLayoutApi::class)
 internal fun HomeDashboard(
     state: GameState,
     isGuest: Boolean,
@@ -198,13 +217,35 @@ internal fun HomeDashboard(
         )
     }
 
+    var showCheckIn by remember { mutableStateOf(false) }
+    if (showCheckIn && profile != null) {
+        ArcadeDialog(
+            title = localized(TextKey.CheckIn),
+            onDismissRequest = { showCheckIn = false },
+            showCloseButton = true,
+            scrollableContent = true
+        ) {
+            DailyCheckInContent(
+                checkIn = profile.progression.dailyCheckIn,
+                isClaiming = state.isDailyCheckInClaiming,
+                onClaim = onClaimDailyCheckIn,
+                onOpenDetails = onOpenCheckInDetails
+            )
+        }
+    }
+    val newOnlineIntentAllowed = LocalNewOnlineIntentAllowed.current
+    val signedIn = !isGuest && profile != null
+
     BoxWithConstraints(modifier = modifier.fillMaxSize().testTag("home_screen")) {
-        val compactHeight = maxHeight < 600.dp
+        val largeText = LocalDensity.current.fontScale >= 1.3f
+        val narrow = largeText || maxWidth < 280.dp
+        val compactWidth = maxWidth < 360.dp
+        val greeting = localized(TextKey.GreetingPlayer, "player" to displayName) + "\n" + localized(TextKey.ReadyForRecord)
         Column(
             modifier = Modifier.fillMaxSize().verticalScroll(rememberScrollState()),
             verticalArrangement = Arrangement.spacedBy(16.dp)
         ) {
-            Spacer(modifier = Modifier.height(8.dp))
+            Spacer(modifier = Modifier.height(4.dp))
             ArcadePlayerSummary(
                 displayName = displayName,
                 avatarId = avatarId,
@@ -218,7 +259,6 @@ internal fun HomeDashboard(
                 onOpenProfile = if (isGuest) onUpgradeGuest else onOpenProfile
             )
 
-            val season = profile?.progression?.season
             announcementState?.banner?.let { announcement ->
                 com.hienthai.fastowin.ui.components.AnnouncementBanner(announcement, announcementState.pending,
                     { onOpenAnnouncement(announcement.announcement.id) }, { onHideAnnouncement(announcement.announcement.id) })
@@ -226,293 +266,243 @@ internal fun HomeDashboard(
             rewardEventState?.let { events ->
                 com.hienthai.fastowin.ui.components.RewardEventBanner(events, onOpenRewardEvents, onRefreshRewardEvents)
             }
-            HomeMatchHero(
-                kicker = when {
-                    isGuest -> localized(TextKey.GuestMode)
-                    season != null -> localizedNetworkText(
-                        season.nameKey,
-                        season.nameArgs,
-                        season.name
-                    ).uppercase()
-                    else -> localized(TextKey.Ranked).uppercase()
-                },
-                description = if (isGuest) {
-                    localized(TextKey.RegisterToPlayOnline)
-                } else {
-                    localized(TextKey.CasualOrRankedDescription)
-                },
-                compact = compactHeight
-            )
+
+            // Khu vực giữa: lối tắt hai bên và linh vật Tia ở giữa (theo thiết kế A1).
+            val leftShortcuts: @Composable () -> Unit = {
+                HomeSideShortcut(
+                    label = localized(TextKey.HomeEvents),
+                    icon = Icons.Default.Celebration,
+                    tint = Color(0xFFE0401A),
+                    onClick = onOpenRewardEvents,
+                    highlight = true,
+                    modifier = Modifier.testTag("home_events")
+                )
+                HomeSideShortcut(
+                    label = localized(TextKey.HomeGifts),
+                    icon = Icons.Default.Mail,
+                    tint = A1Palette.Purple2,
+                    onClick = onOpenGifts,
+                    badgeCount = if (isGuest) 0 else unclaimedGiftCount,
+                    modifier = Modifier.testTag("home_gift_mailbox")
+                )
+            }
+            val rightShortcuts: @Composable () -> Unit = {
+                if (signedIn) {
+                    HomeSideShortcut(
+                        label = localized(TextKey.CheckIn),
+                        icon = Icons.Default.CalendarMonth,
+                        tint = A1Palette.Blue2,
+                        onClick = { showCheckIn = true },
+                        badgeText = if (profile?.progression?.dailyCheckIn?.claimedToday == false) "!" else null,
+                        modifier = Modifier.testTag("home_check_in")
+                    )
+                    HomeSideShortcut(
+                        label = localized(TextKey.MissionsTitle),
+                        icon = Icons.Default.TaskAlt,
+                        tint = A1Palette.Green2,
+                        onClick = onOpenMissions,
+                        badgeCount = claimableMissionCount.toLong(),
+                        badgeTextKey = TextKey.ClaimableMissionCount,
+                        modifier = Modifier.testTag("home_missions")
+                    )
+                }
+                HomeSideShortcut(
+                    label = localized(TextKey.Tournament),
+                    icon = Icons.Default.EmojiEvents,
+                    tint = Color(0xFFE09A00),
+                    onClick = if (isGuest) onUpgradeGuest else onOpenTournament,
+                    modifier = Modifier.testTag("home_tournament")
+                )
+            }
+            if (narrow) {
+                Column(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = Arrangement.spacedBy(12.dp)
+                ) {
+                    FlowRow(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(10.dp, Alignment.CenterHorizontally),
+                        verticalArrangement = Arrangement.spacedBy(10.dp)
+                    ) {
+                        leftShortcuts()
+                        rightShortcuts()
+                    }
+                    HomeMascot(greeting, mascotSize = 96.dp)
+                }
+            } else {
+                Row(
+                    modifier = Modifier.fillMaxWidth().heightIn(min = 280.dp),
+                    verticalAlignment = Alignment.Top
+                ) {
+                    Column(verticalArrangement = Arrangement.spacedBy(14.dp)) { leftShortcuts() }
+                    Box(
+                        modifier = Modifier.weight(1f).heightIn(min = 280.dp),
+                        contentAlignment = Alignment.BottomCenter
+                    ) {
+                        HomeMascot(greeting, mascotSize = if (compactWidth) 110.dp else 140.dp)
+                    }
+                    Column(verticalArrangement = Arrangement.spacedBy(14.dp)) { rightShortcuts() }
+                }
+            }
+
             ArcadeActionButton(
                 label = localized(if (isGuest) TextKey.LoginToPlay else TextKey.PlayNow),
                 icon = Icons.Default.PlayArrow,
                 style = ArcadeActionStyle.GOLD,
+                hero = true,
                 onClick = if (isGuest) onUpgradeGuest else ({ showMatchTypePicker = true }),
-                enabled = LocalNewOnlineIntentAllowed.current,
-                modifier = Modifier.fillMaxWidth().testTag("home_quick_match")
+                enabled = newOnlineIntentAllowed,
+                modifier = Modifier.fillMaxWidth().heightIn(min = 74.dp).testTag("home_quick_match")
             )
-
-            HomeRoomActions(
-                onCreateRoom = onOpenRooms,
-                onOpenRooms = onOpenRooms
-            )
-
-            if (!isGuest && profile != null) {
-                HomeQuickAction(
-                    localized(TextKey.MissionsTitle),
-                    localized(TextKey.MissionsSubtitle),
-                    Icons.AutoMirrored.Filled.Assignment,
-                    ArcadePalette.Mint600,
-                    onOpenMissions,
-                    Modifier.fillMaxWidth().testTag("home_missions"),
-                    badgeCount = claimableMissionCount.toLong(),
-                    badgeTextKey = TextKey.ClaimableMissionCount
-                )
-                DailyCheckInContent(
-                    checkIn = profile.progression.dailyCheckIn,
-                    isClaiming = state.isDailyCheckInClaiming,
-                    onClaim = onClaimDailyCheckIn,
-                    onOpenDetails = onOpenCheckInDetails
+            val createRoom: @Composable (Modifier) -> Unit = { m ->
+                ArcadeActionButton(
+                    label = localized(TextKey.CreateRoom),
+                    icon = Icons.Default.AddCircle,
+                    style = ArcadeActionStyle.PRIMARY,
+                    onClick = onOpenRooms,
+                    enabled = newOnlineIntentAllowed,
+                    modifier = m.testTag("home_action:create_room")
                 )
             }
-
-            SectionTitle(localized(TextKey.Explore), localized(TextKey.FeaturesAndActivities))
-            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                HomeDiscoveryHighlights(
-                    isGuest = isGuest,
-                    onlineFriends = onlineFriends,
-                    rank = rank,
-                    openSocial = openSocial,
-                    onOpenLeaderboard = onOpenLeaderboard
-                )
-                HomeQuickAction(
-                    localized(TextKey.GiftMailboxTitle),
-                    localized(if (isGuest) TextKey.GiftMailboxGuest else TextKey.GiftMailboxEntryDescription),
-                    Icons.Default.Redeem,
-                    ArcadePalette.Gold500,
-                    onOpenGifts,
-                    Modifier.fillMaxWidth().testTag("home_gift_mailbox"),
-                    badgeCount = if (isGuest) 0 else unclaimedGiftCount
-                )
-                HomeQuickAction(
-                    localized(TextKey.Tournament),
-                    if (isGuest) localized(TextKey.RegisterToJoin) else localized(TextKey.TournamentDescription),
-                    Icons.Default.EmojiEvents,
-                    ArcadePalette.Coral600,
-                    if (isGuest) onUpgradeGuest else onOpenTournament,
-                    Modifier.fillMaxWidth().testTag("home_tournament")
-                )
-                HomeQuickAction(
-                    localized(TextKey.Shop),
-                    localized(TextKey.ShopDiscoveryDescription),
-                    Icons.Default.ShoppingCart,
-                    ArcadePalette.Violet600,
-                    onOpenShop,
-                    Modifier.fillMaxWidth().testTag("home_shop")
-                )
-                HomeQuickAction(
-                    localized(TextKey.OfflinePracticeTitle),
-                    localized(TextKey.OfflinePracticeDescription),
-                    Icons.Default.FitnessCenter,
-                    ArcadePalette.Mint600,
-                    onOpenPractice,
-                    Modifier.fillMaxWidth()
+            val joinRoom: @Composable (Modifier) -> Unit = { m ->
+                ArcadeActionButton(
+                    label = localized(TextKey.JoinRoom),
+                    icon = Icons.AutoMirrored.Filled.Login,
+                    style = ArcadeActionStyle.SPECIAL,
+                    onClick = onOpenRooms,
+                    enabled = newOnlineIntentAllowed,
+                    modifier = m.testTag("home_action:join_room")
                 )
             }
-            Spacer(modifier = Modifier.height(8.dp))
+            if (narrow || compactWidth) {
+                createRoom(Modifier.fillMaxWidth())
+                joinRoom(Modifier.fillMaxWidth())
+            } else {
+                Row(horizontalArrangement = Arrangement.spacedBy(14.dp)) {
+                    createRoom(Modifier.weight(1f))
+                    joinRoom(Modifier.weight(1f))
+                }
+            }
+
+            HomeQuickAction(
+                localized(TextKey.OfflinePracticeTitle),
+                localized(TextKey.OfflinePracticeDescription),
+                Icons.Default.FitnessCenter,
+                A1Palette.Green2,
+                onOpenPractice,
+                Modifier.fillMaxWidth()
+            )
             state.error?.let { Text(it, color = MaterialTheme.colorScheme.error) }
             if (isGuest) {
-                ArcadePanel(modifier = Modifier.fillMaxWidth(), accent = ArcadePalette.Mint600) {
+                ArcadePanel(modifier = Modifier.fillMaxWidth()) {
                     Column(Modifier.fillMaxWidth().padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                        Text(localized(TextKey.SaveProgress), fontWeight = FontWeight.Black)
+                        Text(localized(TextKey.SaveProgress), style = MaterialTheme.typography.titleMedium)
                         Text(
                             localized(TextKey.SaveProgressDescription),
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
-                        Column(
+                        ArcadeActionButton(
+                            label = localized(TextKey.CreateAccount),
+                            onClick = onUpgradeGuest,
                             modifier = Modifier.fillMaxWidth(),
-                            verticalArrangement = Arrangement.spacedBy(8.dp)
-                        ) {
-                            ArcadeActionButton(
-                                label = localized(TextKey.CreateAccount),
-                                onClick = onUpgradeGuest,
-                                modifier = Modifier.fillMaxWidth(),
-                                style = ArcadeActionStyle.GOLD
-                            )
-                            ArcadeActionButton(
-                                label = localized(TextKey.ExitGuestMode),
-                                onClick = onLogout,
-                                modifier = Modifier.fillMaxWidth(),
-                                style = ArcadeActionStyle.OUTLINE
-                            )
-                        }
+                            style = ArcadeActionStyle.GOLD
+                        )
+                        ArcadeActionButton(
+                            label = localized(TextKey.ExitGuestMode),
+                            onClick = onLogout,
+                            modifier = Modifier.fillMaxWidth(),
+                            style = ArcadeActionStyle.OUTLINE
+                        )
                     }
                 }
             }
+            Spacer(modifier = Modifier.height(24.dp))
         }
+    }
+}
+
+/** Linh vật Tia đứng giữa trang chủ cùng bong bóng lời thoại. */
+@Composable
+private fun HomeMascot(message: String, mascotSize: androidx.compose.ui.unit.Dp) {
+    Column(
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.spacedBy(10.dp)
+    ) {
+        Text(
+            message,
+            style = MaterialTheme.typography.bodyMedium,
+            fontWeight = FontWeight.Bold,
+            color = A1Palette.Ink,
+            textAlign = androidx.compose.ui.text.style.TextAlign.Center,
+            modifier = Modifier
+                .widthIn(max = 200.dp)
+                .a1Card(radius = 18.dp, depth = 3.dp)
+                .padding(horizontal = 14.dp, vertical = 8.dp)
+        )
+        TiaMascot(TiaMood.CHEER, size = mascotSize)
+    }
+}
+
+/** Ô lối tắt bên cạnh linh vật: hộp trắng 60dp viền navy + nhãn nền navy. */
+@Composable
+private fun HomeSideShortcut(
+    label: String,
+    icon: ImageVector,
+    tint: Color,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+    badgeCount: Long = 0,
+    badgeText: String? = null,
+    badgeTextKey: TextKey = TextKey.GiftUnclaimedCount,
+    highlight: Boolean = false
+) {
+    val badgeDescription = if (badgeCount > 0) localized(badgeTextKey, "count" to badgeCount) else null
+    Column(
+        modifier = modifier
+            .widthIn(min = 64.dp, max = 88.dp)
+            .clip(RoundedCornerShape(16.dp))
+            .clickable(role = Role.Button, onClick = onClick)
+            .semantics(mergeDescendants = true) { if (badgeDescription != null) stateDescription = badgeDescription }
+            .padding(2.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.spacedBy(6.dp)
+    ) {
+        BadgedBox(badge = {
+            when {
+                badgeCount > 0 -> HomeCountBadge(badgeCount)
+                badgeText != null -> Badge(
+                    modifier = Modifier.clearAndSetSemantics {},
+                    containerColor = A1Palette.Red2,
+                    contentColor = Color.White
+                ) { Text(badgeText, fontWeight = FontWeight.ExtraBold) }
+            }
+        }) {
+            Box(
+                modifier = Modifier
+                    .size(60.dp)
+                    .a1Card(radius = 20.dp, depth = 4.dp, background = if (highlight) A1Palette.Highlight else Color.White),
+                contentAlignment = Alignment.Center
+            ) {
+                Icon(icon, contentDescription = null, tint = tint, modifier = Modifier.size(32.dp))
+            }
+        }
+        Text(
+            label,
+            style = MaterialTheme.typography.labelMedium,
+            fontFamily = MaterialTheme.typography.titleSmall.fontFamily,
+            fontWeight = FontWeight.ExtraBold,
+            color = Color.White,
+            textAlign = androidx.compose.ui.text.style.TextAlign.Center,
+            modifier = Modifier
+                .background(A1Palette.Ink, RoundedCornerShape(10.dp))
+                .padding(horizontal = 8.dp, vertical = 1.dp)
+        )
     }
 }
 
 internal fun LeaderboardSnapshot.homeRank(): Int? =
     seasonCurrentPlayer?.rank
-
-@Composable
-private fun HomeMatchHero(
-    kicker: String,
-    description: String,
-    compact: Boolean
-) {
-    val shape = RoundedCornerShape(if (compact) 20.dp else 24.dp)
-    Box(
-        modifier = Modifier
-            .fillMaxWidth()
-            .heightIn(min = if (compact) 138.dp else 148.dp)
-            .background(
-                Brush.linearGradient(
-                    listOf(
-                        Color(0xFF184DB9),
-                        Color(0xFF763FDA),
-                        Color(0xFFC94988)
-                    )
-                ),
-                shape
-            )
-            .border(1.dp, ArcadePalette.Blue300.copy(alpha = 0.72f), shape)
-    ) {
-        Box(
-            modifier = Modifier
-                .align(Alignment.TopEnd)
-                .padding(top = 18.dp, end = 20.dp)
-                .size(56.dp)
-                .background(Color.White.copy(alpha = 0.09f), CircleShape)
-        )
-        Column(
-            modifier = Modifier
-                .fillMaxWidth(0.72f)
-                .padding(horizontal = 18.dp, vertical = 18.dp),
-            verticalArrangement = Arrangement.spacedBy(7.dp)
-        ) {
-            Text(
-                kicker,
-                style = MaterialTheme.typography.labelSmall,
-                fontWeight = FontWeight.Black,
-                color = Color(0xFFFFE28B)
-            )
-            Text(
-                localized(TextKey.ChooseCompetitionType),
-                style = MaterialTheme.typography.headlineSmall,
-                fontWeight = FontWeight.Black,
-                color = Color.White
-            )
-            Text(
-                description,
-                style = MaterialTheme.typography.bodySmall,
-                color = Color(0xFFE5EDFF),
-                maxLines = 3,
-                overflow = TextOverflow.Ellipsis
-            )
-        }
-        Box(
-            modifier = Modifier
-                .align(Alignment.BottomEnd)
-                .padding(end = 18.dp, bottom = 14.dp)
-                .size(if (compact) 68.dp else 76.dp)
-                .rotate(8f)
-                .background(
-                    Brush.linearGradient(listOf(Color(0xFFFFE36F), Color(0xFFFF8D37))),
-                    RoundedCornerShape(23.dp)
-                )
-                .border(2.dp, Color.White.copy(alpha = 0.25f), RoundedCornerShape(23.dp)),
-            contentAlignment = Alignment.Center
-        ) {
-            Icon(
-                CrossedSwordsIcon,
-                contentDescription = null,
-                tint = ArcadePalette.Navy800,
-                modifier = Modifier.size(38.dp)
-            )
-        }
-    }
-}
-
-@Composable
-private fun HomeRoomActions(
-    onCreateRoom: () -> Unit,
-    onOpenRooms: () -> Unit
-) {
-    Column(
-        modifier = Modifier.fillMaxWidth(),
-        verticalArrangement = Arrangement.spacedBy(10.dp)
-    ) {
-        ArcadeActionButton(
-            label = localized(TextKey.CreateRoom).uppercase(),
-            icon = Icons.Default.Add,
-            onClick = onCreateRoom,
-            enabled = LocalNewOnlineIntentAllowed.current,
-            modifier = Modifier.fillMaxWidth().testTag("home_action:create_room")
-        )
-        ArcadeActionButton(
-            label = localized(TextKey.JoinRoom).uppercase(),
-            icon = Icons.Default.MeetingRoom,
-            style = ArcadeActionStyle.OUTLINE,
-            onClick = onOpenRooms,
-            enabled = LocalNewOnlineIntentAllowed.current,
-            modifier = Modifier.fillMaxWidth().testTag("home_action:join_room")
-        )
-    }
-}
-
-@Composable
-private fun HomeDiscoveryHighlights(
-    isGuest: Boolean,
-    onlineFriends: Int,
-    rank: Int?,
-    openSocial: () -> Unit,
-    onOpenLeaderboard: () -> Unit
-) {
-    BoxWithConstraints(modifier = Modifier.fillMaxWidth()) {
-        val stack = maxWidth < 350.dp || LocalDensity.current.fontScale >= 1.3f
-        if (stack) {
-            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                HomeQuickAction(
-                    localized(TextKey.Friends),
-                    if (isGuest) localized(TextKey.RegisterToAddFriends) else localized(TextKey.OnlineFriends, "count" to onlineFriends),
-                    Icons.Default.Group,
-                    ArcadePalette.Violet600,
-                    openSocial,
-                    Modifier.fillMaxWidth()
-                )
-                HomeQuickAction(
-                    localized(TextKey.Leaderboard),
-                    rank?.let { localized(TextKey.YourRank, "rank" to it) } ?: localized(TextKey.ViewEloLeaderboard),
-                    Icons.Default.EmojiEvents,
-                    ArcadePalette.Gold500,
-                    onOpenLeaderboard,
-                    Modifier.fillMaxWidth()
-                )
-            }
-        } else {
-            Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                HomeQuickAction(
-                    localized(TextKey.Friends),
-                    if (isGuest) localized(TextKey.RegisterToAddFriends) else localized(TextKey.OnlineFriends, "count" to onlineFriends),
-                    Icons.Default.Group,
-                    ArcadePalette.Violet600,
-                    openSocial,
-                    Modifier.weight(1f)
-                )
-                HomeQuickAction(
-                    localized(TextKey.Leaderboard),
-                    rank?.let { localized(TextKey.YourRank, "rank" to it) } ?: localized(TextKey.ViewEloLeaderboard),
-                    Icons.Default.EmojiEvents,
-                    ArcadePalette.Gold500,
-                    onOpenLeaderboard,
-                    Modifier.weight(1f)
-                )
-            }
-        }
-    }
-}
 
 @Composable
 private fun ArcadePlayerSummary(
@@ -527,74 +517,89 @@ private fun ArcadePlayerSummary(
     tier: String?,
     onOpenProfile: () -> Unit
 ) {
-    Surface(
-        onClick = onOpenProfile,
-        modifier = Modifier.fillMaxWidth().testTag("home_season_card"),
-        shape = RoundedCornerShape(20.dp),
-        color = ArcadePalette.Navy800,
-        contentColor = Color.White,
-        border = BorderStroke(1.dp, ArcadePalette.Blue300.copy(alpha = 0.55f)),
-        shadowElevation = 2.dp
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .testTag("home_season_card")
+            .a1Card()
+            .clip(RoundedCornerShape(A1Dimens.CardRadius))
+            .clickable(role = Role.Button, onClick = onOpenProfile)
+            .padding(horizontal = 14.dp, vertical = 12.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(14.dp)
     ) {
-        Row(
-            modifier = Modifier.fillMaxWidth().padding(12.dp),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(14.dp)
-        ) {
-            PlayerAvatar(
-                displayName = displayName,
-                avatarId = avatarId,
-                frameId = frameId,
-                size = 58.dp,
-                imageUrl = avatarImageUrl
-            )
-            Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(5.dp)) {
-                Row(
-                    modifier = Modifier.fillMaxWidth().testTag("home_header_content"),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.SpaceBetween
-                ) {
-                    Text(
-                        displayName,
-                        style = MaterialTheme.typography.titleMedium,
-                        fontWeight = FontWeight.Black,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                        modifier = Modifier.weight(1f)
-                    )
-                    Surface(
-                        shape = RoundedCornerShape(10.dp),
-                        color = ArcadePalette.Violet600,
-                        contentColor = Color.White
-                    ) {
-                        Text(
-                            localized(TextKey.Level, "level" to level),
-                            modifier = Modifier.padding(horizontal = 9.dp, vertical = 4.dp),
-                            style = MaterialTheme.typography.labelMedium,
-                            fontWeight = FontWeight.Black
-                        )
-                    }
-                }
+        PlayerAvatar(
+            displayName = displayName,
+            avatarId = avatarId,
+            frameId = frameId,
+            size = 64.dp,
+            imageUrl = avatarImageUrl
+        )
+        Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(5.dp)) {
+            Row(
+                modifier = Modifier.fillMaxWidth().testTag("home_header_content"),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
                 Text(
-                    buildString {
-                        append(tier?.replaceFirstChar { it.uppercase() } ?: localized(TextKey.PlacementPending))
-                        elo?.let { append("  •  Elo ").append(it) }
-                    },
-                    style = MaterialTheme.typography.labelSmall,
-                    color = Color.White.copy(alpha = 0.76f),
-                    modifier = Modifier.padding(top = 12.dp).testTag("home_season_tier")
+                    displayName,
+                    style = MaterialTheme.typography.titleLarge,
+                    color = A1Palette.Ink,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.weight(1f)
                 )
-                LinearProgressIndicator(
-                    progress = { currentXp.toFloat() / nextXp.coerceAtLeast(1) },
-                    modifier = Modifier.fillMaxWidth().height(7.dp),
-                    color = ArcadePalette.Mint400,
-                    trackColor = ArcadePalette.Navy950
+                Text(
+                    localized(TextKey.Level, "level" to level),
+                    style = MaterialTheme.typography.labelMedium,
+                    fontWeight = FontWeight.ExtraBold,
+                    color = A1Palette.PurpleDeep,
+                    modifier = Modifier
+                        .background(Color(0xFFEDE5FF), RoundedCornerShape(10.dp))
+                        .border(2.dp, A1Palette.Purple2, RoundedCornerShape(10.dp))
+                        .padding(horizontal = 8.dp, vertical = 2.dp)
                 )
             }
+            Text(
+                buildString {
+                    append(tier?.replaceFirstChar { it.uppercase() } ?: localized(TextKey.PlacementPending))
+                    elo?.let { append("  ·  Elo ").append(it) }
+                },
+                style = MaterialTheme.typography.labelMedium,
+                fontWeight = FontWeight.SemiBold,
+                color = A1Palette.Muted,
+                modifier = Modifier.padding(top = 12.dp).testTag("home_season_tier")
+            )
+            A1ProgressBar(progress = currentXp.toFloat() / nextXp.coerceAtLeast(1))
         }
     }
 }
 
+/** Thanh tiến độ A1: rãnh xanh nhạt viền navy, phần đã đạt màu vàng. */
+@Composable
+internal fun A1ProgressBar(progress: Float, modifier: Modifier = Modifier, height: androidx.compose.ui.unit.Dp = 12.dp) {
+    val shape = RoundedCornerShape(999.dp)
+    Box(
+        modifier = modifier
+            .fillMaxWidth()
+            .height(height)
+            .background(A1Palette.SurfaceAlt2, shape)
+            .border(2.dp, A1Palette.Line, shape)
+            .padding(2.dp)
+    ) {
+        Box(
+            Modifier
+                .fillMaxWidth(progress.coerceIn(0f, 1f))
+                .fillMaxHeight()
+                .background(Brush.verticalGradient(listOf(A1Palette.Yellow1, A1Palette.Yellow3)), shape)
+        )
+    }
+}
+
+/**
+ * Thanh tab A1: nền trắng, viền trên navy; nút "Chơi" vàng nổi ở giữa.
+ * Thứ tự theo thiết kế: Trang chủ · Hạng · Chơi · Bang · Tôi. Tab "Chơi" dùng lại [MainTab.ROOMS].
+ */
 @Composable
 @Suppress("UNUSED_PARAMETER")
 internal fun FastToWinBottomBar(
@@ -608,13 +613,15 @@ internal fun FastToWinBottomBar(
     onAccount: () -> Unit,
     modifier: Modifier = Modifier
 ) {
-    val navigationHeight = 56.dp + 40.dp * (LocalDensity.current.fontScale - 1f).coerceAtLeast(0f)
-    Surface(
+    val navigationHeight = 64.dp + 40.dp * (LocalDensity.current.fontScale - 1f).coerceAtLeast(0f)
+    Box(
         modifier = modifier
             .fillMaxWidth()
-            .testTag("bottom_bar"),
-        color = ArcadePalette.Navy900,
-        contentColor = Color.White
+            .testTag("bottom_bar")
+            .background(Color.White)
+            .drawBehind {
+                drawRect(A1Palette.Line, size = androidx.compose.ui.geometry.Size(size.width, 3.dp.toPx()))
+            }
     ) {
         Row(
             modifier = Modifier
@@ -624,6 +631,7 @@ internal fun FastToWinBottomBar(
                         WindowInsetsSides.Horizontal + WindowInsetsSides.Bottom
                     )
                 )
+                .padding(top = 3.dp)
                 .height(navigationHeight),
             verticalAlignment = Alignment.CenterVertically
         ) {
@@ -637,32 +645,33 @@ internal fun FastToWinBottomBar(
                 giftBadgeCount = unclaimedGiftCount
             )
             BottomBarItem(
-                tab = MainTab.ROOMS,
-                label = localized(TextKey.Rooms),
-                icon = Icons.Default.MeetingRoom,
-                selected = selected == MainTab.ROOMS,
-                onClick = onRooms,
-                modifier = Modifier.weight(1f)
-            )
-            BottomBarItem(
                 MainTab.LEADERBOARD,
-                localized(TextKey.Leaderboard),
-                Icons.Default.EmojiEvents,
+                localized(TextKey.TabRank),
+                Icons.Default.Leaderboard,
                 selected == MainTab.LEADERBOARD,
                 onLeaderboard,
                 Modifier.weight(1f)
             )
             BottomBarItem(
+                tab = MainTab.ROOMS,
+                label = localized(TextKey.TabPlay),
+                icon = Icons.Default.PlayArrow,
+                selected = selected == MainTab.ROOMS,
+                onClick = onRooms,
+                modifier = Modifier.weight(1f),
+                raised = true
+            )
+            BottomBarItem(
                 MainTab.CLAN,
-                localized(TextKey.Clan),
-                CrossedSwordsIcon,
+                localized(TextKey.TabClan),
+                Icons.Default.Shield,
                 selected == MainTab.CLAN,
                 onClan,
                 Modifier.weight(1f)
             )
             BottomBarItem(
                 MainTab.ACCOUNT,
-                localized(TextKey.Account),
+                localized(TextKey.TabMe),
                 Icons.Default.Person,
                 selected == MainTab.ACCOUNT,
                 onAccount,
@@ -680,52 +689,67 @@ private fun BottomBarItem(
     selected: Boolean,
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
-    giftBadgeCount: Long = 0
+    giftBadgeCount: Long = 0,
+    raised: Boolean = false
 ) {
     val giftDescription = if (giftBadgeCount > 0) localized(TextKey.GiftUnclaimedCount, "count" to giftBadgeCount) else null
-    val itemColor = if (selected) ArcadePalette.Gold400 else Color.White.copy(alpha = 0.72f)
-    TextButton(
-        onClick = onClick,
+    Column(
         modifier = modifier
             .fillMaxHeight()
+            .clickable(role = Role.Tab, onClick = onClick)
             .testTag("bottom_tab:${tab.name.lowercase()}")
             .semantics(mergeDescendants = true) {
-                role = Role.Tab
                 this.selected = selected
                 if (giftDescription != null) {
                     stateDescription = giftDescription
                     liveRegion = LiveRegionMode.Polite
                 }
             },
-        shape = RoundedCornerShape(0.dp),
-        contentPadding = PaddingValues(0.dp)
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.spacedBy(if (raised) 4.dp else 2.dp, Alignment.Bottom)
     ) {
-        Box(modifier = Modifier.fillMaxSize()) {
+        if (raised) {
+            // Nút "Chơi" nổi lên khỏi thanh tab như trong thiết kế.
             Box(
                 modifier = Modifier
-                    .align(Alignment.TopCenter)
-                    .size(width = 30.dp, height = 3.dp)
+                    .offset(y = (-6).dp)
+                    .size(width = 60.dp, height = 56.dp)
+                    .a1Card(radius = 20.dp, depth = 5.dp, background = Color.Transparent)
                     .background(
-                        if (selected) ArcadePalette.Gold400 else Color.Transparent,
-                        CircleShape
+                        Brush.verticalGradient(listOf(A1Palette.Yellow1, A1Palette.Yellow3)),
+                        RoundedCornerShape(20.dp)
                     )
-            )
-            Column(
-                modifier = Modifier.align(Alignment.Center),
-                horizontalAlignment = Alignment.CenterHorizontally,
-                verticalArrangement = Arrangement.spacedBy(2.dp)
+                    .border(3.dp, A1Palette.Line, RoundedCornerShape(20.dp)),
+                contentAlignment = Alignment.Center
             ) {
-                BadgedBox(badge = { HomeCountBadge(giftBadgeCount, Modifier.offset(y = 4.dp)) }) {
-                    Icon(icon, contentDescription = null, tint = itemColor)
+                Icon(icon, contentDescription = null, tint = A1Palette.YellowBorder, modifier = Modifier.size(36.dp))
+            }
+        } else {
+            BadgedBox(badge = { HomeCountBadge(giftBadgeCount, Modifier.offset(y = 4.dp)) }) {
+                Box(
+                    modifier = Modifier
+                        .size(width = 46.dp, height = 34.dp)
+                        .then(
+                            if (selected) Modifier
+                                .background(A1Palette.Highlight, RoundedCornerShape(12.dp))
+                                .border(2.dp, A1Palette.Line, RoundedCornerShape(12.dp))
+                            else Modifier
+                        ),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Icon(icon, contentDescription = null, tint = A1Palette.Line, modifier = Modifier.size(26.dp))
                 }
-                Text(
-                    label,
-                    style = MaterialTheme.typography.labelSmall,
-                    color = itemColor,
-                    maxLines = 1
-                )
             }
         }
+        Text(
+            label,
+            style = MaterialTheme.typography.labelMedium,
+            fontFamily = MaterialTheme.typography.titleSmall.fontFamily,
+            fontWeight = FontWeight.ExtraBold,
+            color = if (selected) A1Palette.Ink else A1Palette.Muted,
+            maxLines = 1,
+            modifier = Modifier.padding(bottom = 6.dp)
+        )
     }
 }
 
@@ -741,21 +765,19 @@ private fun HomeQuickAction(
     badgeTextKey: TextKey = TextKey.GiftUnclaimedCount
 ) {
     val badgeDescription = if (badgeCount > 0) localized(badgeTextKey, "count" to badgeCount) else null
-    ElevatedCard(
-        onClick = onClick,
+    Box(
         modifier = modifier
-            .heightIn(min = 92.dp)
+            .heightIn(min = 84.dp)
             .testTag("home_action:$title")
-            .semantics { if (badgeDescription != null) stateDescription = badgeDescription }
-            .border(1.dp, accent.copy(alpha = 0.4f), RoundedCornerShape(18.dp)),
-        shape = RoundedCornerShape(18.dp),
-        colors = CardDefaults.elevatedCardColors(containerColor = MaterialTheme.colorScheme.surface),
-        elevation = CardDefaults.elevatedCardElevation(defaultElevation = 2.dp)
+            .a1Card(radius = 18.dp, depth = 3.dp)
+            .clip(RoundedCornerShape(18.dp))
+            .clickable(role = Role.Button, onClick = onClick)
+            .semantics(mergeDescendants = true) { if (badgeDescription != null) stateDescription = badgeDescription }
     ) {
         Box(
             modifier = Modifier
                 .fillMaxWidth()
-                .heightIn(min = 92.dp)
+                .heightIn(min = 78.dp)
                 .testTag("home_action_content:$title"),
             contentAlignment = Alignment.Center
         ) {
@@ -764,24 +786,21 @@ private fun HomeQuickAction(
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(10.dp)
             ) {
-                Surface(
-                    shape = CircleShape,
-                    color = accent.copy(alpha = 0.14f),
-                    contentColor = MaterialTheme.colorScheme.onSurface
+                Box(
+                    modifier = Modifier
+                        .size(48.dp)
+                        .background(accent, RoundedCornerShape(14.dp))
+                        .border(2.dp, A1Palette.Line, RoundedCornerShape(14.dp)),
+                    contentAlignment = Alignment.Center
                 ) {
-                    Icon(
-                        icon,
-                        null,
-                        modifier = Modifier.padding(9.dp).size(24.dp),
-                        tint = MaterialTheme.colorScheme.onSurface
-                    )
+                    Icon(icon, null, modifier = Modifier.size(26.dp), tint = Color.White)
                 }
                 Column(
                     modifier = Modifier.weight(1f),
                     verticalArrangement = Arrangement.spacedBy(4.dp, Alignment.CenterVertically)
                 ) {
                     Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        Text(title, fontWeight = FontWeight.Bold, maxLines = 1, modifier = Modifier.weight(1f, fill = false))
+                        Text(title, style = MaterialTheme.typography.titleMedium, color = A1Palette.Ink, maxLines = 1, modifier = Modifier.weight(1f, fill = false))
                         HomeCountBadge(badgeCount)
                     }
                     Text(
@@ -803,8 +822,8 @@ private fun HomeCountBadge(count: Long, modifier: Modifier = Modifier) {
     if (count <= 0) return
     Badge(
         modifier = modifier.clearAndSetSemantics {},
-        containerColor = ArcadePalette.Coral400,
-        contentColor = ArcadePalette.Navy900
+        containerColor = A1Palette.Red2,
+        contentColor = Color.White
     ) {
         Text(if (count > 99) "99+" else count.toString(), fontWeight = FontWeight.Bold)
     }
@@ -896,7 +915,7 @@ fun MatchTypePickerDialog(
                     .semantics { stateDescription = "$remainingMatches/$totalMatches" },
                 style = MaterialTheme.typography.labelLarge,
                 fontWeight = FontWeight.Black,
-                color = Color(0xFFFFE28B)
+                color = A1Palette.YellowBorder
             )
             if (quota != null && quota.bankedMatches > 0) {
                 Text("${localized(TextKey.BankedPlays)} · ${quota.bankedMatches}")
@@ -947,9 +966,9 @@ private fun ModeChoice(
         enabled = enabled,
         modifier = modifier.fillMaxWidth().heightIn(min = 72.dp).alpha(if (enabled) 1f else 0.58f),
         shape = RoundedCornerShape(16.dp),
-        color = ArcadePalette.Navy800,
-        contentColor = Color.White,
-        border = BorderStroke(1.dp, ArcadePalette.OutlineDark.copy(alpha = 0.62f))
+        color = Color.White,
+        contentColor = A1Palette.Ink,
+        border = BorderStroke(2.dp, A1Palette.Line)
     ) {
         Row(
             modifier = Modifier.fillMaxWidth().padding(horizontal = 14.dp, vertical = 12.dp),
@@ -959,23 +978,24 @@ private fun ModeChoice(
             Surface(
                 modifier = Modifier.size(46.dp),
                 shape = RoundedCornerShape(14.dp),
-                color = if (enabled) ArcadePalette.Blue700 else ArcadePalette.Navy700
+                color = if (enabled) A1Palette.Blue2 else A1Palette.SurfaceAlt2,
+                border = BorderStroke(2.dp, A1Palette.Line)
             ) {
                 Box(contentAlignment = Alignment.Center) {
-                    Icon(icon, null, modifier = Modifier.size(24.dp), tint = ArcadePalette.Blue100)
+                    Icon(icon, null, modifier = Modifier.size(24.dp), tint = if (enabled) Color.White else A1Palette.Muted)
                 }
             }
             Column(
                 modifier = Modifier.weight(1f),
                 verticalArrangement = Arrangement.spacedBy(4.dp)
             ) {
-                Text(title, fontWeight = FontWeight.Black, color = Color.White)
-                Text(subtitle, style = MaterialTheme.typography.bodySmall, color = Color(0xFFA9BADC))
+                Text(title, style = MaterialTheme.typography.titleMedium, color = A1Palette.Ink)
+                Text(subtitle, style = MaterialTheme.typography.bodySmall, color = A1Palette.Muted)
             }
             Icon(
                 imageVector = if (enabled) Icons.Default.ChevronRight else Icons.Default.Lock,
                 contentDescription = null,
-                tint = if (enabled) ArcadePalette.Blue300 else Color(0xFF7E91B7)
+                tint = if (enabled) A1Palette.Line else A1Palette.Muted
             )
         }
     }

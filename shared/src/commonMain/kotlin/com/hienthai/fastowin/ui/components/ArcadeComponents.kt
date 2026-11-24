@@ -96,6 +96,8 @@ fun ArcadeActionButton(
     style: ArcadeActionStyle = ArcadeActionStyle.PRIMARY,
     enabled: Boolean = true,
     compact: Boolean = false,
+    /** Nút CTA lớn (vd. CHƠI NGAY): chữ và icon to hơn. */
+    hero: Boolean = false,
     content: (@Composable RowScope.() -> Unit)? = null
 ) {
     val colors = if (!enabled) A1ButtonDefaults.Disabled else when (style) {
@@ -141,12 +143,12 @@ fun ArcadeActionButton(
                     content()
                 } else {
                     icon?.let {
-                        Icon(it, contentDescription = null, modifier = Modifier.size(if (compact) 20.dp else 24.dp))
+                        Icon(it, contentDescription = null, modifier = Modifier.size(if (hero) 34.dp else if (compact) 20.dp else 24.dp))
                         Box(modifier = Modifier.width(8.dp))
                     }
                     Text(
                         label,
-                        style = (if (compact) MaterialTheme.typography.titleSmall else MaterialTheme.typography.titleMedium)
+                        style = (if (hero) MaterialTheme.typography.headlineMedium else if (compact) MaterialTheme.typography.titleSmall else MaterialTheme.typography.titleMedium)
                             .copy(shadow = a1TextShadow(colors.textShadow)),
                         fontWeight = FontWeight.ExtraBold,
                         color = colors.content,

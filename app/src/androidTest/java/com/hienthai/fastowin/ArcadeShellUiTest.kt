@@ -388,10 +388,11 @@ class ArcadeShellUiTest {
         const val LEADERBOARD_TAB_TAG = "bottom_tab:leaderboard"
         const val CLAN_TAB_TAG = "bottom_tab:clan"
         const val ACCOUNT_TAB_TAG = "bottom_tab:account"
+        // Thứ tự A1: Trang chủ · Hạng · Chơi (rooms) · Bang · Tôi.
         val BOTTOM_TAB_TAGS = listOf(
             HOME_TAB_TAG,
-            ROOMS_TAB_TAG,
             LEADERBOARD_TAB_TAG,
+            ROOMS_TAB_TAG,
             CLAN_TAB_TAG,
             ACCOUNT_TAB_TAG
         )
