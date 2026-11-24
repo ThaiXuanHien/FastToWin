@@ -74,3 +74,39 @@ private suspend fun ApplicationCall.receiptBody(): StorePurchaseRequest {
     return try { receiptJson.decodeFromString<StorePurchaseRequest>(text) }
     catch (_: SerializationException) { throw InvalidReceiptBody() }
 }
+
+@kotlinx.serialization.Serializable
+private data class AppStoreNotificationBody(val signedPayload: String)
+
+private val notificationJson = Json { ignoreUnknownKeys = true }
+
+/** Apple's App Store Server Notifications V2 endpoint; authenticity is the signed payload itself. */
+fun Route.appStoreNotificationRoutes(service: AppStoreNotificationService) {
+    post("/api/app-store/notifications") {
+        call.response.header(HttpHeaders.CacheControl, "no-store")
+        val body = try {
+            val text = call.receiveChannel().let { channel ->
+                val buffer = java.io.ByteArrayOutputStream()
+                val chunk = ByteArray(8192)
+                while (true) {
+                    val read = channel.readAvailable(chunk, 0, chunk.size)
+                    if (read == -1) break
+                    if (read > 0) buffer.write(chunk, 0, read)
+                    if (buffer.size() > 64 * 1024) throw SerializationException("too large")
+                }
+                buffer.toString(Charsets.UTF_8)
+            }
+            notificationJson.decodeFromString<AppStoreNotificationBody>(text)
+        } catch (cancelled: CancellationException) { throw cancelled
+        } catch (_: Exception) { call.respond(HttpStatusCode.BadRequest); return@post }
+        try {
+            when (service.handle(body.signedPayload)) {
+                AppStoreNotificationOutcome.INVALID -> call.respond(HttpStatusCode.BadRequest)
+                // Applied, replayed and ignored types are all acknowledged so Apple stops retrying.
+                else -> call.respond(HttpStatusCode.OK)
+            }
+        } catch (cancelled: CancellationException) { throw cancelled
+        // Storage trouble answers 503 so Apple retries the same notification later.
+        } catch (_: SQLException) { call.respond(HttpStatusCode.ServiceUnavailable) }
+    }
+}

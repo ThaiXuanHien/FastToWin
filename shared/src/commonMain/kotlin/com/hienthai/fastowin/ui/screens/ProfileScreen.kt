@@ -1171,6 +1171,7 @@ internal fun walletSourceTextKey(sourceType: String): TextKey = when (sourceType
     "TOURNAMENT_PRIZE" -> TextKey.TournamentPrizeSource
     "SEASON_REWARD" -> TextKey.SeasonRewardSource
     "STORE_PURCHASE" -> TextKey.GemTopUpSource
+    "STORE_REFUND" -> TextKey.StoreRefundSource
     "CLAN_DONATION" -> TextKey.ClanDonationSource
     "CLAN_CREATION" -> TextKey.ClanCreationSource
     "ADMIN_GIFT" -> TextKey.AdminGiftSource

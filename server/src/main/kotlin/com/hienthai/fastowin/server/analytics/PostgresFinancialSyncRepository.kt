@@ -79,6 +79,14 @@ class PostgresFinancialSyncRepository(private val dataSource: DataSource) {
         verify(lastAt == null || snapshot.lastEventAt >= lastAt)
         verify(existing.all { (id, prior) -> incoming[id]?.copy(key = "") == prior })
         verify(lastAt == null || snapshot.lastEventAt > lastAt || incoming.keys == existing.keys)
+        // Once Google reports the whole charge refunded, the pack's Gems go back once (never below
+        // zero). Partial refunds keep the Gems: the player still paid for part of the pack.
+        val refunded = events.filter { it.type == "REFUND" }
+        if (refunded.any { eventId(order.order.orderId, it.key) !in existing } &&
+            refunded.fold(BigInteger.ZERO) { acc, e -> acc + e.amount.minor } == payment.amount.minor) {
+            com.hienthai.fastowin.server.StoreRefundLedger.revoke(c, "GOOGLE_PLAY", order.receiptFingerprint,
+                refunded.maxOf { it.occurredAt })
+        }
         for ((id, event) in incoming) {
             if (id in existing) continue
             c.prepareStatement("""INSERT INTO analytics_financial_events(source,environment,event_id,event_type,transaction_id,
@@ -94,7 +102,8 @@ class PostgresFinancialSyncRepository(private val dataSource: DataSource) {
 
     /** Called at process startup even when disabled, so old coverage never masquerades as active. */
     fun markUnavailable() = transaction { c -> c.createStatement().use { it.executeUpdate(
-        "UPDATE analytics_source_coverage SET status='UNAVAILABLE',updated_at=clock_timestamp() WHERE metric='FINANCIAL'") }; Unit }
+        // App Store facts come from signed purchases, not this sync, so only the Google source resets here.
+        "UPDATE analytics_source_coverage SET status='UNAVAILABLE',updated_at=clock_timestamp() WHERE metric='FINANCIAL' AND source='GOOGLE_PLAY'") }; Unit }
 
     private fun <T> transaction(block: (Connection) -> T): T = dataSource.connection.use { c ->
         c.autoCommit = false

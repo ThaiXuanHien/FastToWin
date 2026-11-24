@@ -56,19 +56,75 @@ fun appleRootCertificates(): Set<X509Certificate> {
 }
 
 /**
+ * Offline verification of any App Store JWS (StoreKit 2 transactions and App Store Server
+ * Notifications V2): ES256 signature, x5c chain to Apple's pinned root, Apple marker extensions,
+ * chain validity at the signing time. Returns the payload, or null when anything does not hold.
+ */
+class AppleSignedPayloadVerifier(
+    private val trustAnchors: Set<X509Certificate> = appleRootCertificates(),
+    private val clock: () -> Instant = Instant::now
+) {
+    init { require(trustAnchors.isNotEmpty()) }
+
+    fun verify(token: String): JsonObject? = try {
+        verifyOrThrow(token)
+    } catch (cancelled: CancellationException) {
+        throw cancelled
+    } catch (_: Exception) {
+        // Never log the token; parser and PKIX messages may echo attacker-controlled input.
+        null
+    }
+
+    private fun verifyOrThrow(token: String): JsonObject? {
+        val parts = token.split('.')
+        if (parts.size != 3 || parts.any { it.isEmpty() }) return null
+        val decoder = Base64.getUrlDecoder()
+        val header = Json.parseToJsonElement(String(decoder.decode(parts[0]), Charsets.UTF_8)).jsonObject
+        if (header.string("alg") != "ES256") return null
+        val factory = CertificateFactory.getInstance("X.509")
+        val chain = header["x5c"]?.jsonArray?.map {
+            factory.generateCertificate(ByteArrayInputStream(Base64.getDecoder().decode(it.jsonPrimitive.content))) as X509Certificate
+        } ?: return null
+        if (chain.size != 3) return null
+        val (leaf, intermediate, root) = chain
+        if (trustAnchors.none { it.encoded.contentEquals(root.encoded) }) return null
+        if (leaf.getExtensionValue(APPLE_RECEIPT_SIGNING_OID) == null ||
+            intermediate.getExtensionValue(APPLE_WWDR_INTERMEDIATE_OID) == null) return null
+
+        val signature = Signature.getInstance("SHA256withECDSAinP1363Format")
+        signature.initVerify(leaf.publicKey)
+        signature.update("${parts[0]}.${parts[1]}".toByteArray(Charsets.US_ASCII))
+        if (!signature.verify(decoder.decode(parts[2]))) return null
+
+        val payload = Json.parseToJsonElement(String(decoder.decode(parts[1]), Charsets.UTF_8)).jsonObject
+        val signedAt = payload.long("signedDate")?.let(Instant::ofEpochMilli) ?: return null
+        if (signedAt.isAfter(clock().plus(Duration.ofMinutes(5)))) return null
+        // Like Apple's library in offline mode, the chain must have been valid when Apple signed.
+        val parameters = PKIXParameters(trustAnchors.map { TrustAnchor(it, null) }.toSet()).apply {
+            isRevocationEnabled = false
+            date = Date.from(signedAt)
+        }
+        CertPathValidator.getInstance("PKIX").validate(factory.generateCertPath(listOf(leaf, intermediate)), parameters)
+        return payload
+    }
+}
+
+/**
  * Offline verification of a StoreKit 2 signed transaction (JWS, ES256, x5c chain to Apple's root).
  * No App Store secret is needed: authenticity comes from Apple's certificate chain.
  */
 class AppStorePurchaseVerifier(
     private val bundleId: String = APP_STORE_DEFAULT_BUNDLE_ID,
-    private val trustAnchors: Set<X509Certificate> = appleRootCertificates(),
+    trustAnchors: Set<X509Certificate> = appleRootCertificates(),
     private val sandboxAllowed: Boolean = true,
     private val testPlayerIds: Set<String> = emptySet(),
     private val xcodeAllowed: Boolean = false,
-    private val clock: () -> Instant = Instant::now
+    clock: () -> Instant = Instant::now
 ) : StorePurchaseVerifier {
+    private val signed = AppleSignedPayloadVerifier(trustAnchors, clock)
+
     init {
-        require(bundleId.isNotBlank() && trustAnchors.isNotEmpty())
+        require(bundleId.isNotBlank())
     }
 
     override suspend fun verify(purchase: StorePurchaseVerification): StoreVerificationResult = try {
@@ -76,41 +132,11 @@ class AppStorePurchaseVerifier(
     } catch (cancelled: CancellationException) {
         throw cancelled
     } catch (_: Exception) {
-        // Never log the receipt; parser and PKIX messages may echo attacker-controlled input.
         invalid()
     }
 
     private fun verifySigned(purchase: StorePurchaseVerification): StoreVerificationResult {
-        val parts = purchase.purchaseToken.split('.')
-        if (parts.size != 3 || parts.any { it.isEmpty() }) return invalid()
-        val decoder = Base64.getUrlDecoder()
-        val header = Json.parseToJsonElement(String(decoder.decode(parts[0]), Charsets.UTF_8)).jsonObject
-        if (header.string("alg") != "ES256") return invalid()
-        val factory = CertificateFactory.getInstance("X.509")
-        val chain = header["x5c"]?.jsonArray?.map {
-            factory.generateCertificate(ByteArrayInputStream(Base64.getDecoder().decode(it.jsonPrimitive.content))) as X509Certificate
-        } ?: return invalid()
-        if (chain.size != 3) return invalid()
-        val (leaf, intermediate, root) = chain
-        if (trustAnchors.none { it.encoded.contentEquals(root.encoded) }) return invalid()
-        if (leaf.getExtensionValue(APPLE_RECEIPT_SIGNING_OID) == null ||
-            intermediate.getExtensionValue(APPLE_WWDR_INTERMEDIATE_OID) == null) return invalid()
-
-        val signature = Signature.getInstance("SHA256withECDSAinP1363Format")
-        signature.initVerify(leaf.publicKey)
-        signature.update("${parts[0]}.${parts[1]}".toByteArray(Charsets.US_ASCII))
-        if (!signature.verify(decoder.decode(parts[2]))) return invalid()
-
-        val payload = Json.parseToJsonElement(String(decoder.decode(parts[1]), Charsets.UTF_8)).jsonObject
-        val signedAt = payload.long("signedDate")?.let(Instant::ofEpochMilli) ?: return invalid()
-        if (signedAt.isAfter(clock().plus(Duration.ofMinutes(5)))) return invalid()
-        // Like Apple's library in offline mode, the chain must have been valid when Apple signed.
-        val parameters = PKIXParameters(trustAnchors.map { TrustAnchor(it, null) }.toSet()).apply {
-            isRevocationEnabled = false
-            date = Date.from(signedAt)
-        }
-        CertPathValidator.getInstance("PKIX").validate(factory.generateCertPath(listOf(leaf, intermediate)), parameters)
-
+        val payload = signed.verify(purchase.purchaseToken) ?: return invalid()
         val transactionId = payload.string("transactionId")
             ?.takeIf { it.length in 1..64 && it.all(Char::isDigit) } ?: return invalid()
         val environment = when (payload.string("environment")) {
@@ -130,7 +156,8 @@ class AppStorePurchaseVerifier(
             StoreVerificationStatus.PURCHASED,
             legacyFallback("App Store đã xác thực."),
             // Each JWS fetch is re-signed, so idempotency keys on Apple's transaction, never the token bytes.
-            receiptKey = appStoreReceiptKey(environment, transactionId)
+            receiptKey = appStoreReceiptKey(environment, transactionId),
+            payment = appStorePayment(payload, environment, transactionId)
         )
     }
 
@@ -138,6 +165,18 @@ class AppStorePurchaseVerifier(
         StoreVerificationStatus.INVALID,
         legacyFallback("Giao dịch chưa hoàn tất hoặc không khớp tài khoản.")
     )
+}
+
+/**
+ * Apple's signed `price` (milliunits) and `currency` of a transaction, or null when the payload has
+ * no positive price (offer codes, Xcode testing, older payloads). Missing data stays missing, never 0.
+ */
+internal fun appStorePayment(payload: JsonObject, environment: String, transactionId: String): StorePayment? {
+    if (environment !in setOf("LIVE", "SANDBOX")) return null
+    val price = payload.long("price")?.takeIf { it > 0 } ?: return null
+    val currency = payload.string("currency")?.takeIf { it.matches(Regex("[A-Z]{3}")) } ?: return null
+    val at = payload.long("purchaseDate")?.let(Instant::ofEpochMilli) ?: return null
+    return StorePayment("APP_STORE", environment, transactionId, java.math.BigInteger.valueOf(price), currency, 3, at)
 }
 
 fun appStoreReceiptKey(environment: String, transactionId: String): String =
@@ -162,5 +201,5 @@ internal fun configuredAppStoreVerifier(environment: String, values: Map<String,
         xcodeAllowed = environment == "dev")
 }
 
-private fun JsonObject.string(name: String): String? = (this[name] as? JsonPrimitive)?.takeIf { it.isString }?.contentOrNull
-private fun JsonObject.long(name: String): Long? = (this[name] as? JsonPrimitive)?.takeIf { !it.isString }?.longOrNull
+internal fun JsonObject.string(name: String): String? = (this[name] as? JsonPrimitive)?.takeIf { it.isString }?.contentOrNull
+internal fun JsonObject.long(name: String): Long? = (this[name] as? JsonPrimitive)?.takeIf { !it.isString }?.longOrNull

@@ -46,8 +46,29 @@ data class StoreVerificationResult(
     val messageArgs: Map<String, String> = emptyMap(),
     val verifiedOrder: VerifiedStoreOrder? = null,
     /** Stable idempotency key when the provider token is not stable (App Store JWS is re-signed per fetch). */
-    val receiptKey: String? = null
+    val receiptKey: String? = null,
+    /** Amount the store says the customer paid, when the signed provider payload carries it (App Store). */
+    val payment: StorePayment? = null
 )
+
+/**
+ * A verified store charge for revenue facts. [amountMinor] is in units of 10^-[exponent] of [currency]
+ * (App Store prices are milliunits, so exponent 3). Never derived from a catalog or the client.
+ */
+data class StorePayment(
+    val store: String,
+    val environment: String,
+    val transactionId: String,
+    val amountMinor: java.math.BigInteger,
+    val currency: String,
+    val exponent: Int,
+    val occurredAt: java.time.Instant
+) {
+    init {
+        require(store == "APP_STORE" && environment in setOf("LIVE", "SANDBOX"))
+        require(transactionId.length in 1..64 && amountMinor.signum() > 0 && currency.matches(Regex("[A-Z]{3}")) && exponent in 0..6)
+    }
+}
 
 /** Provider identity only; the economy transaction remains the receipt fingerprint. */
 data class VerifiedStoreOrder(val orderId: String, val packageName: String, val environment: String)

@@ -79,7 +79,7 @@ interface PlayerProfileRepository {
         gems: Int
     ): StorePurchaseGrantStatus = StorePurchaseGrantStatus.PLAYER_NOT_FOUND
     suspend fun grantVerifiedStorePurchase(playerId: String, store: String, productId: String,
-        transactionId: String, gems: Int, order: VerifiedStoreOrder?): StorePurchaseGrantStatus =
+        transactionId: String, gems: Int, order: VerifiedStoreOrder?, payment: StorePayment? = null): StorePurchaseGrantStatus =
         grantStorePurchase(playerId, store, productId, transactionId, gems)
     suspend fun exchangeGemsForGold(
         playerId: String,

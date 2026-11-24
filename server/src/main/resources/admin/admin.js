@@ -10,7 +10,7 @@ const labels = {
   MATCH: 'Thưởng trận đấu', MATCH_REWARD: 'Thưởng trận đấu', DAILY_CHECK_IN: 'Điểm danh', MISSION: 'Nhiệm vụ',
   SEASON_REWARD: 'Thưởng mùa giải', CLAN_QUEST: 'Nhiệm vụ bang', CLAN_DONATION: 'Đóng góp bang',
   GOLD_EXCHANGE: 'Đổi Vàng', PLAY_CREDIT_EXCHANGE: 'Đổi lượt chơi', GIFT_CODE: 'Mã quà tặng',
-  COSMETIC_PURCHASE: 'Mua vật phẩm', STORE_PURCHASE: 'Mua trong cửa hàng',
+  COSMETIC_PURCHASE: 'Mua vật phẩm', STORE_PURCHASE: 'Mua trong cửa hàng', STORE_REFUND: 'Hoàn tiền cửa hàng',
   TOURNAMENT_ENTRY: 'Phí tham gia giải', TOURNAMENT_ENTRY_REFUND: 'Hoàn phí giải', TOURNAMENT_ENTRY_REVERSED: 'Phí giải đã đảo',
   ADMIN_GIFT: 'Quà quản trị', COMPENSATION: 'Bồi hoàn',
   GIFT_LIST: 'Xem chiến dịch quà', GIFT_DETAIL: 'Xem báo cáo quà', GIFT_CREATE: 'Tạo bản nháp quà', GIFT_UPDATE: 'Sửa bản nháp quà',

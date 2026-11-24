@@ -66,7 +66,19 @@ class AppStoreTestChain(
         "signedDate" to Instant.now().toEpochMilli()
     ) + overrides)
 
+    /** App Store Server Notification V2 wrapping a signed transaction, as Apple posts it. */
+    fun notification(type: String, signedTransaction: String?, overrides: Map<String, Any?> = emptyMap(),
+        data: Map<String, Any?> = emptyMap()): String = sign(mapOf(
+        "notificationType" to type,
+        "notificationUUID" to java.util.UUID.randomUUID().toString(),
+        "version" to "2.0",
+        "signedDate" to Instant.now().toEpochMilli(),
+        "data" to mapOf("bundleId" to APP_STORE_DEFAULT_BUNDLE_ID, "environment" to "Production",
+            "signedTransactionInfo" to signedTransaction) + data
+    ) + overrides)
+
     private fun json(value: Any): JsonElement = when (value) {
+        is Map<*, *> -> JsonObject(value.filterValues { it != null }.map { (k, v) -> k.toString() to json(v!!) }.toMap())
         is Number -> JsonPrimitive(value)
         is Boolean -> JsonPrimitive(value)
         else -> JsonPrimitive(value.toString())
