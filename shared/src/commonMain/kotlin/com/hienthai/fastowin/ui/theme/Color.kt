@@ -52,3 +52,53 @@ val ArcadeGold = ArcadePalette.Gold500
 val ArcadeGem = ArcadePalette.Mint400
 val ArcadeOpponent = ArcadePalette.Coral600
 val ArcadeSuccess = ArcadePalette.Mint600
+
+/**
+ * Bảng màu A1 "Ngày nắng" (thiết kế đã chốt 24/11/2026, canvas bản 80).
+ * Nền trời sáng, thẻ trắng viền navy dày, nút 3D có đế màu đậm.
+ */
+object A1Palette {
+    val Line = Color(0xFF1C4F86)
+    val Ink = Color(0xFF173B66)
+    val Muted = Color(0xFF46658F)
+    val Surface = Color(0xFFFFFFFF)
+    val SurfaceAlt = Color(0xFFEAF3FF)
+    val SurfaceAlt2 = Color(0xFFDBE9FB)
+    val Highlight = Color(0xFFFFF3C4)
+
+    val Sky1 = Color(0xFF4FC8FF)
+    val Sky2 = Color(0xFF7AD8FF)
+    val Sky3 = Color(0xFFC4F0FF)
+    val Hill = Color(0xFF6FDC6A)
+    val HillDark = Color(0xFF4FC64A)
+
+    val Yellow1 = Color(0xFFFFD84A)
+    val Yellow2 = Color(0xFFFFB300)
+    val Yellow3 = Color(0xFFF59200)
+    val YellowDeep = Color(0xFFA35200)
+    val YellowBorder = Color(0xFF7A3D00)
+
+    val Blue1 = Color(0xFF6AB8FF)
+    val Blue2 = Color(0xFF2A7DE0)
+    val BlueDeep = Color(0xFF0D3A7A)
+
+    val Purple1 = Color(0xFFB48CFF)
+    val Purple2 = Color(0xFF7A4DFF)
+    val PurpleDeep = Color(0xFF3A1A8A)
+
+    val Green1 = Color(0xFF8CF35C)
+    val Green2 = Color(0xFF3CC226)
+    val GreenDeep = Color(0xFF1F6B14)
+    /** Chữ xanh trên nền trắng (đạt 4.5:1). */
+    val GreenText = Color(0xFF1F7A14)
+
+    val Red1 = Color(0xFFFF8A7A)
+    val Red2 = Color(0xFFFF4F5A)
+    val RedDeep = Color(0xFF8A1A22)
+    /** Chữ đỏ trên nền trắng (đạt 4.5:1). */
+    val RedText = Color(0xFFB3202B)
+
+    val Gold = Color(0xFFFFC928)
+    val Gem = Color(0xFF16A34A)
+    val Scrim = Color(0xA60B2447)
+}

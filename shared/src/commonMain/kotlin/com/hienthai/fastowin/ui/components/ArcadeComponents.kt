@@ -62,7 +62,13 @@ import com.hienthai.fastowin.resources.Res
 import com.hienthai.fastowin.resources.fast_to_win_logo_banner
 import com.hienthai.fastowin.localization.TextKey
 import com.hienthai.fastowin.localization.localized
-import com.hienthai.fastowin.ui.theme.ArcadePalette
+import com.hienthai.fastowin.ui.theme.A1Palette
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.interaction.collectIsPressedAsState
+import androidx.compose.material3.LocalContentColor
+import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.remember
 import org.jetbrains.compose.resources.DrawableResource
 import org.jetbrains.compose.resources.painterResource
 
@@ -70,12 +76,16 @@ enum class ArcadeActionStyle {
     PRIMARY,
     GOLD,
     OUTLINE,
-    DANGER
+    DANGER,
+    SUCCESS,
+    SPECIAL
 }
 
 /**
- * CTA chuẩn của giao diện 2D Arcade. Lớp đế màu tạo cảm giác nút nổi mà không làm
- * thay đổi kích thước khi nhấn, vì vậy danh sách không bị giật trên Android/iOS.
+ * Nút 3D chuẩn A1: mặt nút dải màu, viền đậm 3dp và đế đặc phía dưới.
+ * Khi nhấn, mặt nút hạ xuống đúng bằng độ cao đế nên bố cục không bị giật.
+ * Giữ tên/tham số cũ để mọi màn hình dùng lại được: PRIMARY = xanh dương, GOLD = vàng (CTA chính),
+ * OUTLINE = trắng viền navy, DANGER = đỏ; thêm SUCCESS (xanh lá) và SPECIAL (tím).
  */
 @Composable
 fun ArcadeActionButton(
@@ -88,62 +98,42 @@ fun ArcadeActionButton(
     compact: Boolean = false,
     content: (@Composable RowScope.() -> Unit)? = null
 ) {
-    val shape = RoundedCornerShape(15.dp)
-    val colors = when (style) {
-        ArcadeActionStyle.PRIMARY -> listOf(ArcadePalette.Blue500, ArcadePalette.Blue700)
-        ArcadeActionStyle.GOLD -> listOf(Color(0xFFFFE46D), ArcadePalette.Gold500)
-        ArcadeActionStyle.OUTLINE -> listOf(
-            ArcadePalette.Navy800.copy(alpha = 0.36f),
-            ArcadePalette.Navy900.copy(alpha = 0.36f)
-        )
-        ArcadeActionStyle.DANGER -> listOf(ArcadePalette.Coral400, ArcadePalette.Coral800)
+    val colors = if (!enabled) A1ButtonDefaults.Disabled else when (style) {
+        ArcadeActionStyle.PRIMARY -> A1ButtonDefaults.Blue
+        ArcadeActionStyle.GOLD -> A1ButtonDefaults.Yellow
+        ArcadeActionStyle.OUTLINE -> A1ButtonDefaults.White
+        ArcadeActionStyle.DANGER -> A1ButtonDefaults.Red
+        ArcadeActionStyle.SUCCESS -> A1ButtonDefaults.Green
+        ArcadeActionStyle.SPECIAL -> A1ButtonDefaults.Purple
     }
-    val disabledColors = listOf(Color(0xFF33466F), Color(0xFF27365A))
-    val contentColor = when {
-        !enabled -> Color(0xFF8EA0C7)
-        style == ArcadeActionStyle.GOLD -> ArcadePalette.Ink
-        else -> ArcadePalette.White
-    }
-    val shadowColor = when (style) {
-        ArcadeActionStyle.PRIMARY -> Color(0xFF123994)
-        ArcadeActionStyle.GOLD -> Color(0xFFB56B14)
-        ArcadeActionStyle.OUTLINE -> Color.Transparent
-        ArcadeActionStyle.DANGER -> Color(0xFF761B30)
-    }
-    val border = if (style == ArcadeActionStyle.OUTLINE) {
-        BorderStroke(1.dp, ArcadePalette.OutlineDark)
-    } else {
-        null
-    }
+    val interaction = remember { MutableInteractionSource() }
+    val pressed by interaction.collectIsPressedAsState()
+    val depth = if (compact) A1Dimens.SoftDepth else A1Dimens.CardDepth
+    val radius = if (compact) 14.dp else A1Dimens.ButtonRadius
 
-    Box(
+    A1RaisedSurface(
+        colors = colors,
+        radius = radius,
+        depth = depth,
+        pressed = pressed && enabled,
         modifier = modifier
-            .height(if (compact) 48.dp else 55.dp)
-            .semantics { if (!enabled) disabled() }
-    ) {
-        if (enabled && shadowColor != Color.Transparent) {
-            Box(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(if (compact) 44.dp else 50.dp)
-                    .then(if (compact) Modifier else Modifier.offset(y = 5.dp))
-                    .background(shadowColor, shape)
+            .semantics(mergeDescendants = true) {
+                role = Role.Button
+                if (!enabled) disabled()
+            }
+            .clickable(
+                interactionSource = interaction,
+                indication = null,
+                enabled = enabled,
+                onClick = onClick
             )
-        }
-        Surface(
-            onClick = onClick,
-            enabled = enabled,
-            modifier = Modifier.fillMaxWidth().height(if (compact) 44.dp else 50.dp),
-            shape = shape,
-            color = Color.Transparent,
-            contentColor = contentColor,
-            border = border
-        ) {
+    ) {
+        CompositionLocalProvider(LocalContentColor provides colors.content) {
             Row(
                 modifier = Modifier
-                    .fillMaxSize()
-                    .background(Brush.verticalGradient(if (enabled) colors else disabledColors), shape)
-                    .padding(horizontal = 15.dp),
+                    .fillMaxWidth()
+                    .heightIn(min = if (compact) 44.dp else 50.dp)
+                    .padding(horizontal = if (compact) 12.dp else 18.dp, vertical = 6.dp),
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.Center
             ) {
@@ -151,14 +141,16 @@ fun ArcadeActionButton(
                     content()
                 } else {
                     icon?.let {
-                        Icon(it, contentDescription = null, modifier = Modifier.size(20.dp))
-                        Box(modifier = Modifier.width(7.dp))
+                        Icon(it, contentDescription = null, modifier = Modifier.size(if (compact) 20.dp else 24.dp))
+                        Box(modifier = Modifier.width(8.dp))
                     }
                     Text(
                         label,
-                        style = MaterialTheme.typography.labelLarge,
-                        fontWeight = FontWeight.Black,
-                        color = contentColor
+                        style = (if (compact) MaterialTheme.typography.titleSmall else MaterialTheme.typography.titleMedium)
+                            .copy(shadow = a1TextShadow(colors.textShadow)),
+                        fontWeight = FontWeight.ExtraBold,
+                        color = colors.content,
+                        textAlign = TextAlign.Center
                     )
                 }
             }
@@ -173,7 +165,7 @@ fun ArcadeIconHero(
     subtitle: String,
     icon: ImageVector,
     modifier: Modifier = Modifier,
-    accent: Color = ArcadePalette.Violet600,
+    accent: Color = A1Palette.Purple2,
     onIconClick: (() -> Unit)? = null,
     iconContentDescription: String? = null,
     /** An uploaded image shown in the badge instead of [icon]; the icon stays as its fallback. */
@@ -184,13 +176,9 @@ fun ArcadeIconHero(
         modifier = modifier
             .fillMaxWidth()
             .heightIn(min = 142.dp)
-            .background(
-                Brush.linearGradient(
-                    listOf(ArcadePalette.Blue700, accent, ArcadePalette.Coral600.copy(alpha = 0.84f))
-                ),
-                shape
-            )
-            .border(1.dp, ArcadePalette.Blue300.copy(alpha = 0.7f), shape)
+            .a1Card(radius = 24.dp, background = Color.Transparent)
+            .background(Brush.linearGradient(listOf(A1Palette.Blue2, accent)), shape)
+            .border(A1Dimens.Border, A1Palette.Line, shape)
             .padding(18.dp)
     ) {
         val stack = maxWidth < 330.dp || LocalDensity.current.fontScale >= 1.4f
@@ -204,7 +192,7 @@ fun ArcadeIconHero(
                 kicker,
                 style = MaterialTheme.typography.labelSmall,
                 fontWeight = FontWeight.Black,
-                color = Color(0xFFFFE28B)
+                color = A1Palette.Yellow1
             )
             Text(
                 title,
@@ -215,7 +203,7 @@ fun ArcadeIconHero(
             Text(
                 subtitle,
                 style = MaterialTheme.typography.bodySmall,
-                color = Color(0xFFE5EDFF)
+                color = Color.White
             )
         }
         if (stack) {
@@ -225,10 +213,10 @@ fun ArcadeIconHero(
                     .size(52.dp)
                     .rotate(8f)
                     .background(
-                        Brush.linearGradient(listOf(Color(0xFFFFE36F), Color(0xFFFF8D37))),
+                        Brush.verticalGradient(listOf(A1Palette.Yellow1, A1Palette.Yellow3)),
                         RoundedCornerShape(18.dp)
                     )
-                    .border(2.dp, Color.White.copy(alpha = 0.25f), RoundedCornerShape(18.dp))
+                    .border(A1Dimens.Border, A1Palette.Line, RoundedCornerShape(18.dp))
                     .then(
                         if (onIconClick == null) Modifier else Modifier.clickable(onClick = onIconClick)
                     ),
@@ -237,7 +225,7 @@ fun ArcadeIconHero(
                 if (iconImageUrl.isBlank()) Icon(
                     icon,
                     contentDescription = iconContentDescription,
-                    tint = ArcadePalette.Navy800,
+                    tint = A1Palette.YellowBorder,
                     modifier = Modifier.size(30.dp)
                 ) else NetworkImage(
                     iconImageUrl,
@@ -245,7 +233,7 @@ fun ArcadeIconHero(
                     contentDescription = iconContentDescription,
                     contentScale = androidx.compose.ui.layout.ContentScale.Crop
                 ) {
-                    Icon(icon, contentDescription = iconContentDescription, tint = ArcadePalette.Navy800,
+                    Icon(icon, contentDescription = iconContentDescription, tint = A1Palette.YellowBorder,
                         modifier = Modifier.size(30.dp))
                 }
             }
@@ -256,10 +244,10 @@ fun ArcadeIconHero(
                     .size(76.dp)
                     .rotate(8f)
                     .background(
-                        Brush.linearGradient(listOf(Color(0xFFFFE36F), Color(0xFFFF8D37))),
+                        Brush.verticalGradient(listOf(A1Palette.Yellow1, A1Palette.Yellow3)),
                         RoundedCornerShape(23.dp)
                     )
-                    .border(2.dp, Color.White.copy(alpha = 0.25f), RoundedCornerShape(23.dp))
+                    .border(A1Dimens.Border, A1Palette.Line, RoundedCornerShape(23.dp))
                     .then(
                         if (onIconClick == null) Modifier else Modifier.clickable(onClick = onIconClick)
                     ),
@@ -268,7 +256,7 @@ fun ArcadeIconHero(
                 if (iconImageUrl.isBlank()) Icon(
                     icon,
                     contentDescription = iconContentDescription,
-                    tint = ArcadePalette.Navy800,
+                    tint = A1Palette.YellowBorder,
                     modifier = Modifier.size(40.dp)
                 ) else NetworkImage(
                     iconImageUrl,
@@ -276,7 +264,7 @@ fun ArcadeIconHero(
                     contentDescription = iconContentDescription,
                     contentScale = androidx.compose.ui.layout.ContentScale.Crop
                 ) {
-                    Icon(icon, contentDescription = iconContentDescription, tint = ArcadePalette.Navy800,
+                    Icon(icon, contentDescription = iconContentDescription, tint = A1Palette.YellowBorder,
                         modifier = Modifier.size(40.dp))
                 }
             }
@@ -313,17 +301,14 @@ fun ArcadeDialog(
                         .imePadding(),
                     shape = RoundedCornerShape(24.dp),
                     color = Color.Transparent,
-                    contentColor = Color.White,
-                    border = BorderStroke(1.dp, Color(0xFF5680CA)),
-                    shadowElevation = 14.dp
+                    contentColor = A1Palette.Ink,
+                    shadowElevation = 0.dp
                 ) {
                     Column(
                         modifier = Modifier
                             .fillMaxWidth()
                             .testTag("arcade_dialog")
-                            .background(
-                                Brush.verticalGradient(listOf(Color(0xFF123269), Color(0xFF091D43)))
-                            )
+                            .a1Card(radius = 24.dp)
                             .then(if (scrollableContent && fixedActions == null) Modifier.verticalScroll(rememberScrollState()) else Modifier)
                             .padding(18.dp),
                         verticalArrangement = Arrangement.spacedBy(12.dp)
@@ -344,7 +329,7 @@ fun ArcadeDialog(
                                     onClick = onDismissRequest,
                                     modifier = Modifier.size(48.dp).testTag("arcade_dialog_close")
                                 ) {
-                                    Icon(Icons.Rounded.Close, contentDescription = localized(TextKey.Close))
+                                    Icon(Icons.Rounded.Close, contentDescription = localized(TextKey.Close), tint = A1Palette.Line)
                                 }
                             }
                         } else {
@@ -354,7 +339,7 @@ fun ArcadeDialog(
                             Text(
                                 it,
                                 style = MaterialTheme.typography.bodySmall,
-                                color = Color(0xFFA9BADC)
+                                color = A1Palette.Muted
                             )
                         }
                         if (fixedActions != null) {
@@ -385,8 +370,8 @@ fun ArcadeSegmentedControl(
     Row(
         modifier = modifier
             .fillMaxWidth()
-            .background(ArcadePalette.Navy900, RoundedCornerShape(16.dp))
-            .border(1.dp, ArcadePalette.OutlineDark, RoundedCornerShape(16.dp))
+            .background(A1Palette.SurfaceAlt, RoundedCornerShape(16.dp))
+            .border(A1Dimens.Border, A1Palette.Line, RoundedCornerShape(16.dp))
             .padding(4.dp),
         horizontalArrangement = Arrangement.spacedBy(4.dp)
     ) {
@@ -405,13 +390,14 @@ fun ArcadeSegmentedControl(
                     }
                     .then(itemTestTag(index)?.let { Modifier.testTag(it) } ?: Modifier),
                 shape = RoundedCornerShape(12.dp),
-                color = if (selected) ArcadePalette.Blue600 else Color.Transparent,
+                color = if (selected) A1Palette.Yellow2 else Color.Transparent,
                 contentColor = when {
-                    !itemEnabled -> Color(0xFF657AA8)
-                    selected -> Color.White
-                    else -> ArcadePalette.Blue100
+                    !itemEnabled -> A1Palette.Muted.copy(alpha = 0.6f)
+                    selected -> A1Palette.Ink
+                    else -> A1Palette.Muted
                 },
-                shadowElevation = if (selected) 3.dp else 0.dp
+                border = if (selected) BorderStroke(2.dp, A1Palette.Line) else null,
+                shadowElevation = 0.dp
             ) {
                 Box(
                     modifier = Modifier.fillMaxWidth().padding(horizontal = 10.dp, vertical = 10.dp),
@@ -447,8 +433,8 @@ fun ArcadeScrollableSegmentedControl(
     Row(
         modifier = modifier
             .fillMaxWidth()
-            .background(ArcadePalette.Navy900, RoundedCornerShape(16.dp))
-            .border(1.dp, ArcadePalette.OutlineDark, RoundedCornerShape(16.dp))
+            .background(A1Palette.SurfaceAlt, RoundedCornerShape(16.dp))
+            .border(A1Dimens.Border, A1Palette.Line, RoundedCornerShape(16.dp))
             .horizontalScroll(rememberScrollState())
             .padding(4.dp),
         horizontalArrangement = Arrangement.spacedBy(4.dp)
@@ -468,13 +454,14 @@ fun ArcadeScrollableSegmentedControl(
                     }
                     .then(itemTestTag(index)?.let { Modifier.testTag(it) } ?: Modifier),
                 shape = RoundedCornerShape(12.dp),
-                color = if (selected) ArcadePalette.Blue600 else Color.Transparent,
+                color = if (selected) A1Palette.Yellow2 else Color.Transparent,
                 contentColor = when {
-                    !itemEnabled -> Color(0xFF657AA8)
-                    selected -> Color.White
-                    else -> ArcadePalette.Blue100
+                    !itemEnabled -> A1Palette.Muted.copy(alpha = 0.6f)
+                    selected -> A1Palette.Ink
+                    else -> A1Palette.Muted
                 },
-                shadowElevation = if (selected) 3.dp else 0.dp
+                border = if (selected) BorderStroke(2.dp, A1Palette.Line) else null,
+                shadowElevation = 0.dp
             ) {
                 Box(
                     modifier = Modifier.padding(horizontal = 14.dp, vertical = 12.dp),
@@ -536,13 +523,10 @@ fun ArcadeChoiceChip(
         enabled = enabled,
         modifier = modifier.heightIn(min = 44.dp),
         shape = RoundedCornerShape(12.dp),
-        color = if (selected) Color(0xFF1E5DEA) else Color(0xFF102B60),
-        contentColor = if (enabled) Color.White else Color(0xFF657AA8),
-        border = BorderStroke(
-            1.dp,
-            if (selected) Color(0xFF79ABFF) else Color(0xFF34578F)
-        ),
-        shadowElevation = if (selected) 3.dp else 0.dp
+        color = if (selected) A1Palette.Highlight else Color.White,
+        contentColor = if (enabled) A1Palette.Ink else A1Palette.Muted.copy(alpha = 0.6f),
+        border = BorderStroke(2.dp, if (selected) A1Palette.Line else A1Palette.SurfaceAlt2),
+        shadowElevation = 0.dp
     ) {
         Box(
             modifier = Modifier.padding(horizontal = 14.dp, vertical = 10.dp),
@@ -553,63 +537,14 @@ fun ArcadeChoiceChip(
     }
 }
 
-/** Static arcade backdrop: decorative only, so it remains comfortable with reduced motion enabled. */
+/** Nền chung của mọi màn hình: trời xanh A1 (tĩnh, an toàn với giảm chuyển động). */
 @Composable
 fun ArcadeBackdrop(
     modifier: Modifier = Modifier,
-    darkBackdrop: Boolean = MaterialTheme.colorScheme.background.luminance() < 0.5f,
+    showHills: Boolean = false,
     content: @Composable BoxScope.() -> Unit
 ) {
-    val backdropColors = if (darkBackdrop) {
-        listOf(Color(0xFF071837), Color(0xFF06132F), Color(0xFF071A3B))
-    } else {
-        listOf(Color(0xFFF5F8FF), Color(0xFFE9F1FF), Color(0xFFF8FAFF))
-    }
-    Box(
-        modifier = modifier.background(
-            Brush.verticalGradient(backdropColors)
-        )
-    ) {
-        Canvas(Modifier.fillMaxSize()) {
-            drawRect(
-                brush = Brush.radialGradient(
-                    colors = listOf(
-                        Color(0xFF7B4DE8).copy(alpha = if (darkBackdrop) 0.20f else 0.10f),
-                        Color.Transparent
-                    ),
-                    center = Offset(size.width, 0f),
-                    radius = size.maxDimension * 0.72f
-                )
-            )
-            drawRect(
-                brush = Brush.radialGradient(
-                    colors = listOf(
-                        Color(0xFF2F83FF).copy(alpha = if (darkBackdrop) 0.15f else 0.09f),
-                        Color.Transparent
-                    ),
-                    center = Offset(0f, size.height * 0.38f),
-                    radius = size.maxDimension * 0.58f
-                )
-            )
-            val step = 22.dp.toPx()
-            val grid = if (darkBackdrop) {
-                Color.White.copy(alpha = 0.035f)
-            } else {
-                Color(0xFF31588E).copy(alpha = 0.055f)
-            }
-            var x = 0f
-            while (x <= size.width) {
-                drawLine(grid, Offset(x, 0f), Offset(x, size.height), 1f)
-                x += step
-            }
-            var y = 0f
-            while (y <= size.height) {
-                drawLine(grid, Offset(0f, y), Offset(size.width, y), 1f)
-                y += step
-            }
-        }
-        content()
-    }
+    A1SkyBackdrop(modifier = modifier, showHills = showHills, content = content)
 }
 
 @Composable
@@ -618,15 +553,10 @@ fun ArcadePanel(
     accent: Color = MaterialTheme.colorScheme.primary,
     content: @Composable () -> Unit
 ) {
-    Surface(
-        modifier = modifier,
-        shape = MaterialTheme.shapes.large,
-        color = MaterialTheme.colorScheme.surface,
-        contentColor = MaterialTheme.colorScheme.onSurface,
-        border = BorderStroke(1.dp, accent.copy(alpha = 0.42f)),
-        shadowElevation = 2.dp,
-        content = content
-    )
+    // [accent] giữ lại cho tương thích; thẻ A1 luôn viền navy để thống nhất.
+    Box(modifier = modifier.a1Card()) {
+        CompositionLocalProvider(LocalContentColor provides A1Palette.Ink) { content() }
+    }
 }
 
 @Composable
@@ -641,7 +571,7 @@ fun ArcadeBrandLockup(modifier: Modifier = Modifier, compact: Boolean = false) {
             .fillMaxWidth()
             .aspectRatio(3f)
             .clip(shape)
-            .border(2.dp, ArcadePalette.Blue300.copy(alpha = 0.7f), shape)
+            .border(A1Dimens.Border, A1Palette.Line, shape)
     )
 }
 
@@ -793,17 +723,17 @@ fun ArcadeEmptyState(
 @Composable
 fun ArcadeRankBadge(rank: Int, modifier: Modifier = Modifier) {
     val color = when (rank) {
-        1 -> ArcadePalette.Gold400
-        2 -> ArcadePalette.Silver400
-        3 -> ArcadePalette.Bronze400
-        else -> MaterialTheme.colorScheme.primaryContainer
+        1 -> A1Palette.Gold
+        2 -> Color(0xFFD5DEEA)
+        3 -> Color(0xFFF0A868)
+        else -> A1Palette.SurfaceAlt
     }
-    val contentColor = if (rank in 1..3) ArcadePalette.Navy950 else MaterialTheme.colorScheme.onPrimaryContainer
+    val contentColor = A1Palette.Ink
     Surface(
         modifier = modifier.size(24.dp),
         shape = CircleShape,
         color = color,
-        border = BorderStroke(2.dp, Color.White.copy(alpha = 0.48f))
+        border = BorderStroke(2.dp, A1Palette.Line)
     ) {
         Box(contentAlignment = Alignment.Center) {
             Text(

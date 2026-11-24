@@ -3,7 +3,7 @@ package com.hienthai.fastowin.ui.theme
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Shapes
-import androidx.compose.material3.darkColorScheme
+import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.ui.graphics.Color
@@ -12,36 +12,38 @@ import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.dp
 import com.hienthai.fastowin.data.preferences.AppPreferences
 
-private val ArcadeDarkColorScheme = darkColorScheme(
-    primary = ArcadePalette.Blue300,
-    onPrimary = ArcadePalette.Navy950,
-    primaryContainer = ArcadePalette.Blue900,
-    onPrimaryContainer = Color.White,
-    secondary = ArcadePalette.Violet400,
-    onSecondary = ArcadePalette.Navy950,
-    secondaryContainer = ArcadePalette.Violet900,
-    onSecondaryContainer = Color.White,
-    tertiary = ArcadePalette.Coral400,
-    onTertiary = ArcadePalette.Navy950,
-    tertiaryContainer = Color(0xFF66172B),
-    onTertiaryContainer = Color.White,
-    error = ArcadePalette.Coral400,
-    onError = ArcadePalette.Navy950,
-    errorContainer = Color(0xFF68162A),
-    onErrorContainer = Color.White,
-    background = ArcadePalette.Navy950,
-    onBackground = Color(0xFFF2F6FF),
-    surface = ArcadePalette.Navy900,
-    onSurface = Color(0xFFF2F6FF),
-    surfaceVariant = ArcadePalette.Navy800,
-    onSurfaceVariant = Color(0xFFC5D5F3),
-    surfaceContainerLowest = ArcadePalette.Navy950,
-    surfaceContainerLow = ArcadePalette.Navy900,
-    surfaceContainer = ArcadePalette.Navy800,
-    surfaceContainerHigh = ArcadePalette.Navy700,
-    surfaceContainerHighest = Color(0xFF1C4488),
-    outline = ArcadePalette.OutlineDark,
-    outlineVariant = Color(0xFF314D83)
+/** Bảng màu sáng A1 "Ngày nắng" — ứng dụng chỉ dùng giao diện sáng. */
+private val A1LightColorScheme = lightColorScheme(
+    primary = A1Palette.Blue2,
+    onPrimary = Color.White,
+    primaryContainer = A1Palette.SurfaceAlt,
+    onPrimaryContainer = A1Palette.Ink,
+    secondary = A1Palette.Purple2,
+    onSecondary = Color.White,
+    secondaryContainer = Color(0xFFEDE5FF),
+    onSecondaryContainer = A1Palette.PurpleDeep,
+    tertiary = A1Palette.Yellow3,
+    onTertiary = A1Palette.Ink,
+    tertiaryContainer = A1Palette.Highlight,
+    onTertiaryContainer = A1Palette.YellowBorder,
+    error = A1Palette.RedText,
+    onError = Color.White,
+    errorContainer = Color(0xFFFFE1E3),
+    onErrorContainer = A1Palette.RedDeep,
+    background = A1Palette.Sky2,
+    onBackground = A1Palette.Ink,
+    surface = A1Palette.Surface,
+    onSurface = A1Palette.Ink,
+    surfaceVariant = A1Palette.SurfaceAlt,
+    onSurfaceVariant = A1Palette.Muted,
+    surfaceContainerLowest = Color.White,
+    surfaceContainerLow = Color.White,
+    surfaceContainer = A1Palette.SurfaceAlt,
+    surfaceContainerHigh = A1Palette.SurfaceAlt2,
+    surfaceContainerHighest = A1Palette.SurfaceAlt2,
+    outline = A1Palette.Line,
+    outlineVariant = A1Palette.SurfaceAlt2,
+    scrim = A1Palette.Scrim
 )
 
 private val ArcadeShapes = Shapes(
@@ -65,7 +67,7 @@ fun FastToWinTheme(
 
     CompositionLocalProvider(LocalDensity provides scaledDensity) {
         MaterialTheme(
-            colorScheme = ArcadeDarkColorScheme,
+            colorScheme = A1LightColorScheme,
             typography = Typography,
             shapes = ArcadeShapes,
             content = content

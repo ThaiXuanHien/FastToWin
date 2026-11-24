@@ -50,7 +50,7 @@ class RoomSearchKeyboardUiTest {
         composeRule.setContent {
             ProvideLocalization(AppLanguage.VIETNAMESE) {
                 FastToWinTheme {
-                    ArcadeBackdrop(Modifier.fillMaxSize(), darkBackdrop = true) {
+                    ArcadeBackdrop(Modifier.fillMaxSize()) {
                     // Inert fixture: no controller, account, server connection or room mutation.
                     LobbyScreen(
                         state = GameState(lobbyStage = LobbyStage.ROOM_BROWSER,

@@ -5,9 +5,9 @@
     --fast-to-win-safe-bottom: min(var(--fast-to-win-raw-safe-bottom), 12px);
     --fast-to-win-safe-left: env(safe-area-inset-left, 0px);
     --fast-to-win-viewport-height: 100vh;
-    color-scheme: dark;
-    background: #06132f;
-    background-color: #06132f;
+    color-scheme: light;
+    background: #4fc8ff;
+    background-color: #4fc8ff;
 }
 
 html,
@@ -20,7 +20,7 @@ body {
     margin: 0;
     padding: 0;
     overflow: hidden;
-    background-color: #06132f;
+    background-color: #4fc8ff;
     overscroll-behavior: none;
 }
 
@@ -32,7 +32,7 @@ body {
     min-height: 0;
     overflow: hidden;
     overscroll-behavior: none;
-    background-color: #06132f;
+    background-color: #4fc8ff;
 }
 
 #fastToWinSafeAreaProbe {
@@ -57,7 +57,7 @@ body {
    though the actual app header is rendered inside a canvas/shadow root. */
 html[data-ios-status-bar-tint="true"] {
     --fast-to-win-status-tint-height: 16px;
-    --fast-to-win-header-background: #071a44; /* ArcadePalette.Navy900 */
+    --fast-to-win-header-background: #4fc8ff; /* A1Palette.Sky1 */
     --fast-to-win-safe-top: max(env(safe-area-inset-top, 0px), var(--fast-to-win-status-tint-height));
 }
 
@@ -74,8 +74,8 @@ html[data-ios-status-bar-tint="true"] #fastToWinStatusBarTint {
 }
 
 body {
-    background: #071a3b;
-    background-color: #071a3b;
+    background: #4fc8ff;
+    background-color: #4fc8ff;
     overscroll-behavior: none;
     -webkit-tap-highlight-color: transparent;
 }
