@@ -3,6 +3,7 @@ plugins {
     alias(libs.plugins.kotlin.compose)
     alias(libs.plugins.compose.screenshot)
     id("com.google.gms.google-services")
+    id("com.google.firebase.crashlytics")
 }
 
 // Public identifiers only; no signing/private configuration is consumed here.
@@ -96,7 +97,12 @@ android {
     }
 
     buildTypes {
+        debug {
+            // Crash reports come only from store builds; local and CI debug runs stay out of Crashlytics.
+            manifestPlaceholders["crashlyticsCollectionEnabled"] = "false"
+        }
         release {
+            manifestPlaceholders["crashlyticsCollectionEnabled"] = "true"
             isMinifyEnabled = true
             isShrinkResources = true
             proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
@@ -149,6 +155,7 @@ dependencies {
     
     implementation(platform("com.google.firebase:firebase-bom:32.7.0"))
     implementation("com.google.firebase:firebase-messaging-ktx")
+    implementation("com.google.firebase:firebase-crashlytics-ktx")
 
     androidTestImplementation(project(":protocol"))
     androidTestImplementation(libs.androidx.junit)
