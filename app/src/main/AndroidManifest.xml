@@ -16,6 +16,8 @@
         android:supportsRtl="true"
         android:theme="@style/Theme.FastToWin">
         <meta-data android:name="com.google.android.gms.ads.APPLICATION_ID" android:value="@string/admob_app_id" />
+        <!-- Crashlytics collects only from release builds (see buildTypes). -->
+        <meta-data android:name="firebase_crashlytics_collection_enabled" android:value="${crashlyticsCollectionEnabled}" />
         <activity
             android:name=".MainActivity"
             android:exported="true"

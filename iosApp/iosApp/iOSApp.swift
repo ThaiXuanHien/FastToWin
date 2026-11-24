@@ -1,5 +1,6 @@
 import SwiftUI
 import FirebaseCore
+import FirebaseCrashlytics
 import FirebaseMessaging
 import Shared
 import UserNotifications
@@ -120,6 +121,10 @@ final class AppDelegate: NSObject, UIApplicationDelegate, MessagingDelegate, UNU
         if FirebaseApp.app() == nil {
             FirebaseApp.configure()
         }
+        #if DEBUG
+        // Crash reports come only from TestFlight/App Store builds.
+        Crashlytics.crashlytics().setCrashlyticsCollectionEnabled(false)
+        #endif
         Messaging.messaging().delegate = self
         UNUserNotificationCenter.current().delegate = self
         PushNotificationCoordinator.shared.start()

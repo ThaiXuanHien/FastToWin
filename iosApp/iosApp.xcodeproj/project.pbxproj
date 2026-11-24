@@ -13,6 +13,7 @@
 		A10000000000000000000004 /* GoogleService-Info.plist in Resources */ = {isa = PBXBuildFile; fileRef = B10000000000000000000006 /* GoogleService-Info.plist */; };
 		A10000000000000000000099 /* PrivacyInfo.xcprivacy in Resources */ = {isa = PBXBuildFile; fileRef = B10000000000000000000099 /* PrivacyInfo.xcprivacy */; };
 		A10000000000000000000005 /* FirebaseMessaging in Frameworks */ = {isa = PBXBuildFile; productRef = H10000000000000000000002 /* FirebaseMessaging */; };
+		A10000000000000000000007 /* FirebaseCrashlytics in Frameworks */ = {isa = PBXBuildFile; productRef = H10000000000000000000003 /* FirebaseCrashlytics */; };
 		A10000000000000000000006 /* StoreKitCoordinator.swift in Sources */ = {isa = PBXBuildFile; fileRef = B10000000000000000000008 /* StoreKitCoordinator.swift */; };
 /* End PBXBuildFile section */
 
@@ -34,6 +35,7 @@
 			buildActionMask = 2147483647;
 			files = (
 				A10000000000000000000005 /* FirebaseMessaging in Frameworks */,
+				A10000000000000000000007 /* FirebaseCrashlytics in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -82,6 +84,7 @@
 				C10000000000000000000002 /* Sources */,
 				C10000000000000000000001 /* Frameworks */,
 				C10000000000000000000003 /* Resources */,
+				C10000000000000000000005 /* Upload Crashlytics dSYMs */,
 			);
 			buildRules = (
 			);
@@ -90,6 +93,7 @@
 			name = iosApp;
 			packageProductDependencies = (
 				H10000000000000000000002 /* FirebaseMessaging */,
+				H10000000000000000000003 /* FirebaseCrashlytics */,
 			);
 			productName = iosApp;
 			productReference = B10000000000000000000004 /* iosApp.app */;
@@ -163,6 +167,29 @@
 			runOnlyForDeploymentPostprocessing = 0;
 			shellPath = /bin/sh;
 			shellScript = "cd \"$SRCROOT/..\"\n./gradlew :shared:embedAndSignAppleFrameworkForXcode\n";
+		};
+		C10000000000000000000005 /* Upload Crashlytics dSYMs */ = {
+			isa = PBXShellScriptBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			inputFileListPaths = (
+			);
+			inputPaths = (
+				"${DWARF_DSYM_FOLDER_PATH}/${DWARF_DSYM_FILE_NAME}",
+				"${DWARF_DSYM_FOLDER_PATH}/${DWARF_DSYM_FILE_NAME}/Contents/Resources/DWARF/${PRODUCT_NAME}",
+				"${DWARF_DSYM_FOLDER_PATH}/${DWARF_DSYM_FILE_NAME}/Contents/Info.plist",
+				"$(TARGET_BUILD_DIR)/$(UNLOCALIZED_RESOURCES_FOLDER_PATH)/GoogleService-Info.plist",
+				"$(TARGET_BUILD_DIR)/$(EXECUTABLE_PATH)",
+			);
+			name = "Upload Crashlytics dSYMs";
+			outputFileListPaths = (
+			);
+			outputPaths = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+			shellPath = /bin/sh;
+			shellScript = "# Release archives (TestFlight/App Store) upload their dSYMs so crash reports are symbolicated.\nif [ \"${CONFIGURATION}\" = \"Release\" ]; then\n  \"${BUILD_DIR%/Build/*}/SourcePackages/checkouts/firebase-ios-sdk/Crashlytics/run\"\nfi\n";
 		};
 /* End PBXShellScriptBuildPhase section */
 
@@ -329,6 +356,11 @@
 			isa = XCSwiftPackageProductDependency;
 			package = H10000000000000000000001 /* XCRemoteSwiftPackageReference "firebase-ios-sdk" */;
 			productName = FirebaseMessaging;
+		};
+		H10000000000000000000003 /* FirebaseCrashlytics */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = H10000000000000000000001 /* XCRemoteSwiftPackageReference "firebase-ios-sdk" */;
+			productName = FirebaseCrashlytics;
 		};
 /* End XCSwiftPackageProductDependency section */
 	};

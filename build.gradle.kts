@@ -11,7 +11,8 @@ plugins {
     alias(libs.plugins.kotlin.compose) apply false
     alias(libs.plugins.jetbrains.kotlin.plugin.serialization) apply false
     alias(libs.plugins.compose.screenshot) apply false
-    id("com.google.gms.google-services") version "4.4.1" apply false
+    id("com.google.gms.google-services") version "4.4.4" apply false
+    id("com.google.firebase.crashlytics") version "3.0.8" apply false
 }
 
 val webComposeVersion = libs.versions.composeWebRuntime.get()
