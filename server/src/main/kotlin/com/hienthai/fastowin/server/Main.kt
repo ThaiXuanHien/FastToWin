@@ -163,6 +163,7 @@ fun main() {
                 activityTracker = com.hienthai.fastowin.server.activity.ActivityTracker(
                     database?.activityRepository ?: com.hienthai.fastowin.server.activity.UnavailableActivityRepository),
                 financialSyncService = financialSync,
+                appStoreNotifications = configuredAppStoreNotifications(database?.storeRefundRepository),
                 giftService = com.hienthai.fastowin.server.gifts.GiftService(database?.giftRepository ?: com.hienthai.fastowin.server.gifts.UnavailableGiftRepository, adminService, newIntentAllowed = engine::newIntentAllowed),
                 compensationIncidentService = adminService?.let { com.hienthai.fastowin.server.compensation.CompensationIncidentService(
                     database?.giftRepository ?: com.hienthai.fastowin.server.gifts.UnavailableGiftRepository, it) },

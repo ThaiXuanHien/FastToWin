@@ -1655,7 +1655,7 @@ class PostgresPlayerProfileRepository(
     ): StorePurchaseGrantStatus = grantVerifiedStorePurchase(playerId, store, productId, transactionId, gems, null)
 
     override suspend fun grantVerifiedStorePurchase(playerId: String, store: String, productId: String,
-        transactionId: String, gems: Int, order: VerifiedStoreOrder?): StorePurchaseGrantStatus = withContext(Dispatchers.IO) {
+        transactionId: String, gems: Int, order: VerifiedStoreOrder?, payment: StorePayment?): StorePurchaseGrantStatus = withContext(Dispatchers.IO) {
         require(store.length in 1..16 && productId.length in 1..128 && transactionId.length in 1..256)
         require(gems > 0)
         dataSource.connection.use { connection ->
@@ -1703,9 +1703,10 @@ class PostgresPlayerProfileRepository(
                                 result.getInt("gems_granted") == gems
                         }
                     }
-                    if (belongsToPlayer && order != null) {
-                        com.hienthai.fastowin.server.analytics.PostgresFinancialSyncRepository.capture(
+                    if (belongsToPlayer && (order != null || payment != null)) {
+                        if (order != null) com.hienthai.fastowin.server.analytics.PostgresFinancialSyncRepository.capture(
                             connection, playerId, store, productId, transactionId, order)
+                        if (payment != null) StoreRevenueFacts.recordPayment(connection, playerId, productId, payment)
                         connection.commit()
                     } else connection.rollback()
                     return@withContext if (belongsToPlayer) {
@@ -1751,6 +1752,7 @@ class PostgresPlayerProfileRepository(
                 }
                 if (order != null) com.hienthai.fastowin.server.analytics.PostgresFinancialSyncRepository.capture(
                     connection, playerId, store, productId, transactionId, order)
+                if (payment != null) StoreRevenueFacts.recordPayment(connection, playerId, productId, payment)
                 connection.commit()
                 StorePurchaseGrantStatus.GRANTED
             } catch (cancelled: kotlinx.coroutines.CancellationException) {

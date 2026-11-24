@@ -223,7 +223,7 @@ ClanRaceTitle, ClanRacePrizes, ClanRacePerMember, ClanRaceEligibility, ClanRaceW
     AchievementSpeedTitle, AchievementSpeedDescription,
     AchievementCheckInTitle, AchievementCheckInDescription, MissionsTitle,
     ClanMissionSource, CosmeticPurchaseSource, TournamentEntrySource,
-    TournamentPrizeSource, SeasonRewardSource, GemTopUpSource, WalletAdjustmentSource,
+    TournamentPrizeSource, SeasonRewardSource, GemTopUpSource, StoreRefundSource, WalletAdjustmentSource,
     ClanDonationSource, ClanCreationSource, AdminGiftSource, CompensationSource,
     GoldExchangeSource, AchievementRewardSource, TournamentEntryRefundSource,
     TournamentEntryReversedSource, TournamentMaintenanceRefundSource,

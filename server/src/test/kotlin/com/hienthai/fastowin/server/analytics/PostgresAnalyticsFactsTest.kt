@@ -258,7 +258,8 @@ class PostgresAnalyticsFactsTest {
         assertEquals(0, count("analytics_subject_links"))
         assertEquals(4, count("analytics_financial_events"))
         assertEquals(1, number("SELECT count(DISTINCT subject_key) FROM analytics_financial_events"))
-        assertEquals(2, number("SELECT count(*) FROM analytics_source_coverage WHERE metric='FINANCIAL' AND status='UNAVAILABLE'"))
+        // GOOGLE_PLAY/LIVE, APP_STORE/LIVE and (since V89) APP_STORE/SANDBOX start unavailable.
+        assertEquals(3, number("SELECT count(*) FROM analytics_source_coverage WHERE metric='FINANCIAL' AND status='UNAVAILABLE'"))
     } }
 
     private fun migrate(source: HikariDataSource, target: String? = null) {

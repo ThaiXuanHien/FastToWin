@@ -138,6 +138,7 @@ fun Application.gameModule(
      */
     socketAuthRecheckMillis: Long = 0L,
     financialSyncService: com.hienthai.fastowin.server.analytics.FinancialSyncService? = null,
+    appStoreNotifications: AppStoreNotificationService? = null,
     analyticsService: com.hienthai.fastowin.server.analytics.AnalyticsService? = adminService?.let {
         com.hienthai.fastowin.server.analytics.AnalyticsService(com.hienthai.fastowin.server.analytics.UnavailableAnalyticsRepository, it)
     },
@@ -248,6 +249,7 @@ fun Application.gameModule(
 
     routing { adMobRoutes(adMobService, authService, rateLimiter, rateLimitPolicies) }
     routing { storePurchaseRoutes(engine.storePurchaseService, authService, rateLimiter, rateLimitPolicies) }
+    appStoreNotifications?.let { service -> routing { appStoreNotificationRoutes(service) } }
     routing { giftRoutes(giftService, authService, adminService != null, rateLimiter) }
     if (adminService != null) compensationIncidentService?.let { service -> routing { compensationIncidentRoutes(service) } }
     if (adminService != null) compensationRoundService?.let { service -> routing { compensationRoundRoutes(service) } }

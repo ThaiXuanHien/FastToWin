@@ -119,12 +119,17 @@ class PostgresFinancialSyncTest {
         response = GoogleOrdersFinancialSourceTest.orderJson("USD", "10", "0", "PARTIALLY_REFUNDED", partial)
         sync.syncNext(provider, START, NOW)
         val prior = response
+        // A partial refund keeps the pack's Gems.
+        assertEquals("0", text("SELECT count(*) FROM wallet_transactions WHERE source_type='STORE_REFUND'"))
         response = GoogleOrdersFinancialSourceTest.orderJson("USD", "10", "0", "REFUNDED", partial +
             ",\"refundEvent\":{\"eventTime\":\"2026-10-05T01:00:00Z\",\"refundDetails\":{\"total\":${GoogleOrdersFinancialSourceTest.money("USD", "10")}}}")
             .replace("2026-10-04T01:00:00Z", "2026-10-05T01:00:00Z")
         sync.syncNext(provider, START, NOW.plusSeconds(3601))
         assertEquals("1000", text("SELECT SUM(amount_minor)::text FROM analytics_financial_events WHERE event_type='REFUND'"))
         assertEquals(3, count("analytics_financial_events"))
+        // The whole charge is refunded: the 80 Gems go back once, and the purchase is marked refunded.
+        assertEquals("1", text("SELECT count(*) FROM wallet_transactions WHERE source_type='STORE_REFUND' AND gems_delta=-80"))
+        assertEquals("1", text("SELECT count(*) FROM store_purchases WHERE refunded_at IS NOT NULL AND gems_revoked=80"))
         response = prior
         sync.syncNext(provider, START, NOW.plusSeconds(7202))
         assertEquals("CONFLICT", text("SELECT sync_status FROM store_financial_orders"))
