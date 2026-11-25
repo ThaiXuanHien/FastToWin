@@ -2099,6 +2099,7 @@ private fun GameContent(
                 ) { contentModifier -> ProfileScreen(
                     serverUrl = serverUrl,
                     state = state,
+                    onOpenFriends = if (isGuest) null else openFriendsTab,
                     onBack = {
                         navigateBack(if (showTopLevelNavigation) openHome else controller::closeProfile)
                     },

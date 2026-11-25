@@ -43,6 +43,7 @@ import androidx.compose.material.icons.filled.ChevronRight
 import androidx.compose.material.icons.filled.Devices
 import androidx.compose.material.icons.filled.Collections
 import androidx.compose.material.icons.filled.History
+import androidx.compose.material.icons.filled.Group
 import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.MilitaryTech
 import androidx.compose.material.icons.filled.MonetizationOn
@@ -205,6 +206,8 @@ fun ProfileScreen(
     onInviteToClan: ((String) -> Unit)? = null,
     onOpenNotifications: () -> Unit = {},
     onOpenSettings: () -> Unit = {},
+    /** Mở màn Bạn bè (mục "Bạn bè" trong danh sách của màn Tôi). */
+    onOpenFriends: (() -> Unit)? = null,
     onOpenSection: (ProfileSection) -> Unit = {},
     showBackButton: Boolean = true,
     onOpenRewardEvent: ((String) -> Unit)? = null,
@@ -553,6 +556,15 @@ fun ProfileScreen(
                     onClick = { onOpenSection(ProfileSection.RECENT_MATCHES) },
                     modifier = Modifier.testTag("profile_section_recent_matches")
                 )
+                if (!isExternalProfile && onOpenFriends != null) {
+                    AccountActionRow(
+                        icon = Icons.Default.Group,
+                        title = localized(TextKey.Friends),
+                        subtitle = localized(TextKey.FriendList),
+                        onClick = onOpenFriends,
+                        modifier = Modifier.testTag("profile_section_friends")
+                    )
+                }
         }
 
         if (canEdit) {

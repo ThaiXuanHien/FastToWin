@@ -171,3 +171,36 @@ fun clanDiscovery() = ArcadeScreenshotFrame {
         showBackButton = false
     )
 }
+
+@PreviewTest
+@ArcadeScreenshotDevices
+@Composable
+fun friendsScreen() = ArcadeScreenshotFrame {
+    val base = ArcadeScreenshotFixtures.homeState()
+    com.hienthai.fastowin.ui.screens.FriendsScreen(
+        state = base.copy(
+            social = com.hienthai.fastowin.protocol.FriendsSnapshot(
+                friends = listOf(
+                    com.hienthai.fastowin.protocol.FriendSnapshot("f1", "Lan", "LAN001", "female",
+                        com.hienthai.fastowin.protocol.FriendPresence.ONLINE, "frame_gold"),
+                    com.hienthai.fastowin.protocol.FriendSnapshot("f2", "Khoa Combo", "KHOA02", "male",
+                        com.hienthai.fastowin.protocol.FriendPresence.PLAYING, "frame_platinum"),
+                    com.hienthai.fastowin.protocol.FriendSnapshot("f3", "Dũng Tia Chớp", "DUNG03", "male",
+                        com.hienthai.fastowin.protocol.FriendPresence.OFFLINE, "frame_bronze")
+                ),
+                incomingRequests = listOf(
+                    com.hienthai.fastowin.protocol.FriendRequestSnapshot("r1", "u9", "VyVy", "VYVY09", "female", "frame_silver")
+                )
+            ),
+            roomInvitations = listOf(
+                com.hienthai.fastowin.protocol.ServerMessage.RoomInvitation(
+                    invitationId = "i1", fromUserId = "u7", fromDisplayName = "Minh",
+                    roomId = "room-1", roomName = "Phòng của Minh", expiresAtEpochMillis = 0L
+                )
+            )
+        ),
+        onBack = {}, onRefresh = {}, onSendRequest = {}, onRespondRequest = { _, _ -> }, onCancelRequest = {},
+        onRemoveFriend = {}, onBlockPlayer = {}, onUnblockPlayer = {}, onInviteFriend = {},
+        onRespondRoomInvitation = { _, _ -> }, onOpenFriendProfile = {}
+    )
+}
