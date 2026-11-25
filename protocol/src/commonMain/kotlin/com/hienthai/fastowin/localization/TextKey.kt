@@ -74,7 +74,7 @@ ClanRaceTitle, ClanRacePrizes, ClanRacePerMember, ClanRaceEligibility, ClanRaceW
     Rooms, Leaderboard, Clan, Account,
     TabRank, TabPlay, TabClan, TabMe, HomeEvents, HomeGifts,
     HomeTournament, HomeJoinRoom, HomeBestScore, HomeBeatIt,
-    ModeSelectTitle, ModeTabPractice, ModeRankedHint, ModeCasualHint, ModePracticeHint, ModeCostOnePlay, ModePlaysLeft, ModePlayButton, ModePracticeButton, MatchmakingYou, MatchmakingSearching, MatchmakingEloWindow, MatchmakingRankedNote, MatchmakingBotFallback,
+    ModeSelectTitle, ModeTabPractice, ModeRankedHint, ModeCasualHint, ModePracticeHint, ModeCostOnePlay, ModePlaysLeft, ModePlayButton, ModePlayShort, ModePracticeButton, MatchmakingYou, MatchmakingSearching, MatchmakingEloWindow, MatchmakingRankedNote, MatchmakingBotFallback,
     FinishCurrentMatchBeforeChallenge, ModeUnlockLevel, CannotOpenChallenge, Understood,
     ChoosePracticeMode, ShareRoom,
 

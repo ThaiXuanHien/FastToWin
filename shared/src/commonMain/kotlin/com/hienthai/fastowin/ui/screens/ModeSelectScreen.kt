@@ -98,29 +98,35 @@ fun ModeSelectContent(
     val chosen = selected.takeIf { playerLevel >= it.unlockLevel } ?: GameMode.ORDER
 
     Column(modifier = modifier.fillMaxSize().testTag("mode_select_screen")) {
+        // Thanh chọn kiểu trận + chú thích đứng cố định; chỉ lưới chế độ cuộn.
         Column(
-            modifier = Modifier.weight(1f).verticalScroll(rememberScrollState()).padding(top = 8.dp, bottom = 12.dp),
+            modifier = Modifier.fillMaxWidth().padding(top = 8.dp, bottom = 12.dp),
+            verticalArrangement = Arrangement.spacedBy(14.dp)
+        ) {
+                ArcadeSegmentedControl(
+                    labels = listOf(localized(TextKey.ModeTabPractice), localized(TextKey.Casual), localized(TextKey.Ranked)),
+                    selectedIndex = kind.ordinal,
+                    onSelected = { kind = PlayKind.entries[it] },
+                    itemTestTag = { "play_kind:${PlayKind.entries[it].name}" }
+                )
+                com.hienthai.fastowin.ui.components.A1OutlinedText(
+                    text = localized(
+                        when (kind) {
+                            PlayKind.PRACTICE -> TextKey.ModePracticeHint
+                            PlayKind.CASUAL -> TextKey.ModeCasualHint
+                            PlayKind.RANKED -> TextKey.ModeRankedHint
+                        }
+                    ),
+                    style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.Bold),
+                    outlineWidth = 2.dp,
+                    textAlign = TextAlign.Center,
+                    modifier = Modifier.fillMaxWidth()
+                )
+        }
+        Column(
+            modifier = Modifier.weight(1f).verticalScroll(rememberScrollState()).padding(top = 4.dp, bottom = 12.dp),
             verticalArrangement = Arrangement.spacedBy(16.dp)
         ) {
-            ArcadeSegmentedControl(
-                labels = listOf(localized(TextKey.ModeTabPractice), localized(TextKey.Casual), localized(TextKey.Ranked)),
-                selectedIndex = kind.ordinal,
-                onSelected = { kind = PlayKind.entries[it] },
-                itemTestTag = { "play_kind:${PlayKind.entries[it].name}" }
-            )
-            com.hienthai.fastowin.ui.components.A1OutlinedText(
-                text = localized(
-                    when (kind) {
-                        PlayKind.PRACTICE -> TextKey.ModePracticeHint
-                        PlayKind.CASUAL -> TextKey.ModeCasualHint
-                        PlayKind.RANKED -> TextKey.ModeRankedHint
-                    }
-                ),
-                style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.Bold),
-                outlineWidth = 2.dp,
-                textAlign = TextAlign.Center,
-                modifier = Modifier.fillMaxWidth()
-            )
             // Lưới 2 cột: mọi thẻ cao bằng thẻ cao nhất (kể cả thẻ mô tả ngắn); thẻ lẻ cuối trải hết hàng.
             EqualHeightGrid(spacing = 12.dp) {
                 modes.forEachIndexed { index, mode ->
@@ -135,14 +141,14 @@ fun ModeSelectContent(
             }
         }
         Column(
-            modifier = Modifier.fillMaxWidth().padding(bottom = 16.dp),
-            verticalArrangement = Arrangement.spacedBy(12.dp)
+            // Chừa khoảng trống phía dưới để nút không sát nút "Chơi" nổi trên thanh tab.
+            modifier = Modifier.fillMaxWidth().padding(top = 4.dp, bottom = 40.dp),
+            verticalArrangement = Arrangement.spacedBy(14.dp)
         ) {
             if (kind != PlayKind.PRACTICE) PlayCostBar(quota)
-            val title = localized(chosen.titleKey)
             ArcadeActionButton(
                 label = if (kind == PlayKind.PRACTICE) localized(TextKey.ModePracticeButton)
-                else localized(TextKey.ModePlayButton, "mode" to title.uppercase()),
+                else localized(TextKey.ModePlayShort),
                 style = ArcadeActionStyle.GOLD,
                 hero = true,
                 enabled = kind == PlayKind.PRACTICE || onlineAllowed,
@@ -265,7 +271,8 @@ private fun PlayCostBar(quota: PlayQuotaSnapshot?) {
             .fillMaxWidth()
             .background(Color.White.copy(alpha = 0.9f), RoundedCornerShape(20.dp))
             .border(3.dp, A1Palette.Line, RoundedCornerShape(20.dp))
-            .padding(horizontal = 12.dp, vertical = 8.dp)
+            .heightIn(min = 52.dp)
+            .padding(horizontal = 14.dp, vertical = 10.dp)
             .testTag("mode_select_cost"),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(8.dp)
