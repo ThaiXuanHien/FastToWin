@@ -46,6 +46,43 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.foundation.layout.heightIn
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.alpha
+import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.fillMaxHeight
+import androidx.compose.foundation.layout.IntrinsicSize
+import com.hienthai.fastowin.ui.components.ArcadeHeaderIconButton
+import com.hienthai.fastowin.ui.components.ArcadeChoiceChip
+import com.hienthai.fastowin.ui.components.A1Dimens
+import com.hienthai.fastowin.ui.components.A1FieldLabel
+import com.hienthai.fastowin.ui.components.A1BottomSheet
+import com.hienthai.fastowin.ui.components.A1HeroTone
+import com.hienthai.fastowin.ui.components.A1TagTone
+import com.hienthai.fastowin.ui.components.A1Tag
+import androidx.compose.material.icons.outlined.MeetingRoom
+import androidx.compose.material.icons.outlined.Key
+import androidx.compose.material.icons.outlined.Search
+import androidx.compose.material.icons.rounded.SignalCellularAlt2Bar
+import androidx.compose.material.icons.rounded.SignalCellularAlt
+import androidx.compose.material.icons.rounded.PersonAdd
+import androidx.compose.material.icons.rounded.Info
+import androidx.compose.material.icons.rounded.Share
+import androidx.compose.material.icons.rounded.ContentCopy
+import androidx.compose.material.icons.rounded.Check
+import androidx.compose.material.icons.rounded.Timer
+import androidx.compose.material.icons.rounded.Groups
+import androidx.compose.material.icons.rounded.Favorite
+import androidx.compose.material.icons.rounded.Speed
+import androidx.compose.material.icons.rounded.Shuffle
+import androidx.compose.material.icons.rounded.Bolt
+import androidx.compose.material.icons.rounded.GridView
+import androidx.compose.material.icons.rounded.MeetingRoom
+import androidx.compose.material.icons.rounded.Lock
+import androidx.compose.material.icons.rounded.Pin
+import androidx.compose.material.icons.rounded.AddCircle
 import com.hienthai.fastowin.ui.components.A1LevelBadge
 import com.hienthai.fastowin.ui.components.drawLightRays
 import com.hienthai.fastowin.ui.components.a1Hills
@@ -190,13 +227,13 @@ fun LobbyScreen(
     // Consume the keyboard once for the list and bottom bar; sibling inset padding adds twice.
     Column(modifier = modifier.fillMaxSize().imePadding().testTag("lobby_screen")) {
         // A1: màn Tìm trận không có thanh trên cùng, chỉ có nhãn kiểu trận.
-        if (state.lobbyStage != LobbyStage.MATCHMAKING) FastToWinHeader(
+        if (state.lobbyStage != LobbyStage.MATCHMAKING && state.lobbyStage != LobbyStage.MATCHED) FastToWinHeader(
             title = when (state.lobbyStage) {
                 // A1: trang chủ không có tiêu đề; lời chào nằm trong bong bóng của linh vật.
                 LobbyStage.SELECT_MODE -> if (modeSelectVisible) localized(TextKey.ModeSelectTitle) else ""
                 LobbyStage.ENTER_NAME -> localized(TextKey.DisplayName)
-                LobbyStage.ROOM_BROWSER -> localized(TextKey.GameRooms)
-                LobbyStage.ROOM_WAITING -> localized(TextKey.Ready)
+                LobbyStage.ROOM_BROWSER -> localized(TextKey.Rooms)
+                LobbyStage.ROOM_WAITING -> state.currentRoomName ?: localized(TextKey.Rooms)
                 LobbyStage.MATCHMAKING -> localized(TextKey.Matchmaking)
                 LobbyStage.MATCHED -> localized(TextKey.MatchFound)
             },
@@ -205,11 +242,13 @@ fun LobbyScreen(
             gems = state.profile?.progression?.gems ?: 0,
             unreadNotifications = state.unreadNotificationCount,
             onNotifications = onOpenNotifications,
-            showBalances = !modeSelectVisible,
-            showNotifications = !modeSelectVisible,
+            // Theo thiết kế: phòng chờ chỉ có nút quay lại + tên phòng; danh sách phòng có ô tiền, không có chuông.
+            showBalances = !modeSelectVisible && state.lobbyStage != LobbyStage.ROOM_WAITING,
+            showNotifications = state.lobbyStage == LobbyStage.SELECT_MODE && !modeSelectVisible,
             onBack = when (state.lobbyStage) {
                 LobbyStage.SELECT_MODE -> if (modeSelectVisible) ({ showModeSelect = false }) else null
-                LobbyStage.ROOM_BROWSER, LobbyStage.MATCHED -> null
+                LobbyStage.ROOM_BROWSER -> onBackToMode
+                LobbyStage.MATCHED -> null
                 LobbyStage.ENTER_NAME -> onBackToMode
                 LobbyStage.ROOM_WAITING -> onLeaveRoom
                 LobbyStage.MATCHMAKING -> onCancelMatchmaking
@@ -620,9 +659,7 @@ private fun RoomBrowser(
     val localization = LocalLocalization.current
     var selectedRoom by remember { mutableStateOf<AvailableRoom?>(null) }
     val newIntentAllowed = LocalNewOnlineIntentAllowed.current
-    var showCreateMatchType by remember { mutableStateOf(false) }
-    var createMatchType by remember { mutableStateOf<MatchType?>(null) }
-    var createGameMode by remember { mutableStateOf<GameMode?>(null) }
+    var showCreateSheet by remember { mutableStateOf(false) }
     var showJoinCode by remember { mutableStateOf(false) }
     var searchQuery by remember { mutableStateOf("") }
     var matchTypeFilter by remember { mutableStateOf<MatchType?>(null) }
@@ -669,48 +706,20 @@ private fun RoomBrowser(
             }
         )
     }
-    if (showCreateMatchType) {
-        MatchTypePickerDialog(
-            title = localized(TextKey.ChooseRoomType),
-            quota = state.playQuota,
-            onQuotaExhausted = {
-                showCreateMatchType = false
-                onPlayQuotaExhausted()
-            },
-            onDismiss = { showCreateMatchType = false },
-            onSelect = { matchType ->
-                showCreateMatchType = false
-                createMatchType = matchType
-            }
-        )
-    }
-    createMatchType?.takeIf { createGameMode == null }?.let { matchType ->
-        GameModePickerDialog(
-            title = if (matchType == MatchType.RANKED) {
-                localized(TextKey.ChooseRankedMode)
-            } else {
-                localized(TextKey.ChooseCasualMode)
-            },
-            playerLevel = state.profile?.progression?.level ?: 1,
-            onDismiss = { createMatchType = null },
-            onSelect = { mode -> createGameMode = mode }
-        )
-    }
-    createGameMode?.let { mode ->
-        val matchType = createMatchType ?: MatchType.CASUAL
-        CreateRoomDialog(
+    if (showCreateSheet) {
+        CreateRoomSheet(
             isLoading = state.isSearching,
             defaultRoomName = localized(TextKey.DefaultRoomName, "player" to state.player.name),
-            mode = mode,
-            matchType = matchType,
-            onDismiss = {
-                createGameMode = null
-                createMatchType = null
-            },
-            onCreate = { roomName, password ->
-                createGameMode = null
-                createMatchType = null
-                onCreateRoom(mode, matchType, roomName, password)
+            playerLevel = state.profile?.progression?.level ?: 1,
+            onDismiss = { showCreateSheet = false },
+            onCreate = { mode, matchType, roomName, password ->
+                if (state.playQuota?.remainingMatches == 0) {
+                    showCreateSheet = false
+                    onPlayQuotaExhausted()
+                } else {
+                    showCreateSheet = false
+                    onCreateRoom(mode, matchType, roomName, password)
+                }
             }
         )
     }
@@ -731,18 +740,9 @@ private fun RoomBrowser(
     ) {
         LazyColumn(
             modifier = Modifier.fillMaxSize().testTag("room_list"),
-            contentPadding = PaddingValues(bottom = 16.dp),
-            verticalArrangement = Arrangement.spacedBy(12.dp)
+            contentPadding = PaddingValues(top = 4.dp, bottom = 24.dp),
+            verticalArrangement = Arrangement.spacedBy(18.dp)
         ) {
-            item(key = "room_hero") {
-                ArcadeIconHero(
-                    kicker = localized(TextKey.PublicRooms),
-                    title = localized(TextKey.FindOpponent),
-                    subtitle = localized(TextKey.PublicRoomsDescription),
-                    icon = Icons.Default.MeetingRoom
-                )
-            }
-
             state.error?.let { message ->
                 item(key = "room_error") {
                     Text(message, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodyMedium)
@@ -765,11 +765,7 @@ private fun RoomBrowser(
             item(key = "room_actions") {
                 RoomBrowserActions(
                     canCreate = newIntentAllowed && state.connectionStatus == ConnectionStatus.CONNECTED && !state.isSearching,
-                    onCreate = {
-                        createMatchType = null
-                        createGameMode = null
-                        showCreateMatchType = true
-                    },
+                    onCreate = { showCreateSheet = true },
                     onJoinCode = { showJoinCode = true }
                 )
             }
@@ -780,41 +776,34 @@ private fun RoomBrowser(
                     onValueChange = { searchQuery = it },
                     modifier = Modifier.fillMaxWidth(),
                     singleLine = true,
-                    label = localized(TextKey.SearchRooms),
-                    leadingIcon = { Icon(Icons.Default.Search, contentDescription = null) },
-                    shape = RoundedCornerShape(14.dp)
+                    placeholder = localized(TextKey.SearchRooms),
+                    leadingIcon = { Icon(Icons.Outlined.Search, contentDescription = null) }
                 )
             }
 
             item(key = "room_filters") {
-                ArcadeSegmentedControl(
-                    labels = listOf(localized(TextKey.All), localized(TextKey.Casual), localized(TextKey.Ranked)),
-                    selectedIndex = when (matchTypeFilter) {
-                        null -> 0
-                        MatchType.CASUAL -> 1
-                        MatchType.RANKED -> 2
-                    },
-                    onSelected = { index ->
-                        matchTypeFilter = when (index) {
-                            1 -> MatchType.CASUAL
-                            2 -> MatchType.RANKED
-                            else -> null
-                        }
-                    }
-                )
-            }
-
-            item(key = "room_section_title") {
+                // ".chips" của thiết kế: Tất cả · N / Xếp hạng / Thường.
                 Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    verticalAlignment = Alignment.Bottom,
-                    horizontalArrangement = Arrangement.SpaceBetween
+                    modifier = Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
-                    Text(localized(TextKey.Waiting), style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Black)
-                    Text(
-                        localized(TextKey.RoomCount, "count" to filteredRooms.size),
-                        style = MaterialTheme.typography.labelSmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    ArcadeChoiceChip(
+                        label = localized(TextKey.RoomsAllCount, "count" to state.availableRooms.count { it.gameMode != GameMode.TEAM_2V2 }),
+                        selected = matchTypeFilter == null,
+                        onClick = { matchTypeFilter = null },
+                        modifier = Modifier.testTag("room_filter:all")
+                    )
+                    ArcadeChoiceChip(
+                        label = localized(TextKey.Ranked),
+                        selected = matchTypeFilter == MatchType.RANKED,
+                        onClick = { matchTypeFilter = MatchType.RANKED },
+                        modifier = Modifier.testTag("room_filter:ranked")
+                    )
+                    ArcadeChoiceChip(
+                        label = localized(TextKey.CasualShort),
+                        selected = matchTypeFilter == MatchType.CASUAL,
+                        onClick = { matchTypeFilter = MatchType.CASUAL },
+                        modifier = Modifier.testTag("room_filter:casual")
                     )
                 }
             }
@@ -823,16 +812,18 @@ private fun RoomBrowser(
                 state.isSearching && visibleRooms.isEmpty() -> item(key = "room_loading") {
                     Row(
                         modifier = Modifier.fillMaxWidth().padding(vertical = 32.dp),
-                        horizontalArrangement = Arrangement.Center,
+                        horizontalArrangement = Arrangement.spacedBy(10.dp, Alignment.CenterHorizontally),
                         verticalAlignment = Alignment.CenterVertically
                     ) {
-                        CircularProgressIndicator(modifier = Modifier.size(24.dp))
+                        CircularProgressIndicator(modifier = Modifier.size(24.dp), color = A1Palette.Line)
                         Text(
                             when (state.connectionStatus) {
                                 ConnectionStatus.RECONNECTING -> localized(TextKey.Reconnecting)
                                 ConnectionStatus.AUTHENTICATING -> localized(TextKey.AuthenticatingSession)
                                 else -> localized(TextKey.Connecting)
-                            }
+                            },
+                            color = A1Palette.Ink,
+                            fontWeight = FontWeight.SemiBold
                         )
                     }
                 }
@@ -844,8 +835,9 @@ private fun RoomBrowser(
                         } else {
                             localized(TextKey.NoMatchingRooms)
                         },
-                        modifier = Modifier.fillMaxWidth().padding(vertical = 32.dp),
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.fillMaxWidth().a1Card(radius = 18.dp, depth = 3.dp).padding(vertical = 28.dp, horizontal = 16.dp),
+                        color = A1Palette.Muted,
+                        fontWeight = FontWeight.SemiBold,
                         textAlign = TextAlign.Center
                     )
                 }
@@ -875,37 +867,53 @@ private fun RoomBrowser(
     }
 }
 
+/** Hàng nút "Tạo phòng" (xanh) + "Nhập mã" (tím) như thiết kế. */
 @Composable
 private fun RoomBrowserActions(
     canCreate: Boolean,
     onCreate: () -> Unit,
     onJoinCode: () -> Unit
 ) {
-    Column(
+    Row(
         modifier = Modifier.fillMaxWidth(),
-        verticalArrangement = Arrangement.spacedBy(10.dp)
+        horizontalArrangement = Arrangement.spacedBy(10.dp)
     ) {
         ArcadeActionButton(
-            label = localized(TextKey.CreateRoom).uppercase(),
-            icon = Icons.Default.Add,
-            style = ArcadeActionStyle.GOLD,
+            label = localized(TextKey.CreateRoom),
+            icon = Icons.Rounded.AddCircle,
+            style = ArcadeActionStyle.PRIMARY,
             enabled = canCreate,
             onClick = onCreate,
-            modifier = Modifier.fillMaxWidth().testTag("create_room_open")
+            modifier = Modifier.weight(1f).testTag("create_room_open")
         )
         ArcadeActionButton(
-            label = localized(TextKey.EnterRoomCode).uppercase(),
-            icon = Icons.Default.Lock,
-            style = ArcadeActionStyle.OUTLINE,
+            label = localized(TextKey.EnterCodeShort),
+            icon = Icons.Rounded.Pin,
+            style = ArcadeActionStyle.SPECIAL,
             onClick = onJoinCode,
             enabled = LocalNewOnlineIntentAllowed.current,
-            modifier = Modifier.fillMaxWidth()
+            modifier = Modifier.weight(1f).testTag("join_code_open")
         )
     }
 }
 
+/** Độ dài mã phòng hiển thị/nhập: 6 ký tự đầu của mã phòng. */
+private const val ROOM_CODE_LENGTH = 6
+
+internal fun roomCodeOf(roomId: String?): String = roomId?.replace("-", "")?.take(ROOM_CODE_LENGTH)?.uppercase().orEmpty()
+
+/** Tìm phòng theo mã: khớp toàn bộ mã phòng, hoặc khớp duy nhất 6 ký tự đầu. */
+internal fun findRoomByCode(rooms: List<AvailableRoom>, code: String): AvailableRoom? {
+    val normalized = code.trim()
+    if (normalized.isEmpty()) return null
+    rooms.firstOrNull { it.id.equals(normalized, ignoreCase = true) }?.let { return it }
+    if (normalized.length < ROOM_CODE_LENGTH) return null
+    return rooms.filter { roomCodeOf(it.id).equals(normalized.take(ROOM_CODE_LENGTH), ignoreCase = true) }.singleOrNull()
+}
+
+/** Hộp thoại "Nhập mã phòng": ô icon tím, 6 ô ký tự, TÌM PHÒNG + Huỷ (thiết kế PlayFlows). */
 @Composable
-private fun JoinByCodeDialog(
+fun JoinByCodeDialog(
     rooms: List<AvailableRoom>,
     onDismiss: () -> Unit,
     onSelect: (AvailableRoom) -> Unit
@@ -916,37 +924,38 @@ private fun JoinByCodeDialog(
     ArcadeDialog(
         title = localized(TextKey.EnterRoomCode),
         subtitle = localized(TextKey.PasteRoomCode),
-        onDismissRequest = onDismiss
+        onDismissRequest = onDismiss,
+        heroIcon = Icons.Rounded.Pin,
+        heroTone = A1HeroTone.PURPLE
     ) {
-        OutlinedTextField(
-            value = code,
-            onValueChange = {
-                code = it
+        RoomCodeTiles(
+            code = code,
+            onCodeChange = {
+                code = it.filter { ch -> ch.isLetterOrDigit() || ch == '-' }.uppercase().take(40)
                 error = null
             },
-            modifier = Modifier.fillMaxWidth(),
-            singleLine = true,
-            label = localized(TextKey.RoomCode),
-            leadingIcon = { Icon(Icons.Default.Lock, contentDescription = null) },
-            shape = RoundedCornerShape(14.dp)
+            isError = error != null
         )
-        error?.let { Text(it, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall) }
+        error?.let {
+            Text(it, color = Color(0xFFB3202B), fontWeight = FontWeight.SemiBold, style = MaterialTheme.typography.bodySmall)
+        }
         Column(
             modifier = Modifier.fillMaxWidth(),
-            verticalArrangement = Arrangement.spacedBy(10.dp)
+            verticalArrangement = Arrangement.spacedBy(12.dp)
         ) {
             ArcadeActionButton(
                 label = localized(TextKey.FindRoom),
                 style = ArcadeActionStyle.GOLD,
+                large = true,
                 enabled = code.isNotBlank() && LocalNewOnlineIntentAllowed.current,
                 onClick = {
-                    val room = rooms.firstOrNull { it.id.equals(code.trim(), ignoreCase = true) }
+                    val room = findRoomByCode(rooms, code)
                     if (room == null) error = localization.text(TextKey.RoomCodeNotFound) else onSelect(room)
                 },
-                modifier = Modifier.fillMaxWidth()
+                modifier = Modifier.fillMaxWidth().heightIn(min = 62.dp).testTag("join_code_submit")
             )
             ArcadeActionButton(
-                label = localized(TextKey.Cancel).uppercase(),
+                label = localized(TextKey.CancelShort),
                 style = ArcadeActionStyle.OUTLINE,
                 onClick = onDismiss,
                 modifier = Modifier.fillMaxWidth()
@@ -955,37 +964,104 @@ private fun JoinByCodeDialog(
     }
 }
 
+/** 6 ô ký tự kiểu ô số trong trận (".tile"), gõ vào một ô nhập ẩn phủ lên trên. */
 @Composable
-private fun CreateRoomDialog(
+private fun RoomCodeTiles(code: String, onCodeChange: (String) -> Unit, isError: Boolean) {
+    androidx.compose.foundation.text.BasicTextField(
+        value = code,
+        onValueChange = onCodeChange,
+        singleLine = true,
+        keyboardOptions = KeyboardOptions(
+            capitalization = androidx.compose.ui.text.input.KeyboardCapitalization.Characters,
+            keyboardType = androidx.compose.ui.text.input.KeyboardType.Ascii,
+            imeAction = ImeAction.Search
+        ),
+        modifier = Modifier.fillMaxWidth().testTag("join_code_input"),
+        decorationBox = { inner ->
+            Box {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.CenterHorizontally)
+                ) {
+                    val shown = roomCodeOf(code)
+                    repeat(ROOM_CODE_LENGTH) { index ->
+                        val ch = shown.getOrNull(index)?.toString().orEmpty()
+                        Box(
+                            modifier = Modifier
+                                .size(width = 42.dp, height = 54.dp)
+                                .a1Card(radius = 13.dp, depth = 4.dp, border = if (isError) Color(0xFFD0303A) else A1Palette.Line),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Text(ch, style = MaterialTheme.typography.headlineMedium, color = A1Palette.Ink)
+                        }
+                    }
+                }
+                // Ô nhập thật nằm phủ, chữ trong suốt để chỉ thấy các ô.
+                Box(Modifier.matchParentSize().alpha(0f)) { inner() }
+            }
+        }
+    )
+}
+
+/**
+ * Bảng "Tạo phòng mới" (thiết kế PlayFlows): tên phòng, chế độ (chip), kiểu trận, quyền vào,
+ * mật khẩu khi riêng tư và nút TẠO PHÒNG.
+ */
+@Composable
+fun CreateRoomSheet(
     isLoading: Boolean,
     defaultRoomName: String,
-    mode: GameMode,
-    matchType: MatchType,
+    playerLevel: Int,
     onDismiss: () -> Unit,
-    onCreate: (String, String) -> Unit
+    onCreate: (GameMode, MatchType, String, String) -> Unit
 ) {
     val focusManager = LocalFocusManager.current
     var roomName by remember(defaultRoomName) { mutableStateOf("") }
     var roomPassword by remember { mutableStateOf("") }
     var isPrivate by remember { mutableStateOf(false) }
-    ArcadeDialog(
-        title = localized(TextKey.CreateNewRoom),
-        subtitle = localized(TextKey.YouAreHost),
-        onDismissRequest = onDismiss
-    ) {
-        Column(
-            modifier = Modifier.verticalScroll(rememberScrollState()),
-            verticalArrangement = Arrangement.spacedBy(12.dp)
-        ) {
-            OutlinedTextField(
-                value = roomName,
-                onValueChange = { roomName = it },
-                label = localized(TextKey.RoomName),
-                placeholder = defaultRoomName,
-                singleLine = true,
-                shape = RoundedCornerShape(14.dp),
-                modifier = Modifier.fillMaxWidth().testTag("create_room_name")
+    var mode by remember { mutableStateOf(GameMode.ORDER) }
+    var matchType by remember { mutableStateOf(MatchType.CASUAL) }
+    val onlineAllowed = LocalNewOnlineIntentAllowed.current
+    A1BottomSheet(title = localized(TextKey.CreateNewRoom), onDismissRequest = onDismiss) {
+        OutlinedTextField(
+            value = roomName,
+            onValueChange = { roomName = it },
+            label = localized(TextKey.RoomName),
+            placeholder = defaultRoomName,
+            singleLine = true,
+            leadingIcon = { Icon(Icons.Outlined.MeetingRoom, contentDescription = null) },
+            modifier = Modifier.fillMaxWidth().testTag("create_room_name")
+        )
+        Column {
+            A1FieldLabel(localized(TextKey.CreateRoomModeLabel))
+            androidx.compose.foundation.layout.FlowRow(
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                verticalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                selectableGameModes.forEach { option ->
+                    val unlocked = playerLevel >= option.unlockLevel
+                    ArcadeChoiceChip(
+                        label = option.displayName(),
+                        selected = option == mode,
+                        enabled = unlocked,
+                        leadingIcon = if (unlocked) null else Icons.Rounded.Lock,
+                        onClick = { mode = option },
+                        modifier = Modifier.testTag("game_mode:${option.name}")
+                    )
+                }
+            }
+        }
+        Column {
+            A1FieldLabel(localized(TextKey.CreateRoomTypeLabel))
+            ArcadeSegmentedControl(
+                labels = listOf(localized(TextKey.CasualShort), localized(TextKey.Ranked)),
+                selectedIndex = if (matchType == MatchType.RANKED) 1 else 0,
+                onSelected = { matchType = if (it == 1) MatchType.RANKED else MatchType.CASUAL },
+                itemTestTag = { index -> if (index == 1) "match_type:RANKED" else "match_type:CASUAL" }
             )
+        }
+        Column {
+            A1FieldLabel(localized(TextKey.CreateRoomAccessLabel))
             ArcadeSegmentedControl(
                 labels = listOf(localized(TextKey.Public), localized(TextKey.Private)),
                 selectedIndex = if (isPrivate) 1 else 0,
@@ -994,185 +1070,126 @@ private fun CreateRoomDialog(
                     if (index == 0) "create_room_public" else "create_room_privacy_toggle"
                 }
             )
-            Text(
-                localized(if (isPrivate) TextKey.PrivatePasswordRequired else TextKey.PublicNoPassword),
-                style = MaterialTheme.typography.bodySmall,
-                color = Color(0xFFA9BADC)
-            )
-            if (isPrivate) {
-                OutlinedTextField(
-                    value = roomPassword,
-                    onValueChange = { roomPassword = it },
-                    label = localized(TextKey.RoomPassword),
-                    singleLine = true,
-                    visualTransformation = PasswordVisualTransformation(),
-                    leadingIcon = { Icon(Icons.Default.Lock, null) },
-                    keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done),
-                    keyboardActions = KeyboardActions(onDone = { focusManager.clearFocus() }),
-                    shape = RoundedCornerShape(14.dp),
-                    modifier = Modifier.fillMaxWidth().testTag("create_room_password")
-                )
-            }
-            Surface(
-                modifier = Modifier.fillMaxWidth(),
-                shape = RoundedCornerShape(16.dp),
-                color = ArcadePalette.Navy800,
-                border = androidx.compose.foundation.BorderStroke(
-                    1.dp,
-                    ArcadePalette.OutlineDark.copy(alpha = 0.62f)
-                )
-            ) {
-                Row(
-                    modifier = Modifier.fillMaxWidth().padding(14.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(12.dp)
-                ) {
-                    Surface(
-                        modifier = Modifier.size(46.dp),
-                        shape = RoundedCornerShape(14.dp),
-                        color = ArcadePalette.Blue700
-                    ) {
-                        Box(contentAlignment = Alignment.Center) {
-                            Icon(
-                                imageVector = mode.modeIcon(),
-                                contentDescription = null,
-                                modifier = Modifier.size(24.dp),
-                                tint = ArcadePalette.Blue100
-                            )
-                        }
-                    }
-                    Column(
-                        modifier = Modifier.weight(1f),
-                        verticalArrangement = Arrangement.spacedBy(4.dp)
-                    ) {
-                        Text(mode.displayName(), color = Color.White, fontWeight = FontWeight.Black)
-                        Text(
-                            if (matchType == MatchType.RANKED) {
-                                localized(TextKey.RankedEloImpact)
-                            } else {
-                                localized(TextKey.CasualNoEloImpact)
-                            },
-                            style = MaterialTheme.typography.bodySmall,
-                            color = Color(0xFFA9BADC)
-                        )
-                    }
-                }
-            }
-            Column(
-                modifier = Modifier.fillMaxWidth(),
-                verticalArrangement = Arrangement.spacedBy(10.dp)
-            ) {
-                ArcadeActionButton(
-                    label = localized(TextKey.CreateRoom).uppercase(),
-                    style = ArcadeActionStyle.GOLD,
-                    enabled = LocalNewOnlineIntentAllowed.current && !isLoading && (!isPrivate || roomPassword.isNotEmpty()),
-                    onClick = {
-                        onCreate(
-                            roomName.trim().ifBlank { defaultRoomName },
-                            if (isPrivate) roomPassword else ""
-                        )
-                    },
-                    modifier = Modifier.fillMaxWidth().testTag("create_room_submit"),
-                    content = if (isLoading) {
-                        { CircularProgressIndicator(modifier = Modifier.size(20.dp), strokeWidth = 2.dp) }
-                    } else {
-                        null
-                    }
-                )
-                ArcadeActionButton(
-                    label = localized(TextKey.Cancel).uppercase(),
-                    style = ArcadeActionStyle.OUTLINE,
-                    enabled = !isLoading,
-                    onClick = onDismiss,
-                    modifier = Modifier.fillMaxWidth()
-                )
-            }
         }
+        if (isPrivate) {
+            OutlinedTextField(
+                value = roomPassword,
+                onValueChange = { roomPassword = it },
+                label = localized(TextKey.RoomPassword),
+                singleLine = true,
+                visualTransformation = PasswordVisualTransformation(),
+                leadingIcon = { Icon(Icons.Outlined.Key, null) },
+                keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done),
+                keyboardActions = KeyboardActions(onDone = { focusManager.clearFocus() }),
+                modifier = Modifier.fillMaxWidth().testTag("create_room_password")
+            )
+        }
+        ArcadeActionButton(
+            label = localized(TextKey.CreateRoomCaps),
+            style = ArcadeActionStyle.GOLD,
+            large = true,
+            enabled = onlineAllowed && !isLoading && (!isPrivate || roomPassword.isNotEmpty()),
+            onClick = {
+                onCreate(mode, matchType, roomName.trim().ifBlank { defaultRoomName }, if (isPrivate) roomPassword else "")
+            },
+            modifier = Modifier.fillMaxWidth().heightIn(min = 62.dp).testTag("create_room_submit"),
+            content = if (isLoading) {
+                { CircularProgressIndicator(modifier = Modifier.size(22.dp), strokeWidth = 2.dp, color = Color.White) }
+            } else {
+                null
+            }
+        )
     }
 }
 
+/** Thẻ phòng (".card.soft .rm"): icon chế độ, tên (+ khóa), "chủ · chế độ · kiểu", nhãn 1/2, nút VÀO. */
 @Composable
 private fun RoomCard(room: AvailableRoom, onClick: () -> Unit) {
-    Surface(
-        onClick = onClick,
-        enabled = LocalNewOnlineIntentAllowed.current,
-        modifier = Modifier.fillMaxWidth().testTag("room_item:${room.id}"),
-        shape = RoundedCornerShape(16.dp),
-        color = ArcadePalette.Navy800,
-        contentColor = Color.White,
-        border = androidx.compose.foundation.BorderStroke(1.dp, ArcadePalette.OutlineDark.copy(alpha = 0.55f))
+    val (iconBg, iconFg) = room.gameMode.roomIconColors()
+    val enabled = LocalNewOnlineIntentAllowed.current
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .testTag("room_item:${room.id}")
+            .a1Card(radius = 18.dp, depth = 3.dp)
+            .clip(RoundedCornerShape(18.dp))
+            .clickable(enabled = enabled, role = Role.Button, onClick = onClick)
+            .padding(horizontal = 16.dp, vertical = 14.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(10.dp)
     ) {
-        Row(
-            modifier = Modifier.fillMaxWidth().padding(11.dp),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(10.dp)
+        Box(
+            modifier = Modifier
+                .size(40.dp)
+                .background(iconBg, RoundedCornerShape(12.dp))
+                .border(2.dp, A1Palette.Line, RoundedCornerShape(12.dp)),
+            contentAlignment = Alignment.Center
         ) {
-            Surface(
-                modifier = Modifier.size(40.dp),
-                shape = RoundedCornerShape(12.dp),
-                color = Color.Transparent,
-                contentColor = ArcadePalette.Navy950
-            ) {
-                Box(
-                    modifier = Modifier.fillMaxSize().background(
-                        androidx.compose.ui.graphics.Brush.verticalGradient(
-                            listOf(Color(0xFFFFE46D), ArcadePalette.Gold500)
-                        ),
-                        RoundedCornerShape(12.dp)
-                    ),
-                    contentAlignment = Alignment.Center
-                ) {
+            Icon(room.gameMode.roomIcon(), contentDescription = null, tint = iconFg, modifier = Modifier.size(22.dp))
+        }
+        Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                Text(
+                    room.name,
+                    style = MaterialTheme.typography.titleMedium.copy(fontSize = 17.sp),
+                    color = A1Palette.Ink,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.weight(1f, fill = false)
+                )
+                if (room.requiresPassword) {
                     Icon(
-                        if (room.requiresPassword) Icons.Default.Lock else Icons.Default.MeetingRoom,
-                        contentDescription = localized(if (room.requiresPassword) TextKey.PrivateRoom else TextKey.PublicRoom),
-                        modifier = Modifier.size(22.dp)
+                        Icons.Rounded.Lock,
+                        contentDescription = localized(TextKey.PrivateRoom),
+                        tint = A1Palette.Muted,
+                        modifier = Modifier.size(16.dp)
                     )
                 }
             }
-            Column(
-                modifier = Modifier.weight(1f),
-                verticalArrangement = Arrangement.spacedBy(4.dp)
-            ) {
-                Text(
-                    room.name,
-                    style = MaterialTheme.typography.titleSmall,
-                    fontWeight = FontWeight.Black,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis
-                )
-                Text(
-                    localized(
-                        TextKey.RoomListSummary,
-                        "host" to room.hostName,
-                        "mode" to room.gameMode.displayName(),
-                        "matchType" to localized(if (room.matchType == MatchType.RANKED) TextKey.Ranked else TextKey.Casual)
-                    ),
-                    style = MaterialTheme.typography.bodySmall,
-                    color = Color(0xFFA9BADC),
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis
-                )
-            }
-
-            Surface(
-                shape = RoundedCornerShape(12.dp),
-                color = Color.Transparent,
-                border = androidx.compose.foundation.BorderStroke(1.dp, ArcadePalette.Blue300.copy(alpha = 0.72f))
-            ) {
-                Text(
-                    localized(TextKey.EnterRoom),
-                    modifier = Modifier.padding(horizontal = 12.dp, vertical = 9.dp),
-                    style = MaterialTheme.typography.labelMedium,
-                    fontWeight = FontWeight.Black,
-                    color = Color.White
-                )
-            }
+            Text(
+                "${room.hostName} · ${room.gameMode.displayName()} · ${localized(if (room.matchType == MatchType.RANKED) TextKey.Ranked else TextKey.CasualShort)}",
+                style = MaterialTheme.typography.bodySmall,
+                fontWeight = FontWeight.SemiBold,
+                color = A1Palette.Muted,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis
+            )
         }
+        // Danh sách chỉ gồm phòng đang chờ (chủ phòng + 1 chỗ trống).
+        A1Tag("1/2", A1TagTone.GREEN)
+        ArcadeActionButton(
+            label = localized(TextKey.EnterRoom),
+            style = ArcadeActionStyle.GOLD,
+            compact = true,
+            enabled = enabled,
+            onClick = onClick,
+            modifier = Modifier.width(IntrinsicSize.Max)
+        )
     }
 }
 
+private fun GameMode.roomIcon(): androidx.compose.ui.graphics.vector.ImageVector = when (this) {
+    GameMode.ORDER -> Icons.Rounded.GridView
+    GameMode.COMBO -> Icons.Rounded.Bolt
+    GameMode.RANDOM_TARGET -> Icons.Rounded.Shuffle
+    GameMode.SPEED_UP -> Icons.Rounded.Speed
+    GameMode.SURVIVAL -> Icons.Rounded.Favorite
+    GameMode.TEAM_2V2 -> Icons.Rounded.Groups
+    else -> Icons.Rounded.Timer
+}
+
+private fun GameMode.roomIconColors(): Pair<Color, Color> = when (this) {
+    GameMode.ORDER -> A1Palette.Blue2 to Color.White
+    GameMode.COMBO -> A1Palette.Yellow2 to Color(0xFF6A3300)
+    GameMode.RANDOM_TARGET -> A1Palette.Purple2 to Color.White
+    GameMode.SPEED_UP -> A1Palette.Red2 to Color.White
+    GameMode.SURVIVAL -> A1Palette.Green2 to Color.White
+    else -> A1Palette.Ink to Color.White
+}
+
+/** Hộp thoại vào phòng: ô icon khóa xanh, ô mật khẩu, VÀO PHÒNG + Huỷ (thiết kế "Phòng riêng"). */
 @Composable
-private fun JoinRoomDialog(
+fun JoinRoomDialog(
     room: AvailableRoom,
     onDismiss: () -> Unit,
     onJoin: (String) -> Unit
@@ -1185,9 +1202,10 @@ private fun JoinRoomDialog(
         } else {
             localized(TextKey.PublicJoinDescription, "room" to room.name, "host" to room.hostName)
         },
-        onDismissRequest = onDismiss
+        onDismissRequest = onDismiss,
+        heroIcon = if (room.requiresPassword) Icons.Rounded.Lock else Icons.Rounded.MeetingRoom,
+        heroTone = A1HeroTone.BLUE
     ) {
-
         if (room.requiresPassword) {
             OutlinedTextField(
                 value = password,
@@ -1195,24 +1213,24 @@ private fun JoinRoomDialog(
                 label = localized(TextKey.RoomPassword),
                 visualTransformation = PasswordVisualTransformation(),
                 singleLine = true,
-                leadingIcon = { Icon(Icons.Default.Lock, contentDescription = null) },
-                shape = RoundedCornerShape(14.dp),
+                leadingIcon = { Icon(Icons.Outlined.Key, contentDescription = null) },
                 modifier = Modifier.fillMaxWidth().testTag("join_room_password")
             )
         }
         Column(
             modifier = Modifier.fillMaxWidth(),
-            verticalArrangement = Arrangement.spacedBy(10.dp)
+            verticalArrangement = Arrangement.spacedBy(12.dp)
         ) {
             ArcadeActionButton(
-                label = localized(TextKey.JoinRoom).uppercase(),
+                label = localized(TextKey.JoinRoomCaps),
                 style = ArcadeActionStyle.GOLD,
+                large = true,
                 enabled = LocalNewOnlineIntentAllowed.current && (!room.requiresPassword || password.isNotBlank()),
                 onClick = { onJoin(password) },
-                modifier = Modifier.fillMaxWidth().testTag("join_room_submit")
+                modifier = Modifier.fillMaxWidth().heightIn(min = 62.dp).testTag("join_room_submit")
             )
             ArcadeActionButton(
-                label = localized(TextKey.Cancel).uppercase(),
+                label = localized(TextKey.CancelShort),
                 style = ArcadeActionStyle.OUTLINE,
                 onClick = onDismiss,
                 modifier = Modifier.fillMaxWidth()
@@ -1221,6 +1239,10 @@ private fun JoinRoomDialog(
     }
 }
 
+/**
+ * Phòng chờ theo thiết kế A1: thẻ MÃ PHÒNG (sao chép/chia sẻ + nhãn chế độ/kiểu trận),
+ * "Người chơi n/2" với hai thẻ người chơi và chữ VS, ghi chú, nút SẴN SÀNG và hàng Mời bạn/Rời phòng.
+ */
 @Composable
 private fun RoomWaiting(
     state: GameState,
@@ -1234,240 +1256,278 @@ private fun RoomWaiting(
 ) {
     val opponentFriend = state.social.friends.firstOrNull { it.userId == state.opponent.id }
     var shareError by remember(state.currentRoomId) { mutableStateOf<String?>(null) }
+    var copied by remember(state.currentRoomId) { mutableStateOf(false) }
     val defaultRoomTitle = localized(TextKey.Rooms)
     val shareSheetError = localized(TextKey.ShareSheetError)
+    val clipboard = androidx.compose.ui.platform.LocalClipboardManager.current
+    val roomCode = roomCodeOf(state.currentRoomId)
+    val share = {
+        state.currentRoomId?.let { roomId ->
+            shareError = null
+            onShareRoom(roomId, state.currentRoomName ?: defaultRoomTitle).onFailure { shareError = shareSheetError }
+        }
+    }
+    Column(
+        modifier = Modifier.fillMaxSize().a1Hills(bushes = false),
+        horizontalAlignment = Alignment.CenterHorizontally
+    ) {
     Column(
         horizontalAlignment = Alignment.Start,
-        verticalArrangement = Arrangement.spacedBy(16.dp),
-        modifier = Modifier.fillMaxWidth().verticalScroll(rememberScrollState())
+        verticalArrangement = Arrangement.spacedBy(12.dp),
+        modifier = Modifier.weight(1f).fillMaxWidth().verticalScroll(rememberScrollState())
     ) {
-        val roomCode = state.currentRoomId?.take(6)?.uppercase().orEmpty()
-        ArcadeIconHero(
-            kicker = if (state.isRoomHost && roomCode.isNotBlank()) localized(TextKey.JoinedRoomCode, "code" to roomCode) else localized(TextKey.JoinedRoom),
-            title = state.currentRoomName ?: localized(TextKey.GameRooms),
-            subtitle = if (state.isRoomHost) {
-                localized(TextKey.ShareCodeHint)
-            } else {
-                localized(TextKey.WaitHostStart)
-            },
-            icon = Icons.Default.MeetingRoom
-        )
+        // Thẻ mã phòng.
+        Column(
+            modifier = Modifier.fillMaxWidth().a1Card().padding(horizontal = 18.dp, vertical = 16.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Column(Modifier.weight(1f)) {
+                    Text(
+                        localized(TextKey.RoomCodeCaps),
+                        style = MaterialTheme.typography.labelMedium,
+                        fontWeight = FontWeight.ExtraBold,
+                        color = A1Palette.Muted
+                    )
+                    Text(
+                        roomCode,
+                        style = MaterialTheme.typography.displayMedium.copy(letterSpacing = 3.sp, lineHeight = 38.sp),
+                        color = A1Palette.Ink,
+                        modifier = Modifier.testTag("room_code")
+                    )
+                }
+                ArcadeHeaderIconButton(
+                    onClick = {
+                        clipboard.setText(androidx.compose.ui.text.AnnotatedString(roomCode))
+                        copied = true
+                    },
+                    modifier = Modifier.testTag("copy_room_code")
+                ) {
+                    Icon(
+                        if (copied) Icons.Rounded.Check else Icons.Rounded.ContentCopy,
+                        contentDescription = localized(if (copied) TextKey.Copied else TextKey.RoomCopyCode)
+                    )
+                }
+                androidx.compose.foundation.layout.Spacer(Modifier.width(8.dp))
+                ArcadeHeaderIconButton(
+                    onClick = { share() },
+                    enabled = state.currentRoomId != null,
+                    blue = true,
+                    modifier = Modifier.testTag("share_room")
+                ) {
+                    Icon(Icons.Rounded.Share, contentDescription = localized(TextKey.RoomShareCode))
+                }
+            }
+            androidx.compose.foundation.layout.FlowRow(
+                horizontalArrangement = Arrangement.spacedBy(6.dp),
+                verticalArrangement = Arrangement.spacedBy(6.dp)
+            ) {
+                A1Tag(localized(TextKey.ModeNumberCount, "mode" to state.gameMode.displayName()), A1TagTone.BLUE)
+                A1Tag(
+                    if (state.matchType == MatchType.RANKED) localized(TextKey.RankedEloImpact)
+                    else "${localized(TextKey.CasualShort)} · ${localized(TextKey.NoEloImpact)}",
+                    if (state.matchType == MatchType.RANKED) A1TagTone.PURPLE else A1TagTone.YELLOW
+                )
+            }
+        }
+        shareError?.let { Text(it, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall) }
 
+        val maxPlayers = if (state.gameMode == GameMode.TEAM_2V2) 4 else 2
         val playerCount = if (state.gameMode == GameMode.TEAM_2V2) {
             1 + state.teammates.count { it.id != null } + state.opponents.count { it.id != null }
         } else {
             if (state.hasOpponent) 2 else 1
         }
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.SpaceBetween,
-            verticalAlignment = Alignment.Bottom
-        ) {
-            Text(localized(TextKey.PlayersTitle), style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Black)
-            Text(
-                "$playerCount / ${if (state.gameMode == GameMode.TEAM_2V2) 4 else 2}",
-                style = MaterialTheme.typography.labelSmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant
-            )
-        }
-
+        A1OutlinedText(
+            text = localized(TextKey.RoomPlayersCount, "count" to playerCount, "max" to maxPlayers),
+            style = MaterialTheme.typography.titleLarge
+        )
         if (state.gameMode == GameMode.TEAM_2V2) {
-            val myTeamName = localized(if (state.player.teamId == "TEAM_A") TextKey.BlueTeam else TextKey.RedTeam)
-            val opponentTeamName = localized(if (state.player.teamId == "TEAM_A") TextKey.RedTeam else TextKey.BlueTeam)
-
-            Text(myTeamName, style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.primary, fontWeight = FontWeight.Bold)
-            RoomWaitingPlayerCard(localized(TextKey.You), state.player, isLocal = true)
-            if (state.teammates.isNotEmpty()) {
-                state.teammates.forEachIndexed { index, teammate ->
-                    val friend = state.social.friends.firstOrNull { it.userId == teammate.id }
-                    RoomWaitingPlayerCard(localized(TextKey.TeammateNumber, "number" to index + 1), teammate, isLocal = false, onViewInfo = if (friend == null) null else ({ onOpenFriendProfile(friend.userId) }))
-                }
-            } else {
-                RoomWaitingPlayerCard(localized(TextKey.Teammate), PlayerState(localized(TextKey.WaitingPlayer)), isLocal = false)
-            }
-
-            Text(opponentTeamName, style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.error, fontWeight = FontWeight.Bold, modifier = Modifier.padding(top = 16.dp))
-            val allOpponents = state.opponents.toMutableList()
-            while (allOpponents.size < 2) {
-                allOpponents.add(PlayerState(localized(TextKey.WaitingPlayer)))
-            }
-            allOpponents.forEachIndexed { index, opp ->
-                val friend = state.social.friends.firstOrNull { it.userId == opp.id }
-                RoomWaitingPlayerCard(localized(TextKey.OpponentNumber, "number" to index + 1), opp, isLocal = false, onViewInfo = if (friend == null) null else ({ onOpenFriendProfile(friend.userId) }))
+            // Chế độ cũ (không còn tạo mới): hiển thị dạng danh sách.
+            RoomPlayerCard(state.player, isLocal = true, isHost = state.isRoomHost, latency = state.latencyMillis, modifier = Modifier.fillMaxWidth())
+            (state.teammates + state.opponents).forEach { other ->
+                RoomPlayerCard(other, isLocal = false, isHost = false, latency = null, modifier = Modifier.fillMaxWidth())
             }
         } else {
-            RoomWaitingPlayerCard(
-                localized(if (state.isRoomHost) TextKey.HostYou else TextKey.You),
-                state.player,
-                isLocal = true
-            )
-            RoomWaitingPlayerCard(
-                localized(if (state.isRoomHost) TextKey.Guest else TextKey.Host),
-                if (state.hasOpponent) state.opponent else PlayerState(localized(TextKey.WaitingForPlayer)),
-                isLocal = false,
-                onViewInfo = if (opponentFriend == null) null else ({
-                    onOpenFriendProfile(opponentFriend.userId)
-                })
-            )
-        }
-
-        Surface(
-            modifier = Modifier.fillMaxWidth(),
-            shape = RoundedCornerShape(16.dp),
-            color = ArcadePalette.Navy800,
-            contentColor = Color.White,
-            border = androidx.compose.foundation.BorderStroke(1.dp, ArcadePalette.OutlineDark.copy(alpha = 0.58f))
-        ) {
             Row(
-                modifier = Modifier.fillMaxWidth().padding(14.dp),
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                modifier = Modifier.fillMaxWidth().height(IntrinsicSize.Min),
+                horizontalArrangement = Arrangement.spacedBy(10.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                Column(
-                    modifier = Modifier.weight(1f),
-                    verticalArrangement = Arrangement.spacedBy(4.dp)
-                ) {
-                    Text(
-                        localized(TextKey.ModeNumberCount, "mode" to state.gameMode.displayName()),
-                        fontWeight = FontWeight.Black
-                    )
-                    Text(
-                        localized(if (state.matchType == MatchType.RANKED) TextKey.RankedEloImpact else TextKey.CasualNoEloImpact),
-                        style = MaterialTheme.typography.bodySmall,
-                        color = Color(0xFFA9BADC)
-                    )
+                // Chủ phòng luôn ở bên trái như thiết kế.
+                val local: @Composable (Modifier) -> Unit = { m ->
+                    RoomPlayerCard(state.player, isLocal = true, isHost = state.isRoomHost, latency = state.latencyMillis, modifier = m)
                 }
-                state.latencyMillis?.let {
-                    Text(
-                        connectionQualityLabel(it),
-                        style = MaterialTheme.typography.labelSmall,
-                        color = ArcadePalette.Mint400
-                    )
+                val other: @Composable (Modifier) -> Unit = { m ->
+                    if (state.hasOpponent) {
+                        RoomPlayerCard(
+                            state.opponent,
+                            isLocal = false,
+                            isHost = !state.isRoomHost,
+                            latency = null,
+                            onViewInfo = opponentFriend?.let { f -> { onOpenFriendProfile(f.userId) } },
+                            onKick = if (state.isRoomHost) onKickOpponent else null,
+                            modifier = m
+                        )
+                    } else {
+                        RoomEmptySlot(m)
+                    }
                 }
+                if (state.isRoomHost) local(Modifier.weight(1f).fillMaxHeight()) else other(Modifier.weight(1f).fillMaxHeight())
+                A1OutlinedText(
+                    text = "VS",
+                    style = MaterialTheme.typography.headlineLarge,
+                    outline = A1Palette.RedDeep,
+                    outlineWidth = 3.dp
+                )
+                if (state.isRoomHost) other(Modifier.weight(1f).fillMaxHeight()) else local(Modifier.weight(1f).fillMaxHeight())
             }
         }
-
-        ArcadeActionButton(
-            label = localized(TextKey.ShareRoomCode),
-            icon = Icons.Default.Share,
-            style = ArcadeActionStyle.OUTLINE,
-            onClick = {
-                val roomId = state.currentRoomId ?: return@ArcadeActionButton
-                shareError = null
-                onShareRoom(roomId, state.currentRoomName ?: defaultRoomTitle).onFailure {
-                    shareError = shareSheetError
-                }
-            },
-            enabled = state.currentRoomId != null,
-            modifier = Modifier.fillMaxWidth().testTag("share_room")
-        )
-        shareError?.let {
-            Text(it, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall)
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .background(Color.White.copy(alpha = 0.9f), RoundedCornerShape(20.dp))
+                .border(3.dp, A1Palette.Line, RoundedCornerShape(20.dp))
+                .padding(horizontal = 14.dp, vertical = 10.dp),
+            horizontalArrangement = Arrangement.spacedBy(6.dp, Alignment.CenterHorizontally),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Icon(Icons.Rounded.Info, contentDescription = null, tint = A1Palette.Blue2, modifier = Modifier.size(18.dp))
+            Text(
+                localized(
+                    if (state.player.isReady && state.hasOpponent && !state.opponent.isReady) TextKey.WaitingForReady else TextKey.RoomReadyInfo
+                ),
+                style = MaterialTheme.typography.bodySmall,
+                fontWeight = FontWeight.Bold,
+                color = A1Palette.Ink,
+                textAlign = TextAlign.Center
+            )
         }
-
         state.error?.let { Text(it, color = MaterialTheme.colorScheme.error) }
-
+    }
+    Column(
+        modifier = Modifier.fillMaxWidth().padding(top = 8.dp),
+        verticalArrangement = Arrangement.spacedBy(14.dp)
+    ) {
         ArcadeActionButton(
             label = localized(if (state.player.isReady) TextKey.CancelReady else TextKey.ReadyAction),
-            style = ArcadeActionStyle.GOLD,
+            style = if (state.player.isReady) ArcadeActionStyle.OUTLINE else ArcadeActionStyle.GOLD,
+            hero = !state.player.isReady,
             onClick = { onSetReady(!state.player.isReady) },
             enabled = LocalNewOnlineIntentAllowed.current && state.connectionStatus == ConnectionStatus.CONNECTED && state.hasOpponent,
-            modifier = Modifier.fillMaxWidth()
+            modifier = Modifier.fillMaxWidth().heightIn(min = 70.dp).testTag("room_ready")
         )
-        if (state.player.isReady) {
-            val waitingForOthers = if (state.gameMode == GameMode.TEAM_2V2) {
-                (state.teammates + state.opponents).any { !it.isReady && it.id != null }
-            } else {
-                state.hasOpponent && !state.opponent.isReady
+        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+            if (!isGuest) {
+                ArcadeActionButton(
+                    label = localized(TextKey.RoomInviteShort),
+                    icon = Icons.Rounded.PersonAdd,
+                    style = ArcadeActionStyle.PRIMARY,
+                    onClick = onOpenFriends,
+                    modifier = Modifier.weight(1f).testTag("room_invite")
+                )
             }
-            if (waitingForOthers) {
-                Text(localized(TextKey.WaitingForReady), color = MaterialTheme.colorScheme.primary)
-            }
+            ArcadeActionButton(
+                label = localized(if (state.isRoomHost) TextKey.RoomCloseShort else TextKey.RoomLeaveShort),
+                style = ArcadeActionStyle.OUTLINE,
+                onClick = onLeaveRoom,
+                modifier = Modifier.weight(1f).testTag("room_leave")
+            )
         }
-
-        if (state.isRoomHost) {
-            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                if (!isGuest) {
-                    ArcadeActionButton(
-                        label = localized(TextKey.InviteFriends),
-                        icon = Icons.Default.Group,
-                        style = ArcadeActionStyle.OUTLINE,
-                        onClick = onOpenFriends,
-                        modifier = Modifier.weight(1f)
-                    )
-                }
-                if (state.hasOpponent) {
-                    ArcadeActionButton(
-                        label = localized(TextKey.Kick),
-                        style = ArcadeActionStyle.OUTLINE,
-                        onClick = onKickOpponent,
-                        modifier = Modifier.weight(1f)
-                    )
-                }
-            }
-        }
-        ArcadeActionButton(
-            label = localized(if (state.isRoomHost) TextKey.CloseRoom else TextKey.LeaveRoom),
-            style = ArcadeActionStyle.DANGER,
-            onClick = onLeaveRoom,
-            modifier = Modifier.fillMaxWidth()
-        )
+        androidx.compose.foundation.layout.Spacer(Modifier.height(8.dp))
+    }
     }
 }
 
+/** Thẻ người chơi trong phòng chờ (".card.pl"): avatar khung 112dp, tên, vai trò, trạng thái, độ trễ. */
 @Composable
-private fun RoomWaitingPlayerCard(
-    label: String,
+private fun RoomPlayerCard(
     player: PlayerState,
     isLocal: Boolean,
-    onViewInfo: (() -> Unit)? = null
+    isHost: Boolean,
+    latency: Long?,
+    modifier: Modifier = Modifier,
+    onViewInfo: (() -> Unit)? = null,
+    onKick: (() -> Unit)? = null
 ) {
-    Surface(
-        modifier = Modifier.fillMaxWidth().clickable(enabled = onViewInfo != null) { onViewInfo?.invoke() },
-        shape = RoundedCornerShape(16.dp),
-        color = ArcadePalette.Navy800,
-        contentColor = Color.White,
-        border = androidx.compose.foundation.BorderStroke(
-            1.dp,
-            if (isLocal) ArcadePalette.Blue300.copy(alpha = 0.72f) else ArcadePalette.OutlineDark.copy(alpha = 0.55f)
-        )
+    Column(
+        modifier = modifier
+            .testTag(if (isLocal) "room_player:local" else "room_player:other")
+            .a1Card(border = if (isLocal) A1Palette.Blue2 else A1Palette.Line)
+            .clip(RoundedCornerShape(A1Dimens.CardRadius))
+            .clickable(enabled = onViewInfo != null) { onViewInfo?.invoke() }
+            .padding(horizontal = 10.dp, vertical = 12.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.spacedBy(6.dp)
     ) {
-        Row(
-            modifier = Modifier.fillMaxWidth().padding(11.dp),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(12.dp)
-        ) {
-            PlayerAvatar(
-                displayName = player.name,
-                avatarId = player.avatarId,
-                userId = player.id,
-                frameId = player.frameId,
-                size = 52.dp
-            )
-            Column(
-                modifier = Modifier.weight(1f),
-                verticalArrangement = Arrangement.spacedBy(4.dp)
-            ) {
-                Text(label, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                Text(player.name, fontWeight = FontWeight.Bold)
-            }
-            Surface(
-                shape = RoundedCornerShape(10.dp),
-                color = if (player.isReady) ArcadePalette.Mint600.copy(alpha = 0.2f) else ArcadePalette.Navy950,
-                border = androidx.compose.foundation.BorderStroke(
-                    1.dp,
-                    if (player.isReady) ArcadePalette.Mint400.copy(alpha = 0.7f) else ArcadePalette.OutlineDark.copy(alpha = 0.5f)
+        PlayerAvatar(
+            displayName = player.name,
+            avatarId = player.avatarId,
+            userId = player.id,
+            frameId = player.frameId,
+            size = 104.dp
+        )
+        Text(player.name, style = MaterialTheme.typography.titleMedium, color = A1Palette.Ink, maxLines = 1, overflow = TextOverflow.Ellipsis)
+        when {
+            isHost -> A1Tag(localized(TextKey.Host), A1TagTone.INK)
+            isLocal -> A1Tag(localized(TextKey.MatchmakingYou), A1TagTone.BLUE)
+        }
+        // Chủ phòng chỉ mang nhãn "Chủ phòng" như thiết kế; viền xanh của thẻ cho biết đó là bạn.
+        if (player.isReady) {
+            A1Tag(localized(TextKey.ReadyStatus), A1TagTone.GREEN, icon = Icons.Rounded.Check)
+        } else {
+            A1Tag(localized(TextKey.RoomWaitingStatus), A1TagTone.YELLOW)
+        }
+        latency?.let {
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(2.dp)) {
+                Icon(
+                    if (it < 80) Icons.Rounded.SignalCellularAlt else Icons.Rounded.SignalCellularAlt2Bar,
+                    contentDescription = null,
+                    tint = if (it < 80) A1Palette.Green2 else A1Palette.Yellow3,
+                    modifier = Modifier.size(14.dp)
                 )
-            ) {
-                Text(
-                    localized(if (player.isReady) TextKey.ReadyStatus else TextKey.WaitingStatus),
-                    modifier = Modifier.padding(horizontal = 9.dp, vertical = 6.dp),
-                    style = MaterialTheme.typography.labelSmall,
-                    fontWeight = FontWeight.Black,
-                    color = if (player.isReady) ArcadePalette.Mint400 else Color(0xFFA9BADC)
-                )
+                Text(connectionQualityLabel(it), style = MaterialTheme.typography.bodySmall, fontWeight = FontWeight.SemiBold, color = A1Palette.Muted)
             }
         }
+        onKick?.let {
+            Text(
+                localized(TextKey.RoomKickShort),
+                style = MaterialTheme.typography.labelLarge,
+                fontWeight = FontWeight.ExtraBold,
+                color = A1Palette.RedText,
+                modifier = Modifier
+                    .clip(RoundedCornerShape(10.dp))
+                    .clickable(role = Role.Button, onClick = it)
+                    .padding(horizontal = 10.dp, vertical = 6.dp)
+                    .testTag("room_kick")
+            )
+        }
+    }
+}
+
+/** Ô trống khi chưa có đối thủ: thẻ viền nét đứt, biểu tượng chờ. */
+@Composable
+private fun RoomEmptySlot(modifier: Modifier = Modifier) {
+    Column(
+        modifier = modifier
+            .heightIn(min = 200.dp)
+            .background(Color.White.copy(alpha = 0.8f), RoundedCornerShape(A1Dimens.CardRadius))
+            .drawBehind {
+                drawRoundRect(
+                    A1Palette.Line,
+                    style = androidx.compose.ui.graphics.drawscope.Stroke(
+                        width = 3.dp.toPx(),
+                        pathEffect = androidx.compose.ui.graphics.PathEffect.dashPathEffect(floatArrayOf(10.dp.toPx(), 6.dp.toPx()))
+                    ),
+                    cornerRadius = androidx.compose.ui.geometry.CornerRadius(A1Dimens.CardRadius.toPx())
+                )
+            }
+            .padding(14.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.spacedBy(10.dp, Alignment.CenterVertically)
+    ) {
+        CircularProgressIndicator(modifier = Modifier.size(36.dp), strokeWidth = 3.dp, color = A1Palette.Muted)
+        Text(localized(TextKey.RoomWaitingSlot), style = MaterialTheme.typography.titleSmall, color = A1Palette.Muted, textAlign = TextAlign.Center)
     }
 }
 
@@ -1478,95 +1538,63 @@ private fun connectionQualityLabel(latencyMillis: Long): String = when {
     else -> localized(TextKey.LatencySlow, "latency" to latencyMillis)
 }
 
+/** Đếm ngược vào trận (thiết kế PlayFlows): hai avatar khung + VS, tên, số đếm lớn, nhãn chế độ. */
 @Composable
 private fun MatchedStatus(state: GameState, onOpenFriendProfile: (String) -> Unit) {
     val opponentFriend = state.social.friends.firstOrNull { it.userId == state.opponent.id }
     Column(
         horizontalAlignment = Alignment.CenterHorizontally,
-        verticalArrangement = Arrangement.spacedBy(20.dp),
-        modifier = Modifier.fillMaxWidth().verticalScroll(rememberScrollState())
+        verticalArrangement = Arrangement.spacedBy(18.dp),
+        modifier = Modifier
+            .fillMaxSize()
+            .windowInsetsPadding(WindowInsets.safeDrawing.only(WindowInsetsSides.Top))
+            .a1Hills(bushes = false)
+            .drawBehind { drawLightRays(androidx.compose.ui.geometry.Offset(size.width / 2f, size.height * 0.55f), 320.dp.toPx()) }
+            .verticalScroll(rememberScrollState())
+            .padding(top = 90.dp)
+            .testTag("match_countdown")
     ) {
-        ArcadeIconHero(
-            kicker = localized(TextKey.OpponentReady),
-            title = localized(TextKey.MatchStarting),
-            subtitle = localized(
-                TextKey.ModeNumberCount,
-                "mode" to "${state.gameMode.displayName()} • ${localized(if (state.matchType == MatchType.RANKED) TextKey.Ranked else TextKey.Casual)}"
-            ),
-            icon = Icons.Default.Group,
-            accent = ArcadePalette.Coral600
-        )
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(8.dp),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            PlayerMatchedCard(
-                player = state.player,
-                isLocal = true,
-                modifier = Modifier.weight(1f)
-            )
-            Text(localized(TextKey.Versus), style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Black, color = Color.White)
-            PlayerMatchedCard(
-                player = state.opponent,
-                isLocal = false,
-                onViewInfo = if (opponentFriend == null) null else ({
-                    onOpenFriendProfile(opponentFriend.userId)
-                }),
-                modifier = Modifier.weight(1f)
-            )
+        // Mỗi tên nằm ngay dưới avatar của người đó; VS căn giữa theo chiều cao avatar.
+        Row(verticalAlignment = Alignment.Top, horizontalArrangement = Arrangement.spacedBy(14.dp)) {
+            CountdownPlayer(state.player)
+            Box(Modifier.height(110.dp), contentAlignment = Alignment.Center) {
+                A1OutlinedText(text = "VS", style = MaterialTheme.typography.displayMedium, outline = A1Palette.RedDeep, outlineWidth = 3.dp)
+            }
+            Box(Modifier.clickable(enabled = opponentFriend != null) { opponentFriend?.let { onOpenFriendProfile(it.userId) } }) {
+                CountdownPlayer(state.opponent)
+            }
         }
-        Text(
-            "${state.countdown ?: 3}",
-            style = MaterialTheme.typography.displayLarge.copy(fontSize = 120.sp, fontWeight = FontWeight.Black),
-            color = ArcadePalette.Gold500
+        A1OutlinedText(
+            text = "${state.countdown ?: 3}",
+            style = MaterialTheme.typography.displayLarge.copy(fontSize = 150.sp, lineHeight = 160.sp),
+            outline = A1Palette.YellowDeep,
+            outlineWidth = 6.dp,
+            modifier = Modifier.padding(top = 20.dp).semantics { liveRegion = LiveRegionMode.Assertive }
+        )
+        A1Tag(
+            "${state.gameMode.displayName()} · ${localized(if (state.matchType == MatchType.RANKED) TextKey.Ranked else TextKey.CasualShort)}",
+            A1TagTone.INK,
+            large = true
         )
     }
 }
 
 @Composable
-private fun PlayerMatchedCard(
-    player: PlayerState,
-    isLocal: Boolean,
-    onViewInfo: (() -> Unit)? = null,
-    modifier: Modifier = Modifier
-) {
-    Surface(
-        modifier = modifier.clickable(enabled = onViewInfo != null) { onViewInfo?.invoke() },
-        shape = RoundedCornerShape(18.dp),
-        color = ArcadePalette.Navy800,
-        contentColor = Color.White,
-        border = androidx.compose.foundation.BorderStroke(
-            1.dp,
-            if (isLocal) ArcadePalette.Blue300.copy(alpha = 0.75f) else ArcadePalette.Coral400.copy(alpha = 0.75f)
-        )
+private fun CountdownPlayer(player: PlayerState) {
+    Column(
+        modifier = Modifier.width(120.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.spacedBy(10.dp)
     ) {
-        Column(
-            modifier = Modifier.fillMaxWidth().padding(horizontal = 10.dp, vertical = 14.dp),
-            horizontalAlignment = Alignment.CenterHorizontally,
-            verticalArrangement = Arrangement.spacedBy(8.dp)
-        ) {
-            Text(
-                localized(if (isLocal) TextKey.LocalPlayerLabel else TextKey.OpponentLabel),
-                style = MaterialTheme.typography.labelSmall,
-                color = if (isLocal) ArcadePalette.Blue300 else ArcadePalette.Coral400,
-                fontWeight = FontWeight.Bold
-            )
-            PlayerAvatar(
-                displayName = player.name,
-                avatarId = player.avatarId,
-                userId = player.id,
-                frameId = player.frameId,
-                size = 76.dp
-            )
-            Text(
-                player.name,
-                style = MaterialTheme.typography.titleMedium,
-                fontWeight = FontWeight.Bold,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis
-            )
-        }
+        PlayerAvatar(player.name, player.avatarId, player.id, player.frameId, size = 110.dp)
+        A1OutlinedText(
+            text = player.name,
+            style = MaterialTheme.typography.titleMedium,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+            textAlign = TextAlign.Center,
+            modifier = Modifier.fillMaxWidth()
+        )
     }
 }
 

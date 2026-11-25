@@ -131,8 +131,8 @@ class RoomLobbyLocalizationTest {
     @Test
     fun `room connection and match start status resolves explicitly in Vietnamese and English`() {
         val expected = mapOf(
-            AppLanguage.ENGLISH to listOf("{latency} ms • Good", "{latency} ms • Stable", "{latency} ms • Slow", "OPPONENT READY", "The match is about to start"),
-            AppLanguage.VIETNAMESE to listOf("{latency} ms • Tốt", "{latency} ms • Ổn định", "{latency} ms • Chậm", "ĐỐI THỦ ĐÃ SẴN SÀNG", "Trận đấu sắp bắt đầu"),
+            AppLanguage.ENGLISH to listOf("{latency} ms · Good", "{latency} ms · Stable", "{latency} ms · Slow", "OPPONENT READY", "The match is about to start"),
+            AppLanguage.VIETNAMESE to listOf("{latency} ms · Tốt", "{latency} ms · Ổn định", "{latency} ms · Chậm", "ĐỐI THỦ ĐÃ SẴN SÀNG", "Trận đấu sắp bắt đầu"),
         )
         val keys = listOf(
             TextKey.LatencyGood,

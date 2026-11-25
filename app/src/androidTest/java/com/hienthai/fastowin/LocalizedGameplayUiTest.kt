@@ -48,7 +48,8 @@ class LocalizedGameplayUiTest {
         }
 
         composeRule.onNodeWithText("PLAY NOW").assertIsDisplayed()
-        composeRule.onNodeWithText("Explore").assertIsDisplayed()
+        // A1: trang chủ dùng các ô lối tắt thay cho mục "Explore".
+        composeRule.onNodeWithText("Tournament").performScrollTo().assertIsDisplayed()
     }
 
     @Test
@@ -57,7 +58,8 @@ class LocalizedGameplayUiTest {
             LocalizedLobbyScreen(state = lobbyState(LobbyStage.ROOM_BROWSER), isGuest = false)
         }
 
-        composeRule.onNodeWithText("PHÒNG CÔNG KHAI").assertIsDisplayed()
+        // A1: danh sách phòng mở đầu bằng hàng nút Tạo phòng / Nhập mã.
+        composeRule.onNodeWithText("Nhập mã").assertIsDisplayed()
         composeRule.onNodeWithText("Tạo phòng", ignoreCase = true).performScrollTo().assertIsDisplayed()
     }
 

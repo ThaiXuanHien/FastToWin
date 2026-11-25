@@ -397,7 +397,8 @@ private fun ChatComposer(enabled: Boolean, onSend: (String) -> Boolean) {
         AppOutlinedTextField(
             value = draft,
             onValueChange = { draft = it.take(CLAN_CHAT_MAX_LENGTH + 20) },
-            label = localized(TextKey.ClanChatInputHint),
+            // Gợi ý nằm trong ô (không có nhãn phía trên) để ô nhập còn dùng được weight trong hàng.
+            placeholder = localized(TextKey.ClanChatInputHint),
             enabled = enabled,
             maxLines = 4,
             isError = tooLong,

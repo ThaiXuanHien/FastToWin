@@ -57,6 +57,7 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.ui.window.Dialog
@@ -101,6 +102,8 @@ fun ArcadeActionButton(
     compact: Boolean = false,
     /** Nút CTA lớn (vd. CHƠI NGAY): chữ và icon to hơn. */
     hero: Boolean = false,
+    /** Nút ".btn.lg" của thiết kế (TẠO PHÒNG, TÌM PHÒNG…): chữ viền 24sp. */
+    large: Boolean = false,
     content: (@Composable RowScope.() -> Unit)? = null
 ) {
     val colors = if (!enabled) A1ButtonDefaults.Disabled else when (style) {
@@ -134,7 +137,7 @@ fun ArcadeActionButton(
         radius = radius,
         depth = depth,
         pressed = pressed && enabled,
-        shine = hero && enabled,
+        shine = (hero || large) && enabled,
         modifier = modifier
             .then(breathe?.let { s -> Modifier.graphicsLayer { scaleX = s.value; scaleY = s.value } } ?: Modifier)
             .semantics(mergeDescendants = true) {
@@ -164,16 +167,16 @@ fun ArcadeActionButton(
                         Icon(it, contentDescription = null, modifier = Modifier.size(if (hero) 34.dp else if (compact) 20.dp else 24.dp))
                         Box(modifier = Modifier.width(8.dp))
                     }
-                    if (hero && enabled) {
+                    if ((hero || large) && enabled) {
                         // CTA lớn: chữ trắng viền đậm theo màu đế (như "CHƠI NGAY" trong thiết kế).
                         A1OutlinedText(
                             text = label,
-                            style = MaterialTheme.typography.displayMedium.copy(
+                            style = (if (hero) MaterialTheme.typography.displayMedium else MaterialTheme.typography.headlineMedium).copy(
                                 fontWeight = FontWeight.ExtraBold,
                                 shadow = a1TextShadow(colors.textShadow)
                             ),
                             outline = colors.textShadow ?: colors.border,
-                            outlineWidth = 4.dp,
+                            outlineWidth = if (hero) 4.dp else 3.dp,
                             textAlign = TextAlign.Center
                         )
                     } else {
@@ -315,8 +318,12 @@ fun ArcadeDialog(
     showCloseButton: Boolean = false,
     scrollableContent: Boolean = false,
     fixedActions: (@Composable () -> Unit)? = null,
+    /** Ô icon lớn nhô lên mép trên (thiết kế A1 cho nhập mã, phòng riêng…); khi có, tiêu đề căn giữa. */
+    heroIcon: ImageVector? = null,
+    heroTone: A1HeroTone = A1HeroTone.PURPLE,
     content: @Composable () -> Unit
 ) {
+    val centered = heroIcon != null
     Dialog(
         onDismissRequest = onDismissRequest,
         properties = arcadeDialogProperties()
@@ -326,7 +333,8 @@ fun ArcadeDialog(
                 modifier = Modifier.fillMaxSize().padding(horizontal = 10.dp, vertical = 12.dp),
                 contentAlignment = Alignment.Center
             ) {
-                val dialogMaxHeight = (maxHeight - 24.dp).coerceAtLeast(240.dp)
+                val dialogMaxHeight = (maxHeight - 24.dp - if (centered) 44.dp else 0.dp).coerceAtLeast(240.dp)
+                Box(Modifier.padding(top = if (centered) 44.dp else 0.dp)) {
                 Surface(
                     modifier = modifier
                         .widthIn(max = 420.dp)
@@ -344,8 +352,9 @@ fun ArcadeDialog(
                             .testTag("arcade_dialog")
                             .a1Card(radius = 24.dp)
                             .then(if (scrollableContent && fixedActions == null) Modifier.verticalScroll(rememberScrollState()) else Modifier)
-                            .padding(18.dp),
-                        verticalArrangement = Arrangement.spacedBy(12.dp)
+                            .padding(start = 18.dp, end = 18.dp, bottom = 18.dp, top = if (centered) 54.dp else 18.dp),
+                        verticalArrangement = Arrangement.spacedBy(12.dp),
+                        horizontalAlignment = if (centered) Alignment.CenterHorizontally else Alignment.Start
                     ) {
                         if (showCloseButton) {
                             Row(
@@ -367,13 +376,19 @@ fun ArcadeDialog(
                                 }
                             }
                         } else {
-                            Text(title, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Black)
+                            Text(
+                                title,
+                                style = if (centered) MaterialTheme.typography.headlineSmall else MaterialTheme.typography.titleLarge,
+                                fontWeight = FontWeight.Black,
+                                textAlign = if (centered) TextAlign.Center else null
+                            )
                         }
                         subtitle?.let {
                             Text(
                                 it,
-                                style = MaterialTheme.typography.bodySmall,
-                                color = A1Palette.Muted
+                                style = if (centered) MaterialTheme.typography.bodyMedium else MaterialTheme.typography.bodySmall,
+                                color = if (centered) A1Palette.Ink else A1Palette.Muted,
+                                textAlign = if (centered) TextAlign.Center else null
                             )
                         }
                         if (fixedActions != null) {
@@ -385,6 +400,8 @@ fun ArcadeDialog(
                             fixedActions()
                         } else content()
                     }
+                }
+                heroIcon?.let { A1HeroIcon(it, heroTone, Modifier.align(Alignment.TopCenter).offset(y = (-44).dp)) }
                 }
             }
         }
@@ -522,7 +539,7 @@ private val A1SegmentSelectedText = Color(0xFF5A2B00)
  * Đế vẽ ngoài vùng cắt của Surface nên vẫn thấy dưới mặt tab.
  */
 private fun Modifier.a1SegmentSelected(): Modifier = this
-    .padding(bottom = 3.dp)
+    // Đế vẽ tràn 3dp xuống dưới (trong lề 4dp của thanh) để tab chọn vẫn cao 48dp như các tab khác.
     .drawBehind {
         val r = 12.dp.toPx()
         drawRoundRect(A1Palette.YellowDeep, topLeft = Offset(0f, 3.dp.toPx()), size = size, cornerRadius = androidx.compose.ui.geometry.CornerRadius(r))
@@ -566,23 +583,35 @@ fun ArcadeChoiceChip(
     selected: Boolean,
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
-    enabled: Boolean = true
+    enabled: Boolean = true,
+    leadingIcon: ImageVector? = null
 ) {
+    // ".chip" của thiết kế: viên thuốc trắng viền navy 2dp; chip đang chọn nền navy chữ trắng.
     Surface(
         onClick = onClick,
         enabled = enabled,
-        modifier = modifier.heightIn(min = 44.dp),
-        shape = RoundedCornerShape(12.dp),
-        color = if (selected) A1Palette.Highlight else Color.White,
-        contentColor = if (enabled) A1Palette.Ink else A1Palette.Muted.copy(alpha = 0.6f),
-        border = BorderStroke(2.dp, if (selected) A1Palette.Line else A1Palette.SurfaceAlt2),
+        modifier = modifier.heightIn(min = 40.dp).semantics { this.selected = selected },
+        shape = RoundedCornerShape(20.dp),
+        color = if (selected) A1Palette.Ink else Color.White,
+        contentColor = when {
+            !enabled -> A1Palette.Muted.copy(alpha = 0.6f)
+            selected -> Color.White
+            else -> A1Palette.Ink
+        },
+        border = BorderStroke(2.dp, if (enabled) A1Palette.Line else A1Palette.SurfaceAlt2),
         shadowElevation = 0.dp
     ) {
-        Box(
-            modifier = Modifier.padding(horizontal = 14.dp, vertical = 10.dp),
-            contentAlignment = Alignment.Center
+        Row(
+            modifier = Modifier.padding(horizontal = 14.dp, vertical = 8.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(6.dp)
         ) {
-            Text(label, style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.Black)
+            leadingIcon?.let { Icon(it, contentDescription = null, modifier = Modifier.size(16.dp)) }
+            Text(
+                label,
+                style = MaterialTheme.typography.titleSmall.copy(fontSize = 14.sp, lineHeight = 18.sp),
+                fontWeight = FontWeight.ExtraBold
+            )
         }
     }
 }

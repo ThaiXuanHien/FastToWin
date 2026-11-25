@@ -36,8 +36,8 @@ internal val englishCorePlayTexts = mapOf(
     TextKey.ModeNumberCount to "{mode} • 50 numbers", TextKey.ShareRoomCode to "SHARE ROOM CODE", TextKey.ShareSheetError to "Could not open sharing. Please try again.",
     TextKey.CancelReady to "CANCEL READY", TextKey.ReadyAction to "READY", TextKey.WaitingForReady to "Waiting for everyone to be ready…",
     TextKey.InviteFriends to "INVITE FRIENDS", TextKey.Kick to "KICK", TextKey.CloseRoom to "CLOSE ROOM", TextKey.LeaveRoom to "LEAVE ROOM",
-    TextKey.ReadyStatus to "READY", TextKey.WaitingStatus to "WAITING", TextKey.LatencyGood to "{latency} ms • Good",
-    TextKey.LatencyStable to "{latency} ms • Stable", TextKey.LatencySlow to "{latency} ms • Slow",
+    TextKey.ReadyStatus to "READY", TextKey.WaitingStatus to "WAITING", TextKey.LatencyGood to "{latency} ms · Good",
+    TextKey.LatencyStable to "{latency} ms · Stable", TextKey.LatencySlow to "{latency} ms · Slow",
     TextKey.OpponentReady to "OPPONENT READY", TextKey.MatchStarting to "The match is about to start",
     TextKey.LocalPlayerLabel to "YOU", TextKey.OpponentLabel to "OPPONENT",
 
@@ -130,8 +130,8 @@ internal val vietnameseCorePlayTexts = mapOf(
     TextKey.ModeNumberCount to "{mode} • 50 số", TextKey.ShareRoomCode to "CHIA SẺ MÃ PHÒNG", TextKey.ShareSheetError to "Không thể mở bảng chia sẻ. Vui lòng thử lại.",
     TextKey.CancelReady to "HỦY SẴN SÀNG", TextKey.ReadyAction to "SẴN SÀNG", TextKey.WaitingForReady to "Đang chờ người khác sẵn sàng…",
     TextKey.InviteFriends to "MỜI BẠN BÈ", TextKey.Kick to "MỜI RA", TextKey.CloseRoom to "ĐÓNG PHÒNG", TextKey.LeaveRoom to "RỜI PHÒNG",
-    TextKey.ReadyStatus to "SẴN SÀNG", TextKey.WaitingStatus to "ĐANG CHỜ", TextKey.LatencyGood to "{latency} ms • Tốt",
-    TextKey.LatencyStable to "{latency} ms • Ổn định", TextKey.LatencySlow to "{latency} ms • Chậm", TextKey.OpponentReady to "ĐỐI THỦ ĐÃ SẴN SÀNG",
+    TextKey.ReadyStatus to "SẴN SÀNG", TextKey.WaitingStatus to "ĐANG CHỜ", TextKey.LatencyGood to "{latency} ms · Tốt",
+    TextKey.LatencyStable to "{latency} ms · Ổn định", TextKey.LatencySlow to "{latency} ms · Chậm", TextKey.OpponentReady to "ĐỐI THỦ ĐÃ SẴN SÀNG",
     TextKey.MatchStarting to "Trận đấu sắp bắt đầu", TextKey.LocalPlayerLabel to "BẠN", TextKey.OpponentLabel to "ĐỐI THỦ",
 
     TextKey.ReactionHappy to "Vui vẻ", TextKey.ReactionLaugh to "Cười lớn", TextKey.ReactionFire to "Bùng cháy", TextKey.ReactionVictory to "Chiến thắng",
