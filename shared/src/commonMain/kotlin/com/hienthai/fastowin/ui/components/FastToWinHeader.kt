@@ -151,11 +151,11 @@ fun FastToWinHeader(
                     overflow = TextOverflow.Ellipsis
                 )
                 if (!subtitle.isNullOrBlank()) {
-                    Text(
+                    // Phụ đề "on-sky" của thiết kế: chữ trắng viền navy mảnh.
+                    A1OutlinedText(
                         text = subtitle,
-                        style = MaterialTheme.typography.labelMedium,
-                        fontWeight = FontWeight.Bold,
-                        color = A1Palette.Ink,
+                        style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.Bold),
+                        outlineWidth = 2.dp,
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis
                     )

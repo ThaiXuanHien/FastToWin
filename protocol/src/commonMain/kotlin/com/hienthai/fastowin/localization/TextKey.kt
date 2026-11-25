@@ -74,7 +74,7 @@ ClanRaceTitle, ClanRacePrizes, ClanRacePerMember, ClanRaceEligibility, ClanRaceW
     Rooms, Leaderboard, Clan, Account,
     TabRank, TabPlay, TabClan, TabMe, HomeEvents, HomeGifts,
     HomeTournament, HomeJoinRoom, HomeBestScore, HomeBeatIt,
-    ModeSelectTitle, ModeTabPractice, ModeRankedHint, ModeCasualHint, ModePracticeHint, ModeCostOnePlay, ModePlaysLeft, ModePlayButton, ModePlayShort, CasualShort, RoomsAllCount, RoomPlayersCount, RoomReadyInfo, RoomWaitingStatus, RoomInviteShort, RoomLeaveShort, RoomCloseShort, RoomCopyCode, RoomShareCode, RoomWaitingSlot, RoomKickShort, CreateRoomModeLabel, CreateRoomTypeLabel, CreateRoomAccessLabel, RoomCodeHint, CancelShort, JoinRoomCaps, CreateRoomCaps, RoomCodeCaps, EnterCodeShort, ModePracticeButton, MatchmakingYou, MatchmakingSearching, MatchmakingEloWindow, MatchmakingRankedNote, MatchmakingBotFallback,
+    ModeSelectTitle, ModeTabPractice, ModeRankedHint, ModeCasualHint, ModePracticeHint, ModeCostOnePlay, ModePlaysLeft, ModePlayButton, ModePlayShort, CasualShort, GameFoundCount, GameCorrect, GameWrong, GameSpeedPerNumber, GameProgress, GamePointsGain, RoomsAllCount, RoomPlayersCount, RoomReadyInfo, RoomWaitingStatus, RoomInviteShort, RoomLeaveShort, RoomCloseShort, RoomCopyCode, RoomShareCode, RoomWaitingSlot, RoomKickShort, CreateRoomModeLabel, CreateRoomTypeLabel, CreateRoomAccessLabel, RoomCodeHint, CancelShort, JoinRoomCaps, CreateRoomCaps, RoomCodeCaps, EnterCodeShort, ModePracticeButton, MatchmakingYou, MatchmakingSearching, MatchmakingEloWindow, MatchmakingRankedNote, MatchmakingBotFallback,
     FinishCurrentMatchBeforeChallenge, ModeUnlockLevel, CannotOpenChallenge, Understood,
     ChoosePracticeMode, ShareRoom,
 

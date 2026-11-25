@@ -153,9 +153,9 @@ class LocalizedGameplayUiTest {
             )
         }
 
-        composeRule.onNodeWithText("COMBO x2").assertDoesNotExist()
+        composeRule.onNodeWithText("Combo x2", substring = true).assertDoesNotExist()
         composeRule.runOnIdle { mode.value = GameMode.COMBO }
-        composeRule.onNodeWithText("COMBO x2").assertIsDisplayed()
+        composeRule.onNodeWithText("Combo x2", substring = true).assertIsDisplayed()
     }
 
     @Test
