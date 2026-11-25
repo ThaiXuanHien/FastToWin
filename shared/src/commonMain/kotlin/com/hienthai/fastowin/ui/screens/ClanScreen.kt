@@ -554,21 +554,32 @@ fun CreateClanDialog(
             localized(TextKey.ClanCreationLevelRequirement,
                 "level" to CLAN_CREATION_MIN_LEVEL, "current" to playerLevel),
             modifier = Modifier.testTag("create_clan_level_requirement"),
-            color = if (playerLevel >= CLAN_CREATION_MIN_LEVEL) ArcadePalette.Mint400 else ArcadePalette.Coral400,
+            color = if (playerLevel >= CLAN_CREATION_MIN_LEVEL) A1Palette.GreenText else A1Palette.RedText,
+            fontWeight = FontWeight.SemiBold,
             style = MaterialTheme.typography.bodyMedium
         )
-        Text(
-            "${formatNumber(CLAN_CREATION_GOLD_COST)} ${localized(TextKey.Gold)} • " +
-                "${formatNumber(CLAN_CREATION_GEM_COST)} ${localized(TextKey.Gems)}",
-            modifier = Modifier.testTag("create_clan_cost"),
-            color = if (gold >= CLAN_CREATION_GOLD_COST && gems >= CLAN_CREATION_GEM_COST) {
-                ArcadePalette.Gold500
-            } else {
-                ArcadePalette.Coral400
-            },
-            style = MaterialTheme.typography.titleSmall,
-            fontWeight = FontWeight.Black
-        )
+        // Chi phí tạo bang: icon vàng + gem như các ô tiền tệ A1; đỏ khi không đủ.
+        val affordable = gold >= CLAN_CREATION_GOLD_COST && gems >= CLAN_CREATION_GEM_COST
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .background(if (affordable) A1Palette.Highlight else Color(0xFFFFE0E0), RoundedCornerShape(14.dp))
+                .border(2.dp, if (affordable) Color(0xFFE0A100) else Color(0xFFF08A8A), RoundedCornerShape(14.dp))
+                .padding(horizontal = 14.dp, vertical = 10.dp)
+                .semantics(mergeDescendants = true) {}
+                .testTag("create_clan_cost"),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            A1CoinIcon(size = 22.dp)
+            Text(
+                "${formatNumber(CLAN_CREATION_GOLD_COST)} ${localized(TextKey.Gold)} • " +
+                    "${formatNumber(CLAN_CREATION_GEM_COST)} ${localized(TextKey.Gems)}",
+                color = if (affordable) Color(0xFF7A4D00) else A1Palette.RedDeep,
+                style = MaterialTheme.typography.titleSmall
+            )
+            A1GemIcon(size = 22.dp)
+        }
         Column(
             modifier = Modifier.fillMaxWidth(),
             verticalArrangement = Arrangement.spacedBy(10.dp)

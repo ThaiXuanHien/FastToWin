@@ -104,7 +104,7 @@ fun UgcReportMenuItem(type: UgcTargetType, id: String?, label: String, onDismiss
     val actions = LocalUgcActions.current ?: return
     if (!canReportUgcTarget(type, id)) return
     DropdownMenuItem(
-        text = { Text(localized(TextKey.UgcReportPlayer)) },
+        text = { Text(localized(if (type == UgcTargetType.CLAN) TextKey.UgcReportClan else TextKey.UgcReportPlayer)) },
         leadingIcon = { Icon(Icons.Rounded.Report, contentDescription = null) },
         onClick = { onDismissMenu(); actions.report(UgcTarget(type, id, label)) },
         modifier = Modifier.heightIn(min = 48.dp).testTag("report:${type.name}:$id")
@@ -185,7 +185,7 @@ fun UgcReportDialog(draft: UgcReportDraft,
                     draft.request != null -> TextKey.UgcReportRetry
                     else -> TextKey.UgcReportSend
                 }), onSubmit, enabled = !draft.pending,
-                    modifier = Modifier.fillMaxWidth().testTag("ugc_report_submit"), style = ArcadeActionStyle.GOLD)
+                    modifier = Modifier.fillMaxWidth().testTag("ugc_report_submit"), style = ArcadeActionStyle.DANGER)
             }
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 onBlock?.let {
