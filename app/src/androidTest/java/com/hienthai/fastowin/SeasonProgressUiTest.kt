@@ -37,6 +37,9 @@ import com.hienthai.fastowin.ui.components.SeasonRewardSummaryDialog
 import com.hienthai.fastowin.ui.components.SeasonProgressCard
 import com.hienthai.fastowin.ui.screens.LeaderboardScreen
 import com.hienthai.fastowin.ui.theme.FastToWinTheme
+import com.hienthai.fastowin.ui.screens.SeasonHistoryScreen
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.setValue
 import org.junit.Rule
 import org.junit.Test
 import org.junit.Assert.assertTrue
@@ -133,7 +136,7 @@ class SeasonProgressUiTest {
         composeRule.onNodeWithTag("leaderboard_player_metric_gold").performClick()
         composeRule.onNodeWithTag("leaderboard_player_metric_filters").assertIsDisplayed()
         composeRule.onNodeWithTag("leaderboard_period_filters").assertDoesNotExist()
-        composeRule.onNodeWithTag("leaderboard_player_HIEN001_details", useUnmergedTree = true)
+        composeRule.onNodeWithTag("leaderboard_player_HIEN001_value", useUnmergedTree = true)
             .assertTextContains("12.500", substring = true)
     }
 
@@ -171,13 +174,14 @@ class SeasonProgressUiTest {
         composeRule.onNodeWithTag("leaderboard_tab_clans").performClick()
         composeRule.onNodeWithTag("leaderboard_clan_metric_gold").performClick()
         composeRule.onNodeWithTag("leaderboard_clan_metric_filters").assertIsDisplayed()
-        composeRule.onNodeWithTag("leaderboard_clan_clan-fast_details", useUnmergedTree = true)
+        composeRule.onNodeWithTag("leaderboard_clan_clan-fast_value", useUnmergedTree = true)
             .assertTextContains("45.000", substring = true)
     }
 
     @Test
     fun seasonProgressAndAllTierRewardsRemainReachableOnSmallPhoneWithLargeText() {
         val profile = seasonProfileFixture()
+        var showLeaderboard by mutableStateOf(false)
 
         composeRule.setContent {
             DeviceConfigurationOverride(
@@ -185,15 +189,19 @@ class SeasonProgressUiTest {
                     DeviceConfigurationOverride.FontScale(1.4f)
             ) {
                 FastToWinTheme {
-                    LeaderboardScreen(
-                        state = GameState(
-                            profile = profile,
-                            leaderboard = LeaderboardSnapshot(previousSeasonName = "Mùa Khởi Đầu")
-                        ),
-                        onBack = {},
-                        onRefresh = {},
-                        showBackButton = false
-                    )
+                    if (showLeaderboard) {
+                        LeaderboardScreen(
+                            state = GameState(
+                                profile = profile,
+                                leaderboard = LeaderboardSnapshot(previousSeasonName = "Mùa Khởi Đầu")
+                            ),
+                            onBack = {},
+                            onRefresh = {},
+                            showBackButton = false
+                        )
+                    } else {
+                        SeasonHistoryScreen(state = GameState(profile = profile), onBack = {}, onRefresh = {}, onOpenNotifications = {})
+                    }
                 }
             }
         }
@@ -212,6 +220,8 @@ class SeasonProgressUiTest {
             .performScrollTo()
             .assertIsDisplayed()
         composeRule.onNodeWithTag("season_reward_cosmetic:CHALLENGER").assertIsDisplayed()
+        // Phần thưởng mùa trước vẫn xem ở bảng xếp hạng (bộ lọc "Mùa trước").
+        composeRule.runOnIdle { showLeaderboard = true }
         composeRule.onNodeWithTag("leaderboard_players_list")
             .performScrollToNode(hasTestTag("leaderboard_period_previous"))
         composeRule.onNodeWithTag("leaderboard_period_previous").performClick()
@@ -231,15 +241,7 @@ class SeasonProgressUiTest {
                 DeviceConfigurationOverride.ForcedSize(DpSize(720.dp, 400.dp))
             ) {
                 FastToWinTheme(preferences = AppPreferences(themeMode = AppThemeMode.DARK)) {
-                    LeaderboardScreen(
-                        state = GameState(
-                            profile = profile,
-                            leaderboard = LeaderboardSnapshot(previousSeasonName = "Mùa Khởi Đầu")
-                        ),
-                        onBack = {},
-                        onRefresh = {},
-                        showBackButton = false
-                    )
+                    SeasonHistoryScreen(state = GameState(profile = profile), onBack = {}, onRefresh = {}, onOpenNotifications = {})
                 }
             }
         }

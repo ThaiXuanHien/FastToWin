@@ -657,7 +657,9 @@ data class LeaderboardSnapshot(
     val topGoldClans: List<ClanLeaderboardEntrySnapshot> = emptyList(),
     val currentGoldClan: ClanLeaderboardEntrySnapshot? = null,
     val topGemClans: List<ClanLeaderboardEntrySnapshot> = emptyList(),
-    val currentGemClan: ClanLeaderboardEntrySnapshot? = null
+    val currentGemClan: ClanLeaderboardEntrySnapshot? = null,
+    /** Bạn bè đã kết bạn và chính người chơi, xếp theo Elo; [LeaderboardEntrySnapshot.rank] là hạng trong nhóm này. */
+    val friendPlayers: List<LeaderboardEntrySnapshot> = emptyList()
 )
 
 @Serializable

@@ -81,15 +81,15 @@ class LeaderboardClanLogoUiTest {
             topGoldPlayers = listOf(top), currentGoldPlayer = current,
             topGemPlayers = listOf(top), currentGemPlayer = current
         ))
-        assertPlayerDetails("1.800 Elo")
+        assertPlayerDetails("1800")
         composeRule.onNodeWithTag("leaderboard_period_previous").performScrollTo().performClick()
-        assertPlayerDetails("1.800 Elo")
+        assertPlayerDetails("1800")
         composeRule.onNodeWithTag("leaderboard_period_all_time").performScrollTo().performClick()
-        assertPlayerDetails("1.800 Elo")
+        assertPlayerDetails("1800")
         composeRule.onNodeWithTag("leaderboard_player_metric_gold").performClick()
-        assertPlayerDetails("1.200 Gold")
+        assertPlayerDetails("1.200")
         composeRule.onNodeWithTag("leaderboard_player_metric_gems").performClick()
-        assertPlayerDetails("800 Gems")
+        assertPlayerDetails("800")
     }
 
     @Test
@@ -104,13 +104,15 @@ class LeaderboardClanLogoUiTest {
             topGemClans = listOf(top), currentGemClan = current
         ), onOpenClan = { opened += it })
         composeRule.onNodeWithTag("leaderboard_tab_clans").performClick()
-        listOf("level" to "Level 7 - 12.500 XP", "gold" to "4.200 Gold", "gems" to "300 Gems")
-            .forEach { (metric, detail) ->
+        listOf("level" to "12.500", "gold" to "4.200", "gems" to "300")
+            .forEach { (metric, value) ->
                 composeRule.onNodeWithTag("leaderboard_clan_metric_$metric").performClick()
-                assertDetailsBelowName("leaderboard_clans_list", "leaderboard_current_clan", detail)
+                // Thẻ "bang của bạn" ghim ở đáy màn hình; dưới tên là cấp bang, điểm ở cột phải.
+                assertDetailsBelowName(null, "leaderboard_current_clan", "Level 7")
+                assertValue("leaderboard_current_clan", value)
                 composeRule.onNodeWithTag("leaderboard_current_clan").assertIsSelected().performClick()
-                composeRule.onNodeWithText("YOUR CLAN POSITION").assertIsDisplayed()
-                assertDetailsBelowName("leaderboard_clans_list", "leaderboard_clan_top", detail)
+                assertDetailsBelowName("leaderboard_clans_list", "leaderboard_clan_top", "Level 7")
+                assertValue("leaderboard_clan_top", value)
                 composeRule.onNodeWithTag("leaderboard_clan_top").performClick()
                 composeRule.onNodeWithTag("leaderboard_clans_list")
                     .performScrollToNode(hasTestTag("leaderboard_clan_metric_filters"))
@@ -118,23 +120,26 @@ class LeaderboardClanLogoUiTest {
         composeRule.runOnIdle { assertEquals(listOf("own", "top", "own", "top", "own", "top"), opened) }
     }
 
-    private fun assertPlayerDetails(detail: String) {
-        assertDetailsBelowName("leaderboard_players_list", "leaderboard_current_player", detail)
+    private fun assertPlayerDetails(value: String) {
+        // Thẻ "vị trí của bạn" ghim ở đáy: "#42", tên, bậc bên dưới tên và điểm ở cột phải.
+        assertDetailsBelowName(null, "leaderboard_current_player", "Diamond")
+        assertValue("leaderboard_current_player", value)
         composeRule.onNodeWithTag("leaderboard_current_player").assertIsSelected()
-            .assertTextContains("42").assertHasClickAction().performClick()
+            .assertTextContains("#42", substring = true).assertHasClickAction().performClick()
         composeRule.onNodeWithTag("leaderboard_player_profile_dialog").assertIsDisplayed()
         composeRule.onNodeWithText("Close").performClick()
-        composeRule.onNodeWithText("YOUR POSITION").assertIsDisplayed()
-        composeRule.onNodeWithText("#42 · Current player").assertDoesNotExist()
-        composeRule.onNodeWithTag("leaderboard_current_player_details", useUnmergedTree = true)
-            .assertTextContains("4 wins · 80%", substring = true)
-        assertDetailsBelowName("leaderboard_players_list", "leaderboard_player_TOP01", detail)
+        assertDetailsBelowName("leaderboard_players_list", "leaderboard_player_TOP01", "Diamond")
+        assertValue("leaderboard_player_TOP01", value)
         composeRule.onNodeWithTag("leaderboard_players_list")
             .performScrollToNode(hasTestTag("leaderboard_player_metric_filters"))
     }
 
-    private fun assertDetailsBelowName(listTag: String, rowTag: String, detail: String) {
-        composeRule.onNodeWithTag(listTag).performScrollToNode(hasTestTag(rowTag))
+    private fun assertValue(rowTag: String, value: String) {
+        composeRule.onNodeWithTag("${rowTag}_value", useUnmergedTree = true).assertTextContains(value, substring = true)
+    }
+
+    private fun assertDetailsBelowName(listTag: String?, rowTag: String, detail: String) {
+        if (listTag != null) composeRule.onNodeWithTag(listTag).performScrollToNode(hasTestTag(rowTag))
         val name = composeRule.onNodeWithTag("${rowTag}_name", useUnmergedTree = true).fetchSemanticsNode().boundsInRoot
         val details = composeRule.onNodeWithTag("${rowTag}_details", useUnmergedTree = true)
             .assertTextContains(detail, substring = true).fetchSemanticsNode().boundsInRoot
@@ -153,8 +158,7 @@ class LeaderboardClanLogoUiTest {
     }
 
     private fun assertClanIcons() {
-        composeRule.onNodeWithTag("leaderboard_clans_list", useUnmergedTree = true)
-            .performScrollToNode(hasTestTag("leaderboard_current_clan_logo_clan-a"))
+        // Thẻ bang của bạn ghim ở đáy màn hình (ngoài danh sách cuộn).
         composeRule.onNodeWithTag("leaderboard_current_clan_logo_clan-a", useUnmergedTree = true).assertIsDisplayed()
         composeRule.onNodeWithTag("leaderboard_clans_list", useUnmergedTree = true)
             .performScrollToNode(hasTestTag("leaderboard_clan_logo_clan-a"))

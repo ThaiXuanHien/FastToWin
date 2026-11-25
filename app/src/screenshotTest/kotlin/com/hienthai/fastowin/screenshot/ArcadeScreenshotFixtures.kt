@@ -250,21 +250,27 @@ object ArcadeScreenshotFixtures {
 
     fun leaderboardState(): GameState {
         val entries = listOf(
-            leaderboardEntry(1, "Linh Chi", "LINH001", 2_468, "player-8", "frame_challenger"),
-            leaderboardEntry(2, "HienTX", "HIEN042", 1_742, "player-1", "frame_lightning"),
-            leaderboardEntry(3, "Akira", "AKIRA77", 1_698, "player-9", "frame_diamond")
+            leaderboardEntry(1, "TocDoAnh", "LINH001", 2_104, "player-8", "frame_challenger"),
+            leaderboardEntry(2, "MinhNhanh", "MINH002", 2_050, "player-9", "frame_diamond"),
+            leaderboardEntry(3, "Tú 50s", "TU0003", 1_998, "player-10", "frame_gold"),
+            leaderboardEntry(4, "LanSpeed", "LAN004", 1_972, "player-11", "frame_platinum"),
+            leaderboardEntry(5, "Khoa Combo", "KHOA05", 1_955, "player-12", "frame_platinum"),
+            leaderboardEntry(6, "VyVy", "VYVY06", 1_931, "player-13", "frame_silver"),
+            leaderboardEntry(7, "Bảo 1-50", "BAO007", 1_920, "player-14", "frame_silver"),
+            leaderboardEntry(8, "Dũng Tia Chớp", "DUNG08", 1_904, "player-15", "frame_bronze")
         )
+        val me = leaderboardEntry(128, "HienTX", "HIEN042", 1_742, "player-1", "frame_lightning")
         return homeState().copy(
             leaderboard = LeaderboardSnapshot(
                 topPlayers = entries,
-                currentPlayer = entries[1],
+                currentPlayer = me,
                 seasonName = "Mùa Khởi Đầu",
                 seasonTopPlayers = entries,
-                seasonCurrentPlayer = entries[1],
+                seasonCurrentPlayer = me,
                 topGoldPlayers = entries.sortedByDescending { it.lifetimeEarnedGold },
-                currentGoldPlayer = entries[1],
+                currentGoldPlayer = me,
                 topGemPlayers = entries.sortedByDescending { it.lifetimeEarnedGems },
-                currentGemPlayer = entries[1]
+                currentGemPlayer = me
             )
         )
     }
@@ -350,15 +356,15 @@ object ArcadeScreenshotFixtures {
         rank = rank,
         displayName = name,
         playerCode = code,
-        wins = 100 - rank * 7,
+        wins = (100 - rank * 7).coerceAtLeast(24),
         totalMatches = 140,
         highestScore = 50,
         eloRating = elo,
         userId = userId,
         avatarId = if (rank == 1) "female" else "male",
         frameId = frameId,
-        lifetimeEarnedGold = 50_000L - rank * 3_500L,
-        lifetimeEarnedGems = 2_000L - rank * 125L
+        lifetimeEarnedGold = (50_000L - rank * 3_500L).coerceAtLeast(1_200L),
+        lifetimeEarnedGems = (2_000L - rank * 125L).coerceAtLeast(40L)
     )
 
     private fun clan() = ClanSnapshot(
