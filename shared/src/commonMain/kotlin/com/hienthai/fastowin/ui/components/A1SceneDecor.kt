@@ -47,11 +47,19 @@ fun Modifier.a1Hills(): Modifier = drawBehind {
  * [rayCenterY] là tâm tia nắng tính từ mép trên của phần tử (đơn vị px do người gọi quy đổi).
  */
 fun Modifier.a1SunnySky(rayCenterYFraction: Float = 0.25f): Modifier = drawBehind {
-    val c = Offset(size.width / 2f, size.height * rayCenterYFraction)
+    drawSunnySky(Rect(Offset.Zero, size), rayCenterYFraction)
+}
+
+/**
+ * Vẽ tia nắng, mặt trời và mây cho vùng [area] (toạ độ của DrawScope hiện tại). Gọi từ drawBehind của
+ * vùng chứa toàn bộ nội dung để mọi thẻ/nút luôn nằm đè lên trên phần trang trí.
+ */
+fun DrawScope.drawSunnySky(area: Rect, rayCenterYFraction: Float = 0.25f) {
+    val c = Offset(area.center.x, area.top + area.height * rayCenterYFraction)
     rays(c, 320.dp.toPx())
-    sun(Offset(-2.dp.toPx(), 18.dp.toPx()))
-    cloud(Offset(size.width - 120.dp.toPx(), size.height * 0.58f), 1f)
-    cloud(Offset(size.width * 0.5f, size.height * 0.08f), 0.6f)
+    sun(Offset(area.left - 2.dp.toPx(), area.top + 18.dp.toPx()))
+    cloud(Offset(area.right - 120.dp.toPx(), area.top + area.height * 0.58f), 1f)
+    cloud(Offset(area.left + area.width * 0.5f, area.top + area.height * 0.08f), 0.6f)
 }
 
 private fun DrawScope.rays(center: Offset, radius: Float) {

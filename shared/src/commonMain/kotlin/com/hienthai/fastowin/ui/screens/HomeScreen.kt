@@ -117,7 +117,10 @@ import androidx.compose.material.icons.rounded.PlayArrow
 import androidx.compose.material.icons.rounded.Shield
 import androidx.compose.material.icons.rounded.Person
 import com.hienthai.fastowin.ui.components.a1Hills
-import com.hienthai.fastowin.ui.components.a1SunnySky
+import com.hienthai.fastowin.ui.components.drawSunnySky
+import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.ui.layout.positionInParent
+import androidx.compose.ui.unit.toSize
 import com.hienthai.fastowin.ui.components.A1OutlinedText
 import com.hienthai.fastowin.ui.format.fullNumber
 import androidx.compose.foundation.clickable
@@ -260,8 +263,14 @@ internal fun HomeDashboard(
             localized(TextKey.GreetingPlayer, "player" to displayName) + "\n" + localized(TextKey.ReadyForRecord)
         }
         val activeEvents = rewardEventState?.items?.size ?: 0
+        // Vị trí khu linh vật trong nội dung cuộn, để vẽ trời nắng phía SAU mọi thẻ và nút.
+        var sceneArea by remember { mutableStateOf<androidx.compose.ui.geometry.Rect?>(null) }
         Column(
-            modifier = Modifier.fillMaxSize().a1Hills().verticalScroll(rememberScrollState()),
+            modifier = Modifier
+                .fillMaxSize()
+                .a1Hills()
+                .verticalScroll(rememberScrollState())
+                .drawBehind { sceneArea?.let { drawSunnySky(it, rayCenterYFraction = 0.42f) } },
             verticalArrangement = Arrangement.spacedBy(16.dp)
         ) {
             Spacer(modifier = Modifier.height(4.dp))
@@ -353,7 +362,10 @@ internal fun HomeDashboard(
                 }
             } else {
                 Row(
-                    modifier = Modifier.fillMaxWidth().heightIn(min = 280.dp).a1SunnySky(rayCenterYFraction = 0.42f),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .heightIn(min = 280.dp)
+                        .onGloballyPositioned { sceneArea = androidx.compose.ui.geometry.Rect(it.positionInParent(), it.size.toSize()) },
                     verticalAlignment = Alignment.Top
                 ) {
                     Column(verticalArrangement = Arrangement.spacedBy(14.dp)) { leftShortcuts() }

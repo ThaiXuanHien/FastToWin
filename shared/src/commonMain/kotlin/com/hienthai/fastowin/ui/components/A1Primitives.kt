@@ -1,5 +1,6 @@
 package com.hienthai.fastowin.ui.components
 
+import androidx.compose.animation.core.animateFloat
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -17,6 +18,9 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.Immutable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.drawWithContent
+import androidx.compose.runtime.getValue
 import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
@@ -136,9 +140,28 @@ internal fun A1RaisedSurface(
     depth: Dp,
     pressed: Boolean,
     modifier: Modifier = Modifier,
+    /** Vệt sáng lướt qua mặt nút (".shine" của thiết kế) — dùng cho CTA chính. */
+    shine: Boolean = false,
     content: @Composable BoxScope.() -> Unit
 ) {
     val shape = RoundedCornerShape(radius)
+    // Độ bóng: dải sáng ở mép trên trong mặt nút (inset 0 3–4px #ffffff70–a0 của thiết kế).
+    val gloss = when (colors) {
+        A1ButtonDefaults.Yellow -> Color.White.copy(alpha = 0.63f) to 4.dp
+        A1ButtonDefaults.White, A1ButtonDefaults.Disabled -> null
+        else -> Color.White.copy(alpha = 0.44f) to 3.dp
+    }
+    val shineProgress = if (shine) {
+        val t = androidx.compose.animation.core.rememberInfiniteTransition(label = "shine")
+        t.animateFloat(
+            initialValue = 0f,
+            targetValue = 1f,
+            animationSpec = androidx.compose.animation.core.infiniteRepeatable(
+                androidx.compose.animation.core.tween(3200, easing = androidx.compose.animation.core.LinearEasing)
+            ),
+            label = "shineX"
+        )
+    } else null
     // propagateMinConstraints: mặt nút luôn phủ kín chiều cao tối thiểu (vd. nút CHƠI NGAY cao 72dp).
     Box(
         propagateMinConstraints = true,
@@ -153,7 +176,32 @@ internal fun A1RaisedSurface(
             modifier = Modifier
                 .fillMaxSize()
                 .offset(y = if (pressed) depth else 0.dp)
-                .background(Brush.verticalGradient(listOf(colors.top, colors.bottom)), shape)
+                .clip(shape)
+                .background(Brush.verticalGradient(listOf(colors.top, colors.bottom)))
+                .drawWithContent {
+                    gloss?.let { (color, h) ->
+                        drawRect(color, topLeft = Offset(0f, A1Dimens.Border.toPx()), size = Size(size.width, h.toPx()))
+                    }
+                    shineProgress?.value?.let { p ->
+                        // 0–60% đứng chờ ở mép trái, 60–100% lướt sang phải (như keyframes "shine").
+                        val travel = ((p - 0.6f) / 0.4f).coerceIn(0f, 1f)
+                        val bandW = size.width * 0.4f
+                        val x = -size.width * 0.6f + travel * size.width * 1.9f
+                        val skew = size.height * 0.36f
+                        val band = Path().apply {
+                            moveTo(x + skew, 0f); lineTo(x + skew + bandW, 0f)
+                            lineTo(x + bandW, size.height); lineTo(x, size.height); close()
+                        }
+                        drawPath(
+                            band,
+                            Brush.horizontalGradient(
+                                listOf(Color.Transparent, Color.White.copy(alpha = 0.56f), Color.Transparent),
+                                startX = x, endX = x + bandW + skew
+                            )
+                        )
+                    }
+                    drawContent()
+                }
                 .border(A1Dimens.Border, colors.border, shape),
             contentAlignment = androidx.compose.ui.Alignment.Center,
             content = content
