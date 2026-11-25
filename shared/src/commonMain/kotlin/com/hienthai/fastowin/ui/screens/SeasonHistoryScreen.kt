@@ -113,6 +113,12 @@ fun SeasonHistoryScreen(
                         contentPadding = PaddingValues(top = 12.dp, bottom = 24.dp),
                         verticalArrangement = Arrangement.spacedBy(12.dp)
                     ) {
+                        // Mùa đang diễn ra (tiến độ bậc, thưởng các bậc) đứng đầu màn Lịch sử mùa như thiết kế.
+                        state.profile?.progression?.season?.let { season ->
+                            item(key = "season_progress") {
+                                com.hienthai.fastowin.ui.components.SeasonProgressCard(season, serverClock = state.profileServerClock)
+                            }
+                        }
                         item(key = "season_history_hero") {
                             ArcadeFeatureHero(
                                 illustration = Res.drawable.arcade_leaderboard_trophy,

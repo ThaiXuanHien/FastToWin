@@ -80,7 +80,6 @@ import com.hienthai.fastowin.ui.components.DEFAULT_ARCADE_PAGE_SIZE
 import com.hienthai.fastowin.ui.components.FastToWinHeader
 import com.hienthai.fastowin.ui.components.FastToWinPullRefresh
 import com.hienthai.fastowin.ui.components.PlayerAvatar
-import com.hienthai.fastowin.ui.components.SeasonProgressCard
 import com.hienthai.fastowin.ui.components.SeasonRewardReceiptCard
 import com.hienthai.fastowin.ui.components.SystemBackHandler
 import com.hienthai.fastowin.ui.components.a1Card
@@ -453,11 +452,6 @@ private fun PlayerLeaderboard(
                 state.profile?.progression?.latestSeasonReward
                     ?.takeIf { it.seasonName == leaderboard?.previousSeasonName }
                     ?.let { receipt -> item(key = "season_reward_receipt") { SeasonRewardReceiptCard(receipt) } }
-            }
-            if (selectedMetric == PlayerLeaderboardMetric.ELO && selectedPeriod == LeaderboardPeriod.CURRENT_SEASON) {
-                state.profile?.progression?.season?.let { season ->
-                    item(key = "season_progress") { SeasonProgressCard(season, serverClock = state.profileServerClock) }
-                }
             }
         }
         currentEntry?.let {
