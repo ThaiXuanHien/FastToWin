@@ -10,6 +10,7 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.wrapContentHeight
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxHeight
@@ -530,7 +531,7 @@ private fun PlayerScoreCard(
             .a1Card(radius = 16.dp, depth = 5.dp, border = edge)
             .clip(RoundedCornerShape(16.dp))
             .then(if (onViewInfo == null) Modifier else Modifier.clickable(onClick = onViewInfo))
-            .padding(start = 6.dp, end = if (compact) 8.dp else 12.dp, top = 4.dp, bottom = 4.dp),
+            .padding(start = 6.dp, end = if (compact) 8.dp else 12.dp, top = 9.dp, bottom = 9.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(if (compact) 6.dp else 8.dp)
     ) {
@@ -609,7 +610,7 @@ private fun TargetPanel(state: GameState, compact: Boolean = false) {
             .a1Card(background = Color.Transparent)
             .background(Brush.verticalGradient(listOf(Color.White, Color(0xFFFFF8D6))), RoundedCornerShape(A1Dimens.CardRadius))
             .border(A1Dimens.Border, A1Palette.Line, RoundedCornerShape(A1Dimens.CardRadius))
-            .heightIn(min = if (compact) 56.dp else 94.dp)
+            .heightIn(min = if (compact) 56.dp else 74.dp)
             .testTag("game_target"),
         contentAlignment = Alignment.Center
     ) {
@@ -633,9 +634,20 @@ private fun TargetPanel(state: GameState, compact: Boolean = false) {
             }
             Text(
                 text = displayedTarget.toString(),
-                style = MaterialTheme.typography.displayLarge.copy(fontSize = if (compact) 40.sp else 66.sp, lineHeight = if (compact) 42.sp else 68.sp),
+                style = MaterialTheme.typography.displayLarge.copy(
+                    fontSize = if (compact) 40.sp else 62.sp,
+                    lineHeight = if (compact) 42.sp else 62.sp,
+                    lineHeightStyle = androidx.compose.ui.text.style.LineHeightStyle(
+                        alignment = androidx.compose.ui.text.style.LineHeightStyle.Alignment.Center,
+                        trim = androidx.compose.ui.text.style.LineHeightStyle.Trim.Both
+                    )
+                ),
                 color = A1Palette.Ink,
-                modifier = Modifier.semantics { liveRegion = LiveRegionMode.Polite }
+                // Giữ khung chữ gọn theo chiều cao số (Baloo có phần trên/dưới rất rộng) để thẻ thấp hơn.
+                modifier = Modifier
+                    .height(if (compact) 44.dp else 58.dp)
+                    .wrapContentHeight(unbounded = true)
+                    .semantics { liveRegion = LiveRegionMode.Polite }
             )
         }
         if (rise.value < 1f && gain > 0) {
