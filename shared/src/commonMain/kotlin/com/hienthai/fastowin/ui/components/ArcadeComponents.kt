@@ -39,6 +39,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Brush
@@ -421,15 +422,15 @@ fun ArcadeSegmentedControl(
                         this.selected = selected
                         role = Role.Tab
                     }
-                    .then(itemTestTag(index)?.let { Modifier.testTag(it) } ?: Modifier),
+                    .then(itemTestTag(index)?.let { Modifier.testTag(it) } ?: Modifier)
+                    .then(if (selected) Modifier.a1SegmentSelected() else Modifier),
                 shape = RoundedCornerShape(12.dp),
-                color = if (selected) A1Palette.Yellow2 else Color.Transparent,
+                color = Color.Transparent,
                 contentColor = when {
                     !itemEnabled -> A1Palette.Muted.copy(alpha = 0.6f)
-                    selected -> A1Palette.Ink
+                    selected -> A1SegmentSelectedText
                     else -> A1Palette.Muted
                 },
-                border = if (selected) BorderStroke(2.dp, A1Palette.Line) else null,
                 shadowElevation = 0.dp
             ) {
                 Box(
@@ -485,15 +486,15 @@ fun ArcadeScrollableSegmentedControl(
                         this.selected = selected
                         role = Role.Tab
                     }
-                    .then(itemTestTag(index)?.let { Modifier.testTag(it) } ?: Modifier),
+                    .then(itemTestTag(index)?.let { Modifier.testTag(it) } ?: Modifier)
+                    .then(if (selected) Modifier.a1SegmentSelected() else Modifier),
                 shape = RoundedCornerShape(12.dp),
-                color = if (selected) A1Palette.Yellow2 else Color.Transparent,
+                color = Color.Transparent,
                 contentColor = when {
                     !itemEnabled -> A1Palette.Muted.copy(alpha = 0.6f)
-                    selected -> A1Palette.Ink
+                    selected -> A1SegmentSelectedText
                     else -> A1Palette.Muted
                 },
-                border = if (selected) BorderStroke(2.dp, A1Palette.Line) else null,
                 shadowElevation = 0.dp
             ) {
                 Box(
@@ -512,6 +513,22 @@ fun ArcadeScrollableSegmentedControl(
         }
     }
 }
+
+/** Chữ trên tab đang chọn (".seg>span.on" của thiết kế). */
+private val A1SegmentSelectedText = Color(0xFF5A2B00)
+
+/**
+ * Tab đang chọn dạng khối 3D vàng: dải vàng y1→y2, viền nâu 2dp và đế 3dp (".seg>span.on" của thiết kế).
+ * Đế vẽ ngoài vùng cắt của Surface nên vẫn thấy dưới mặt tab.
+ */
+private fun Modifier.a1SegmentSelected(): Modifier = this
+    .padding(bottom = 3.dp)
+    .drawBehind {
+        val r = 12.dp.toPx()
+        drawRoundRect(A1Palette.YellowDeep, topLeft = Offset(0f, 3.dp.toPx()), size = size, cornerRadius = androidx.compose.ui.geometry.CornerRadius(r))
+    }
+    .background(Brush.verticalGradient(listOf(Color(0xFFFFE066), Color(0xFFFFC21A))), RoundedCornerShape(12.dp))
+    .border(2.dp, Color(0xFF7A3D00), RoundedCornerShape(12.dp))
 
 const val DEFAULT_ARCADE_PAGE_SIZE = 20
 

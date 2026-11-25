@@ -21,7 +21,7 @@ import kotlin.math.sin
  */
 
 /** Đồi cỏ, bụi cây và hoa ở chân khung nhìn (vẽ phía sau nội dung). */
-fun Modifier.a1Hills(): Modifier = drawBehind {
+fun Modifier.a1Hills(bushes: Boolean = true): Modifier = drawBehind {
     val w = size.width
     val h = size.height
     val bleed = 50.dp.toPx()
@@ -34,8 +34,10 @@ fun Modifier.a1Hills(): Modifier = drawBehind {
     drawOval(Color(0xFF9CF08F), front.topLeft, front.size)
     drawOval(Color(0xFF6FDC6A), Offset(front.left, front.top + 10.dp.toPx()), Size(front.width, front.height))
     // Bụi cây hai bên.
-    bush(Offset(-20.dp.toPx(), h - 230.dp.toPx()), 1f)
-    bush(Offset(w - 66.dp.toPx(), h - 180.dp.toPx()), 0.8f)
+    if (bushes) {
+        bush(Offset(-20.dp.toPx(), h - 230.dp.toPx()), 1f)
+        bush(Offset(w - 66.dp.toPx(), h - 180.dp.toPx()), 0.8f)
+    }
     // Hoa nhỏ.
     flower(Offset(66.dp.toPx(), h - 114.dp.toPx()))
     flower(Offset(w * 0.47f, h - 34.dp.toPx()))
@@ -61,6 +63,9 @@ fun DrawScope.drawSunnySky(area: Rect, rayCenterYFraction: Float = 0.25f) {
     cloud(Offset(area.right - 120.dp.toPx(), area.top + area.height * 0.58f), 1f)
     cloud(Offset(area.left + area.width * 0.5f, area.top + area.height * 0.08f), 0.6f)
 }
+
+/** Tia nắng toả từ [center] (".burst" của thiết kế) — dùng sau chữ VS, sau linh vật… */
+fun DrawScope.drawLightRays(center: Offset, radius: Float) = rays(center, radius)
 
 private fun DrawScope.rays(center: Offset, radius: Float) {
     val brush = Brush.radialGradient(

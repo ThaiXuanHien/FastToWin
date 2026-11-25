@@ -1,6 +1,9 @@
 package com.hienthai.fastowin.screenshot
 
 import androidx.compose.runtime.Composable
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.padding
+import androidx.compose.ui.unit.dp
 import androidx.compose.ui.tooling.preview.Preview
 import com.android.tools.screenshot.PreviewTest
 import com.hienthai.fastowin.data.preferences.AppPreferences
@@ -161,3 +164,34 @@ private fun LobbyScreen(
 }
 
 private fun lobbyCallbacks() = LobbyCallbacks()
+
+/** Màn Tìm trận A1 (xếp hạng). */
+@PreviewTest
+@ArcadeScreenshotDevices
+@Composable
+fun matchmakingRanked() = ArcadeScreenshotFrame {
+    LobbyScreen(
+        state = ArcadeScreenshotFixtures.homeState().copy(
+            lobbyStage = com.hienthai.fastowin.state.LobbyStage.MATCHMAKING,
+            matchType = com.hienthai.fastowin.protocol.MatchType.RANKED
+        ),
+        callbacks = lobbyCallbacks()
+    )
+}
+
+/** Màn Chọn chế độ A1 (tab Chơi). */
+@PreviewTest
+@ArcadeScreenshotDevices
+@Composable
+fun modeSelect() = ArcadeScreenshotFrame {
+    com.hienthai.fastowin.ui.components.ArcadeBackdrop(androidx.compose.ui.Modifier.fillMaxSize()) {
+        com.hienthai.fastowin.ui.screens.ModeSelectContent(
+            playerLevel = 8,
+            quota = ArcadeScreenshotFixtures.homeState().playQuota,
+            onPlay = { _, _ -> },
+            onPractice = {},
+            onQuotaExhausted = {},
+            modifier = androidx.compose.ui.Modifier.padding(horizontal = 16.dp)
+        )
+    }
+}
