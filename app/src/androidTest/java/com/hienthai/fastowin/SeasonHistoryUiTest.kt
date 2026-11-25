@@ -95,18 +95,14 @@ class SeasonHistoryUiTest {
         var opened = false
         composeRule.setContent {
             FastToWinTheme {
-                LeaderboardScreen(
+                // Nhãn mùa nằm trên thanh tiêu đề của tab Xếp hạng (bấm để mở lịch sử mùa).
+                com.hienthai.fastowin.ui.screens.LeaderboardSeasonTag(
                     state = seasonHistoryState().copy(leaderboard = LeaderboardSnapshot()),
-                    onBack = {},
-                    onRefresh = {},
-                    onOpenSeasonHistory = { opened = true },
-                    showBackButton = false
+                    onOpenSeasonHistory = { opened = true }
                 )
             }
         }
 
-        composeRule.onNodeWithTag("leaderboard_players_list")
-            .performScrollToNode(hasTestTag("open_season_history"))
         composeRule.onNodeWithTag("open_season_history").performClick()
         composeRule.runOnIdle { assertTrue(opened) }
     }

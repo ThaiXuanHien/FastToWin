@@ -215,7 +215,7 @@ internal val vietnameseSocialShopTexts = englishSocialShopTexts + mapOf(
     TextKey.DonationDuplicate to "Khoản quyên góp này đã hoàn tất trước đó.", TextKey.DonationInvalidAmount to "Hãy chọn mức quyên góp hợp lệ.",
     TextKey.DonationInsufficientFunds to "Bạn không đủ {currency}.", TextKey.DonationMembershipRequired to "Hãy tham gia bang trước khi quyên góp.",
     TextKey.DonationFailed to "Chưa thể quyên góp. Vui lòng thử lại.",
-    TextKey.Individual to "Cá nhân", TextKey.FameRace to "Đường đua danh vọng", TextKey.FameRaceDescription to "Leo bậc, giữ chuỗi thắng và chiếm vị trí cao nhất.",
+    TextKey.Individual to "Người chơi", TextKey.FameRace to "Đường đua danh vọng", TextKey.FameRaceDescription to "Leo bậc, giữ chuỗi thắng và chiếm vị trí cao nhất.",
     TextKey.CurrentSeason to "Hiện tại", TextKey.PreviousSeason to "Mùa trước", TextKey.AllTime to "Toàn thời gian", TextKey.History to "Lịch sử",
     TextKey.TopPlayers to "Top người chơi", TextKey.WarriorsCount to "{count} chiến binh", TextKey.CurrentSeasonLeaderboardEmpty to "Chưa có người chơi hoàn thành phân hạng mùa này.",
     TextKey.PreviousSeasonLeaderboardEmpty to "Mùa trước chưa có người chơi đủ điều kiện xếp hạng.", TextKey.AllTimeLeaderboardEmpty to "Chưa có người chơi hoàn thành trận đấu.",

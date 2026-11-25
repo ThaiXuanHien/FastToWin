@@ -2,6 +2,7 @@ package com.hienthai.fastowin
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
+import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.CircularProgressIndicator
@@ -101,6 +102,7 @@ import com.hienthai.fastowin.ui.screens.rememberProfileEditorState
 import com.hienthai.fastowin.ui.screens.ProfileSection
 import com.hienthai.fastowin.ui.screens.ProfileSectionScreen
 import com.hienthai.fastowin.ui.screens.LeaderboardScreen
+import com.hienthai.fastowin.ui.screens.LeaderboardSeasonTag
 import com.hienthai.fastowin.ui.screens.ResultScreen
 import com.hienthai.fastowin.ui.screens.SeasonHistoryScreen
 import com.hienthai.fastowin.ui.screens.FastToWinBottomBar
@@ -2056,7 +2058,8 @@ private fun GameContent(
                     onAccount = openAccountTab,
                     onNotifications = openNotifications,
                     isRefreshing = state.isLeaderboardLoading,
-                    onRefresh = controller::openLeaderboard
+                    onRefresh = controller::openLeaderboard,
+                    headerActions = { LeaderboardSeasonTag(state, openSeasonHistory) }
                 ) { contentModifier -> LeaderboardScreen(
                     state = state,
                     onBack = {
@@ -2615,6 +2618,8 @@ internal fun TopLevelTabIfNeeded(
     onNotifications: () -> Unit,
     isRefreshing: Boolean = false,
     onRefresh: (() -> Unit)? = null,
+    /** Nội dung riêng bên phải tiêu đề (vd. nhãn mùa ở tab Xếp hạng); khi có thì ẩn tiền tệ và chuông như thiết kế. */
+    headerActions: (@Composable RowScope.() -> Unit)? = null,
     content: @Composable (Modifier) -> Unit
 ) {
     if (!enabled) {
@@ -2645,10 +2650,10 @@ internal fun TopLevelTabIfNeeded(
                 unreadNotifications = state.unreadNotificationCount,
                 onNotifications = onNotifications,
                 onBack = null,
-                actions = {
-                    onRefresh?.let { refresh ->
-                        HeaderRefreshAction(isRefreshing = isRefreshing, onRefresh = refresh)
-                    }
+                showBalances = headerActions == null,
+                showNotifications = headerActions == null,
+                actions = headerActions ?: {
+                    if (onRefresh != null) HeaderRefreshAction(isRefreshing = isRefreshing, onRefresh = onRefresh)
                 }
             )
             content(Modifier.weight(1f))

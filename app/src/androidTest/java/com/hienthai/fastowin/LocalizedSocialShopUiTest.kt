@@ -68,7 +68,7 @@ class LocalizedSocialShopUiTest {
             )
         }
         composeRule.onNodeWithText("Xếp hạng").assertIsDisplayed()
-        composeRule.onNodeWithText("Đường đua danh vọng").assertIsDisplayed()
+        composeRule.onNodeWithText("Người chơi").assertIsDisplayed()
     }
 
     @Test

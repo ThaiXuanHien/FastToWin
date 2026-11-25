@@ -451,7 +451,7 @@ internal fun seasonTimeRemaining(endsAtEpochMillis: Long, nowMillis: Long): Stri
 }
 
 @Composable
-private fun localizedSeasonTimeRemaining(endsAtEpochMillis: Long, nowMillis: Long): String {
+internal fun localizedSeasonTimeRemaining(endsAtEpochMillis: Long, nowMillis: Long): String {
     val remainingMillis = (endsAtEpochMillis - nowMillis).coerceAtLeast(0L)
     if (remainingMillis == 0L) return localized(TextKey.SeasonEnded)
     val totalMinutes = (remainingMillis + 59_999L) / 60_000L
