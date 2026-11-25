@@ -38,10 +38,12 @@ fun Modifier.a1Hills(bushes: Boolean = true): Modifier = drawBehind {
         bush(Offset(-20.dp.toPx(), h - 230.dp.toPx()), 1f)
         bush(Offset(w - 66.dp.toPx(), h - 180.dp.toPx()), 0.8f)
     }
-    // Hoa nhỏ.
-    flower(Offset(66.dp.toPx(), h - 114.dp.toPx()))
-    flower(Offset(w * 0.47f, h - 34.dp.toPx()))
-    flower(Offset(w - 84.dp.toPx(), h - 64.dp.toPx()))
+    // Hoa nhỏ (chỉ ở Trang chủ, cùng bụi cây; các màn có nút ở đáy không có hoa).
+    if (bushes) {
+        flower(Offset(66.dp.toPx(), h - 114.dp.toPx()))
+        flower(Offset(w * 0.47f, h - 34.dp.toPx()))
+        flower(Offset(w - 84.dp.toPx(), h - 64.dp.toPx()))
+    }
 }
 
 /**

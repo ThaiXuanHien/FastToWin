@@ -195,3 +195,65 @@ fun modeSelect() = ArcadeScreenshotFrame {
         )
     }
 }
+
+private fun roomWaitingState(ready: Boolean) = ArcadeScreenshotFixtures.homeState().copy(
+    lobbyStage = com.hienthai.fastowin.state.LobbyStage.ROOM_WAITING,
+    currentRoomId = "4f7k2a91-0000-4000-8000-000000000000",
+    currentRoomName = "Phòng của Minh",
+    isRoomHost = false,
+    hasOpponent = true,
+    latencyMillis = 38,
+    gameMode = com.hienthai.fastowin.navigation.GameMode.ORDER,
+    matchType = com.hienthai.fastowin.protocol.MatchType.CASUAL,
+    player = com.hienthai.fastowin.state.PlayerState("HienTX", id = "player-1", avatarId = "male", frameId = "frame_diamond", isReady = ready),
+    opponent = com.hienthai.fastowin.state.PlayerState("Minh", id = "player-2", avatarId = "female", frameId = "frame_emperor", isReady = true)
+)
+
+/** Phòng chờ A1 (khách, đối thủ đã sẵn sàng). */
+@PreviewTest
+@ArcadeScreenshotDevices
+@Composable
+fun roomWaiting() = ArcadeScreenshotFrame {
+    LobbyScreen(state = roomWaitingState(ready = false), callbacks = lobbyCallbacks())
+}
+
+/** Đếm ngược vào trận. */
+@PreviewTest
+@Preview(name = "large_phone", widthDp = 430, heightDp = 932)
+@Composable
+fun matchCountdown() = ArcadeScreenshotFrame {
+    LobbyScreen(
+        state = roomWaitingState(ready = true).copy(lobbyStage = com.hienthai.fastowin.state.LobbyStage.MATCHED, countdown = 3,
+            matchType = com.hienthai.fastowin.protocol.MatchType.RANKED),
+        callbacks = lobbyCallbacks()
+    )
+}
+
+/** Hộp thoại nhập mã phòng. */
+@PreviewTest
+@Preview(name = "large_phone", widthDp = 430, heightDp = 932)
+@Composable
+fun joinByCodeDialog() = ArcadeScreenshotFrame {
+    com.hienthai.fastowin.ui.screens.JoinByCodeDialog(rooms = emptyList(), onDismiss = {}, onSelect = {})
+}
+
+/** Hộp thoại vào phòng riêng (mật khẩu). */
+@PreviewTest
+@Preview(name = "large_phone", widthDp = 430, heightDp = 932)
+@Composable
+fun joinPrivateRoomDialog() = ArcadeScreenshotFrame {
+    com.hienthai.fastowin.ui.screens.JoinRoomDialog(
+        room = com.hienthai.fastowin.state.AvailableRoom("room-9", "Team lớp 12A", "Lan", com.hienthai.fastowin.navigation.GameMode.ORDER,
+            com.hienthai.fastowin.protocol.MatchType.CASUAL, true, 0L),
+        onDismiss = {}, onJoin = {}
+    )
+}
+
+/** Bảng tạo phòng mới. */
+@PreviewTest
+@Preview(name = "large_phone", widthDp = 430, heightDp = 932)
+@Composable
+fun createRoomSheet() = ArcadeScreenshotFrame {
+    com.hienthai.fastowin.ui.screens.CreateRoomSheet(isLoading = false, defaultRoomName = "Phòng của HienTX", playerLevel = 8,
+        onDismiss = {}, onCreate = { _, _, _, _ -> })
+}

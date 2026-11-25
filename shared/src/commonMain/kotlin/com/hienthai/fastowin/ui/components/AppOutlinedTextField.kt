@@ -5,6 +5,11 @@ import androidx.compose.foundation.interaction.collectIsFocusedAsState
 import androidx.compose.foundation.relocation.BringIntoViewRequester
 import androidx.compose.foundation.relocation.bringIntoViewRequester
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.border
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.ui.graphics.Color
+import com.hienthai.fastowin.ui.theme.A1Palette
 import androidx.compose.foundation.layout.defaultMinSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
@@ -54,17 +59,44 @@ fun AppOutlinedTextField(
     singleLine: Boolean = false,
     maxLines: Int = if (singleLine) 1 else Int.MAX_VALUE,
     minLines: Int = 1,
-    shape: Shape = OutlinedTextFieldDefaults.shape,
-    colors: TextFieldColors = OutlinedTextFieldDefaults.colors(),
+    shape: Shape = A1FieldShape,
+    colors: TextFieldColors = a1FieldColors(),
 ) {
-    val labelContent: (@Composable () -> Unit)? = label?.let { { Text(it) } }
+    // A1 (".field" của thiết kế): nhãn nằm PHÍA TRÊN ô; ô trắng cao 56dp, bo 16dp, viền navy 3dp,
+    // viền xanh + quầng nhạt khi đang nhập, viền đỏ khi lỗi.
+    if (label != null) {
+        Column {
+            A1FieldLabel(label)
+            AppOutlinedTextField(
+                value, onValueChange, modifier, enabled, readOnly, textStyle, null, placeholder,
+                leadingIcon, trailingIcon, prefix, suffix, supportingText, isError, visualTransformation,
+                keyboardOptions, keyboardActions, singleLine, maxLines, minLines, shape, colors
+            )
+        }
+        return
+    }
     val placeholderContent: (@Composable () -> Unit)? = placeholder?.let { { Text(it) } }
+    val fieldInteraction = remember { MutableInteractionSource() }
+    val fieldFocused by fieldInteraction.collectIsFocusedAsState()
+    val edge = when {
+        isError -> Color(0xFFD0303A)
+        fieldFocused -> A1Palette.Blue2
+        else -> A1Palette.Line
+    }
+    val a1Modifier = Modifier
+        .then(if (fieldFocused && !isError) Modifier.border(7.dp, A1Palette.Blue2.copy(alpha = 0.2f), shape) else Modifier)
+        .border(3.dp, edge, shape)
     if (!usesNativeWebTextInput) {
         OutlinedTextField(
-            value, onValueChange, modifier, enabled, readOnly, textStyle,
-            labelContent, placeholderContent, leadingIcon, trailingIcon,
-            prefix, suffix, supportingText, isError, visualTransformation,
-            keyboardOptions, keyboardActions, singleLine, maxLines, minLines,
+            value = value, onValueChange = onValueChange,
+            modifier = modifier.heightIn(min = 56.dp).then(a1Modifier),
+            enabled = enabled, readOnly = readOnly, textStyle = textStyle,
+            label = null, placeholder = placeholderContent,
+            leadingIcon = leadingIcon, trailingIcon = trailingIcon, prefix = prefix, suffix = suffix,
+            supportingText = supportingText, isError = isError, visualTransformation = visualTransformation,
+            keyboardOptions = keyboardOptions, keyboardActions = keyboardActions,
+            singleLine = singleLine, maxLines = maxLines, minLines = minLines,
+            interactionSource = fieldInteraction,
             shape = shape, colors = colors,
         )
         return
@@ -88,7 +120,7 @@ fun AppOutlinedTextField(
             override fun defaultKeyboardAction(imeAction: ImeAction) = Unit
         }
     }
-    Box(modifier.bringIntoViewRequester(bringIntoView).padding(top = if (label != null) 8.dp else 0.dp)
+    Box(modifier.bringIntoViewRequester(bringIntoView).then(a1Modifier)
         .defaultMinSize(minWidth = OutlinedTextFieldDefaults.MinWidth,
             minHeight = OutlinedTextFieldDefaults.MinHeight)) {
         OutlinedTextFieldDefaults.DecorationBox(
@@ -120,7 +152,7 @@ fun AppOutlinedTextField(
             enabled = enabled, singleLine = singleLine,
             visualTransformation = visualTransformation,
             interactionSource = interactionSource, isError = isError,
-            label = labelContent, placeholder = null,
+            label = null, placeholder = null,
             leadingIcon = leadingIcon, trailingIcon = trailingIcon,
             prefix = prefix, suffix = suffix, supportingText = supportingText,
             colors = colors,
@@ -131,6 +163,32 @@ fun AppOutlinedTextField(
         )
     }
 }
+
+private val A1FieldShape = RoundedCornerShape(16.dp)
+
+/** Màu ô nhập A1: nền trắng, chữ navy; viền do [AppOutlinedTextField] tự vẽ (3dp) nên viền Material trong suốt. */
+@Composable
+fun a1FieldColors(): TextFieldColors = OutlinedTextFieldDefaults.colors(
+    focusedContainerColor = Color.White,
+    unfocusedContainerColor = Color.White,
+    disabledContainerColor = A1Palette.SurfaceAlt,
+    errorContainerColor = Color.White,
+    focusedBorderColor = Color.Transparent,
+    unfocusedBorderColor = Color.Transparent,
+    disabledBorderColor = Color.Transparent,
+    errorBorderColor = Color.Transparent,
+    focusedTextColor = A1Palette.Ink,
+    unfocusedTextColor = A1Palette.Ink,
+    focusedLeadingIconColor = A1Palette.Line,
+    unfocusedLeadingIconColor = A1Palette.Line,
+    focusedTrailingIconColor = A1Palette.Line,
+    unfocusedTrailingIconColor = A1Palette.Line,
+    focusedPlaceholderColor = A1Palette.Muted,
+    unfocusedPlaceholderColor = A1Palette.Muted,
+    cursorColor = A1Palette.Blue2,
+    errorSupportingTextColor = Color(0xFFB3202B),
+    errorLeadingIconColor = Color(0xFFD0303A)
+)
 
 internal expect val usesNativeWebTextInput: Boolean
 

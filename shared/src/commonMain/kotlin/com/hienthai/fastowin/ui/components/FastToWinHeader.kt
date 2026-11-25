@@ -202,10 +202,20 @@ fun ArcadeHeaderIconButton(
     modifier: Modifier = Modifier,
     enabled: Boolean = true,
     accent: Boolean = false,
+    /** Nút xanh (".ib.b" của thiết kế), vd. chia sẻ mã phòng. */
+    blue: Boolean = false,
     content: @Composable () -> Unit
 ) {
-    val face = if (accent) Color(0xFFFF8A3D) else Color.White
-    val edge = if (accent) Color(0xFF9A3A00) else A1Palette.Line
+    val face = when {
+        accent -> Color(0xFFFF8A3D)
+        blue -> A1Palette.Blue2
+        else -> Color.White
+    }
+    val edge = when {
+        accent -> Color(0xFF9A3A00)
+        blue -> A1Palette.BlueDeep
+        else -> A1Palette.Line
+    }
     Box(
         modifier = modifier
             .size(width = 48.dp, height = 48.dp)
@@ -216,7 +226,7 @@ fun ArcadeHeaderIconButton(
     ) {
         val tint = when {
             !enabled -> A1Palette.Muted
-            accent -> Color.White
+            accent || blue -> Color.White
             else -> A1Palette.Line
         }
         CompositionLocalProvider(LocalContentColor provides tint) {
