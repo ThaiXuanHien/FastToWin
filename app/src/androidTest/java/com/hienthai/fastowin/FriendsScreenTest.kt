@@ -172,7 +172,8 @@ class FriendsScreenTest {
             }
         }
 
-        composeRule.onNodeWithContentDescription("Đang ngoại tuyến").assertExists()
+        // Ngoại tuyến: không có chấm màu, trạng thái ghi bằng chữ dưới tên.
+        composeRule.onNodeWithText("Đang ngoại tuyến").assertExists()
         composeRule.onNodeWithContentDescription("Đang trực tuyến").assertExists()
         composeRule.onNodeWithContentDescription("Đang trong phòng").assertExists()
         composeRule.onNodeWithContentDescription("Đang trong trận").assertExists()

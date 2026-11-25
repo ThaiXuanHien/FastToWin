@@ -69,6 +69,32 @@ import com.hienthai.fastowin.ui.components.SystemBackHandler
 import com.hienthai.fastowin.ui.components.nextArcadePageItemCount
 import com.hienthai.fastowin.ui.layout.ResponsiveScreen
 import com.hienthai.fastowin.ui.theme.ArcadePalette
+import com.hienthai.fastowin.ui.components.A1Tag
+import com.hienthai.fastowin.ui.components.A1TagTone
+import com.hienthai.fastowin.ui.components.a1Card
+import com.hienthai.fastowin.ui.components.accessibilityLabel
+import com.hienthai.fastowin.ui.theme.A1Palette
+import androidx.compose.ui.platform.LocalClipboardManager
+import androidx.compose.ui.text.AnnotatedString
+import androidx.compose.ui.unit.sp
+import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.graphics.PathEffect
+import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.material.icons.filled.Check
+import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.ContentCopy
+import androidx.compose.material.icons.filled.PersonSearch
+import androidx.compose.foundation.layout.ColumnScope
+import androidx.compose.foundation.layout.RowScope
+import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.background
+import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
+import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.semantics.heading
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -174,17 +200,23 @@ fun FriendsScreen(
                 if (showBackButton) {
                     FastToWinHeader(
                         title = localized(TextKey.Friends),
-                        gold = state.profile?.progression?.gold ?: 0,
-                        gems = state.profile?.progression?.gems ?: 0,
-                        unreadNotifications = state.unreadNotificationCount,
+                        gold = 0,
+                        gems = 0,
+                        unreadNotifications = 0,
                         onNotifications = onOpenNotifications,
                         onBack = onBack,
                         applySafeDrawingInset = false,
+                        showBalances = false,
+                        showNotifications = false,
                         actions = {
-                            HeaderRefreshAction(
-                                isRefreshing = state.isFriendsLoading,
-                                onRefresh = onRefresh
+                            val online = state.social.friends.count { it.presence != FriendPresence.OFFLINE }
+                            A1Tag(
+                                "● " + localized(TextKey.FriendsOnlineCount, "count" to online),
+                                A1TagTone.GREEN,
+                                large = true,
+                                modifier = Modifier.testTag("friends_online_count")
                             )
+                            HeaderRefreshAction(isRefreshing = state.isFriendsLoading, onRefresh = onRefresh)
                         }
                     )
                 }
@@ -193,17 +225,9 @@ fun FriendsScreen(
                     verticalArrangement = Arrangement.spacedBy(10.dp),
                     contentPadding = PaddingValues(bottom = 24.dp)
                 ) {
-                    item {
-                        ArcadeIconHero(
-                            kicker = localized(TextKey.SocialHub),
-                            title = localized(TextKey.YourSquad),
-                            subtitle = localized(TextKey.YourSquadDescription),
-                            icon = Icons.Default.Groups,
-                            accent = ArcadePalette.Mint600
-                        )
-                    }
-                    item {
-                        FriendCodeForm(
+                    item(key = "friend_code") {
+                        FriendCodeCard(
+                            ownCode = state.profile?.playerCode,
                             playerCode = playerCode,
                             onPlayerCodeChange = { playerCode = it.uppercase().take(12) },
                             onSubmit = { onSendRequest(playerCode); playerCode = "" },
@@ -211,10 +235,10 @@ fun FriendsScreen(
                         )
                     }
                     state.socialNotice?.let { notice ->
-                        item { NoticePanel(notice, ArcadePalette.Mint400) }
+                        item { NoticePanel(notice, isError = false) }
                     }
                     state.error?.let { error ->
-                        item { NoticePanel(error, ArcadePalette.Coral400) }
+                        item { NoticePanel(error, isError = true) }
                     }
 
                     if (isInitialLoading) {
@@ -223,61 +247,60 @@ fun FriendsScreen(
                                 modifier = Modifier.fillMaxWidth().heightIn(min = 180.dp),
                                 contentAlignment = Alignment.Center
                             ) {
-                                CircularProgressIndicator(color = ArcadePalette.Gold500)
+                                CircularProgressIndicator(color = A1Palette.Blue2)
                             }
                         }
                     } else {
-                        if (state.roomInvitations.isNotEmpty()) {
-                            item {
-                                SocialSectionTitle(localized(TextKey.RoomInvitations), localized(TextKey.NewCount, "count" to state.roomInvitations.size))
-                            }
-                            items(
-                                state.roomInvitations.take(visibleRoomInvitationCount),
-                                key = { "room:${it.invitationId}" }
-                            ) { invitation ->
-                                SocialPanel {
-                                    Column(
-                                        modifier = Modifier.fillMaxWidth().padding(14.dp),
-                                        verticalArrangement = Arrangement.spacedBy(10.dp)
-                                    ) {
-                                        Text(invitation.fromDisplayName, fontWeight = FontWeight.Black)
+                        // Lời mời vào phòng: thẻ tím, nút VÀO NGAY xanh lá + Từ chối.
+                        items(
+                            state.roomInvitations.take(visibleRoomInvitationCount),
+                            key = { "room:${it.invitationId}" }
+                        ) { invitation ->
+                            Column(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .a1Card(background = Color(0xFFF4EFFE), border = A1Palette.PurpleDeep)
+                                    .padding(horizontal = 16.dp, vertical = 14.dp)
+                                    .testTag("room_invitation:${invitation.invitationId}"),
+                                verticalArrangement = Arrangement.spacedBy(12.dp)
+                            ) {
+                                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                                    PlayerAvatar(invitation.fromDisplayName, avatarId = null, size = 48.dp)
+                                    Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                                        Text(localized(TextKey.RoomInvitationCaps), style = MaterialTheme.typography.titleSmall,
+                                            color = A1Palette.PurpleDeep)
                                         Text(
-                                            localized(TextKey.RoomInvitationSummary, "room" to invitation.roomName),
-                                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                                            invitation.fromDisplayName + " " + localized(TextKey.RoomInvitationSummary, "room" to invitation.roomName)
+                                                .replaceFirstChar { it.lowercase() },
+                                            style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.SemiBold, color = A1Palette.Ink
                                         )
-                                        Column(
-                                            modifier = Modifier.fillMaxWidth(),
-                                            verticalArrangement = Arrangement.spacedBy(8.dp)
-                                        ) {
-                                            ArcadeActionButton(
-                                                label = localized(TextKey.JoinRoom),
-                                                onClick = {
-                                                    onRespondRoomInvitation(invitation.invitationId, true)
-                                                },
-                                                style = ArcadeActionStyle.GOLD,
-                                                modifier = Modifier.fillMaxWidth()
-                                            )
-                                            ArcadeActionButton(
-                                                label = localized(TextKey.Decline),
-                                                onClick = {
-                                                    onRespondRoomInvitation(invitation.invitationId, false)
-                                                },
-                                                style = ArcadeActionStyle.OUTLINE,
-                                                modifier = Modifier.fillMaxWidth()
-                                            )
-                                        }
                                     }
                                 }
+                                Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                                    ArcadeActionButton(
+                                        label = localized(TextKey.JoinNowCaps),
+                                        onClick = { onRespondRoomInvitation(invitation.invitationId, true) },
+                                        style = ArcadeActionStyle.SUCCESS,
+                                        compact = true,
+                                        modifier = Modifier.weight(1f)
+                                    )
+                                    ArcadeActionButton(
+                                        label = localized(TextKey.Decline),
+                                        onClick = { onRespondRoomInvitation(invitation.invitationId, false) },
+                                        style = ArcadeActionStyle.OUTLINE,
+                                        compact = true,
+                                        modifier = Modifier.weight(1f)
+                                    )
+                                }
                             }
+                        }
+                        if (state.roomInvitations.size > visibleRoomInvitationCount) {
                             item(key = "room_invitations_load_more") {
                                 ArcadeLoadMoreButton(
                                     visibleItemCount = state.roomInvitations.take(visibleRoomInvitationCount).size,
                                     totalItemCount = state.roomInvitations.size,
                                     onLoadMore = {
-                                        visibleRoomInvitationCount = nextArcadePageItemCount(
-                                            visibleRoomInvitationCount,
-                                            state.roomInvitations.size
-                                        )
+                                        visibleRoomInvitationCount = nextArcadePageItemCount(visibleRoomInvitationCount, state.roomInvitations.size)
                                     },
                                     testTag = "room_invitations_load_more"
                                 )
@@ -285,245 +308,165 @@ fun FriendsScreen(
                         }
 
                         if (state.social.incomingRequests.isNotEmpty()) {
-                            item {
-                                SocialSectionTitle(
-                                    localized(TextKey.FriendRequests),
-                                    localized(TextKey.NewCount, "count" to state.social.incomingRequests.size)
-                                )
-                            }
-                            items(
-                                state.social.incomingRequests.take(visibleIncomingRequestCount),
-                                key = { "incoming:${it.requestId}" }
-                            ) { request ->
-                                SocialPanel {
-                                    Column(
-                                        modifier = Modifier.fillMaxWidth().padding(14.dp),
-                                        verticalArrangement = Arrangement.spacedBy(10.dp)
-                                    ) {
-                                        Row(
-                                            modifier = Modifier.fillMaxWidth(),
-                                            verticalAlignment = Alignment.CenterVertically,
-                                            horizontalArrangement = Arrangement.spacedBy(12.dp)
+                            item(key = "incoming_requests") {
+                                SocialCard(
+                                    title = localized(TextKey.FriendRequests),
+                                    meta = { A1Tag(localized(TextKey.NewCount, "count" to state.social.incomingRequests.size), A1TagTone.RED) }
+                                ) {
+                                    val visible = state.social.incomingRequests.take(visibleIncomingRequestCount)
+                                    visible.forEachIndexed { index, request ->
+                                        SocialRow(
+                                            avatar = { PlayerAvatar(request.displayName, request.avatarId, request.userId, request.frameId, size = 52.dp) },
+                                            title = request.displayName,
+                                            subtitle = localized(TextKey.PlayerCodeShort, "code" to request.playerCode),
+                                            showDivider = index < visible.lastIndex,
+                                            modifier = Modifier.testTag("incoming_request:${request.requestId}")
                                         ) {
-                                            PlayerAvatar(
-                                                displayName = request.displayName,
-                                                avatarId = request.avatarId,
-                                                userId = request.userId,
-                                                frameId = request.frameId
+                                            SquareActionButton(
+                                                icon = Icons.Default.Check,
+                                                description = localized(TextKey.Accept),
+                                                style = ArcadeActionStyle.SUCCESS,
+                                                onClick = { onRespondRequest(request.requestId, true) }
                                             )
-                                            Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                                                Text(request.displayName, fontWeight = FontWeight.Black)
-                                                Text(
-                                                    localized(TextKey.PlayerCodeShort, "code" to request.playerCode),
-                                                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                                                )
-                                            }
-                                            IconButton(
-                                                onClick = {
-                                                    blockTarget = PlayerActionTarget(
-                                                        request.userId,
-                                                        request.displayName
-                                                    )
-                                                }
-                                            ) {
-                                                Icon(
-                                                    Icons.Default.Block,
-                                                    contentDescription = localized(TextKey.BlockPlayerNamed, "player" to request.displayName),
-                                                    tint = ArcadePalette.Coral400
-                                                )
-                                            }
-                                        }
-                                        Column(
-                                            modifier = Modifier.fillMaxWidth(),
-                                            verticalArrangement = Arrangement.spacedBy(8.dp)
-                                        ) {
-                                            ArcadeActionButton(
-                                                label = localized(TextKey.Accept),
-                                                onClick = {
-                                                    onRespondRequest(request.requestId, true)
-                                                },
-                                                modifier = Modifier.fillMaxWidth()
-                                            )
-                                            ArcadeActionButton(
-                                                label = localized(TextKey.Decline),
-                                                onClick = {
-                                                    onRespondRequest(request.requestId, false)
-                                                },
+                                            SquareActionButton(
+                                                icon = Icons.Default.Close,
+                                                description = localized(TextKey.Decline),
                                                 style = ArcadeActionStyle.OUTLINE,
-                                                modifier = Modifier.fillMaxWidth()
+                                                onClick = { onRespondRequest(request.requestId, false) }
                                             )
+                                            IconButton(onClick = { blockTarget = PlayerActionTarget(request.userId, request.displayName) }) {
+                                                Icon(Icons.Default.Block,
+                                                    contentDescription = localized(TextKey.BlockPlayerNamed, "player" to request.displayName),
+                                                    tint = A1Palette.RedText)
+                                            }
                                         }
+                                    }
+                                    if (state.social.incomingRequests.size > visible.size) {
+                                        ArcadeLoadMoreButton(
+                                            visibleItemCount = visible.size,
+                                            totalItemCount = state.social.incomingRequests.size,
+                                            onLoadMore = {
+                                                visibleIncomingRequestCount = nextArcadePageItemCount(visibleIncomingRequestCount, state.social.incomingRequests.size)
+                                            },
+                                            modifier = Modifier.padding(12.dp),
+                                            testTag = "incoming_requests_load_more"
+                                        )
                                     }
                                 }
                             }
-                            item(key = "incoming_requests_load_more") {
-                                ArcadeLoadMoreButton(
-                                    visibleItemCount = state.social.incomingRequests.take(visibleIncomingRequestCount).size,
-                                    totalItemCount = state.social.incomingRequests.size,
-                                    onLoadMore = {
-                                        visibleIncomingRequestCount = nextArcadePageItemCount(
-                                            visibleIncomingRequestCount,
-                                            state.social.incomingRequests.size
-                                        )
-                                    },
-                                    testTag = "incoming_requests_load_more"
-                                )
-                            }
                         }
 
-                        val activeFriends = state.social.friends.count {
-                            it.presence != FriendPresence.OFFLINE
-                        }
-                        item {
-                            SocialSectionTitle(localized(TextKey.FriendList), localized(TextKey.ActiveFriends, "count" to activeFriends))
-                        }
-                        if (state.social.friends.isEmpty()) {
-                            item {
-                                NoticePanel(
-                                    localized(TextKey.NoFriendsDescription),
-                                    ArcadePalette.Blue300
-                                )
-                            }
-                        } else {
-                            items(
-                                state.social.friends.take(visibleFriendCount),
-                                key = { "friend:${it.userId}" }
-                            ) { friend ->
-                                FriendCard(
-                                    friend = friend,
-                                    canInvite = canInvite,
-                                    isSendingInvitation = friend.userId in state.sendingRoomInviteFriendIds,
-                                    isInvited = friend.userId in state.invitedRoomFriendIds,
-                                    onInviteFriend = onInviteFriend,
-                                    onViewInfo = { onOpenFriendProfile(friend.userId) },
-                                    onRemoveFriend = {
-                                        removeTarget = PlayerActionTarget(friend.userId, friend.displayName)
-                                    },
-                                    onBlockPlayer = {
-                                        blockTarget = PlayerActionTarget(friend.userId, friend.displayName)
-                                    }
-                                )
-                            }
-                            item(key = "friends_load_more") {
-                                ArcadeLoadMoreButton(
-                                    visibleItemCount = state.social.friends.take(visibleFriendCount).size,
-                                    totalItemCount = state.social.friends.size,
-                                    onLoadMore = {
-                                        visibleFriendCount = nextArcadePageItemCount(
-                                            visibleFriendCount,
-                                            state.social.friends.size
-                                        )
-                                    },
-                                    testTag = "friends_load_more"
-                                )
+                        item(key = "friend_list") {
+                            SocialCard(
+                                title = localized(TextKey.FriendList),
+                                meta = {
+                                    Text(state.social.friends.size.toString(), style = MaterialTheme.typography.titleSmall, color = A1Palette.Muted)
+                                }
+                            ) {
+                                if (state.social.friends.isEmpty()) {
+                                    Text(
+                                        localized(TextKey.NoFriendsDescription),
+                                        modifier = Modifier.padding(horizontal = 18.dp, vertical = 12.dp),
+                                        style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.SemiBold, color = A1Palette.Muted
+                                    )
+                                }
+                                val visible = state.social.friends.take(visibleFriendCount)
+                                visible.forEachIndexed { index, friend ->
+                                    FriendCard(
+                                        friend = friend,
+                                        canInvite = canInvite,
+                                        isSendingInvitation = friend.userId in state.sendingRoomInviteFriendIds,
+                                        isInvited = friend.userId in state.invitedRoomFriendIds,
+                                        onInviteFriend = onInviteFriend,
+                                        onViewInfo = { onOpenFriendProfile(friend.userId) },
+                                        onRemoveFriend = { removeTarget = PlayerActionTarget(friend.userId, friend.displayName) },
+                                        onBlockPlayer = { blockTarget = PlayerActionTarget(friend.userId, friend.displayName) },
+                                        showDivider = index < visible.lastIndex
+                                    )
+                                }
+                                if (state.social.friends.size > visible.size) {
+                                    ArcadeLoadMoreButton(
+                                        visibleItemCount = visible.size,
+                                        totalItemCount = state.social.friends.size,
+                                        onLoadMore = { visibleFriendCount = nextArcadePageItemCount(visibleFriendCount, state.social.friends.size) },
+                                        modifier = Modifier.padding(12.dp),
+                                        testTag = "friends_load_more"
+                                    )
+                                }
                             }
                         }
 
                         if (state.social.outgoingRequests.isNotEmpty()) {
-                            item {
-                                SocialSectionTitle(
-                                    localized(TextKey.PendingReplies),
-                                    state.social.outgoingRequests.size.toString()
-                                )
-                            }
-                            items(
-                                state.social.outgoingRequests.take(visibleOutgoingRequestCount),
-                                key = { "outgoing:${it.requestId}" }
-                            ) { request ->
-                                SocialPanel {
-                                    Row(
-                                        modifier = Modifier.fillMaxWidth().padding(14.dp),
-                                        verticalAlignment = Alignment.CenterVertically,
-                                        horizontalArrangement = Arrangement.spacedBy(12.dp)
-                                    ) {
-                                        PlayerAvatar(
-                                            displayName = request.displayName,
-                                            avatarId = request.avatarId,
-                                            userId = request.userId,
-                                            frameId = request.frameId
-                                        )
-                                        Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                                            Text(request.displayName, fontWeight = FontWeight.Black)
-                                            Text(
-                                                localized(TextKey.SentFriendInvitation, "code" to request.playerCode),
-                                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            item(key = "outgoing_requests") {
+                                SocialCard(
+                                    title = localized(TextKey.PendingReplies),
+                                    meta = { Text(state.social.outgoingRequests.size.toString(), style = MaterialTheme.typography.titleSmall, color = A1Palette.Muted) }
+                                ) {
+                                    val visible = state.social.outgoingRequests.take(visibleOutgoingRequestCount)
+                                    visible.forEachIndexed { index, request ->
+                                        SocialRow(
+                                            avatar = { PlayerAvatar(request.displayName, request.avatarId, request.userId, request.frameId, size = 52.dp) },
+                                            title = request.displayName,
+                                            subtitle = localized(TextKey.SentFriendInvitation, "code" to request.playerCode),
+                                            showDivider = index < visible.lastIndex
+                                        ) {
+                                            ArcadeActionButton(
+                                                label = localized(TextKey.Cancel),
+                                                onClick = { onCancelRequest(request.requestId) },
+                                                style = ArcadeActionStyle.OUTLINE,
+                                                compact = true
                                             )
                                         }
-                                        ArcadeActionButton(
-                                            label = localized(TextKey.Cancel),
-                                            onClick = { onCancelRequest(request.requestId) },
-                                            style = ArcadeActionStyle.OUTLINE,
-                                            modifier = Modifier.width(104.dp)
+                                    }
+                                    if (state.social.outgoingRequests.size > visible.size) {
+                                        ArcadeLoadMoreButton(
+                                            visibleItemCount = visible.size,
+                                            totalItemCount = state.social.outgoingRequests.size,
+                                            onLoadMore = {
+                                                visibleOutgoingRequestCount = nextArcadePageItemCount(visibleOutgoingRequestCount, state.social.outgoingRequests.size)
+                                            },
+                                            modifier = Modifier.padding(12.dp),
+                                            testTag = "outgoing_requests_load_more"
                                         )
                                     }
                                 }
-                            }
-                            item(key = "outgoing_requests_load_more") {
-                                ArcadeLoadMoreButton(
-                                    visibleItemCount = state.social.outgoingRequests.take(visibleOutgoingRequestCount).size,
-                                    totalItemCount = state.social.outgoingRequests.size,
-                                    onLoadMore = {
-                                        visibleOutgoingRequestCount = nextArcadePageItemCount(
-                                            visibleOutgoingRequestCount,
-                                            state.social.outgoingRequests.size
-                                        )
-                                    },
-                                    testTag = "outgoing_requests_load_more"
-                                )
                             }
                         }
 
                         if (state.social.blockedPlayers.isNotEmpty()) {
-                            item {
-                                SocialSectionTitle(
-                                    localized(TextKey.BlockedPlayers),
-                                    state.social.blockedPlayers.size.toString()
-                                )
-                            }
-                            items(
-                                state.social.blockedPlayers.take(visibleBlockedPlayerCount),
-                                key = { "blocked:${it.userId}" }
-                            ) { player ->
-                                SocialPanel(accent = ArcadePalette.Coral400) {
-                                    Row(
-                                        modifier = Modifier.fillMaxWidth().padding(14.dp),
-                                        verticalAlignment = Alignment.CenterVertically,
-                                        horizontalArrangement = Arrangement.spacedBy(12.dp)
-                                    ) {
-                                        PlayerAvatar(
-                                            displayName = player.displayName,
-                                            avatarId = player.avatarId,
-                                            userId = player.userId,
-                                            frameId = player.frameId
-                                        )
-                                        Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                                            Text(player.displayName, fontWeight = FontWeight.Black)
-                                            Text(
-                                                localized(TextKey.PlayerCodeShort, "code" to player.playerCode),
-                                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            item(key = "blocked_players") {
+                                SocialCard(
+                                    title = localized(TextKey.BlockedPlayers),
+                                    meta = { Text(state.social.blockedPlayers.size.toString(), style = MaterialTheme.typography.titleSmall, color = A1Palette.Muted) }
+                                ) {
+                                    val visible = state.social.blockedPlayers.take(visibleBlockedPlayerCount)
+                                    visible.forEachIndexed { index, player ->
+                                        SocialRow(
+                                            avatar = { PlayerAvatar(player.displayName, player.avatarId, player.userId, player.frameId, size = 52.dp) },
+                                            title = player.displayName,
+                                            subtitle = localized(TextKey.PlayerCodeShort, "code" to player.playerCode),
+                                            showDivider = index < visible.lastIndex
+                                        ) {
+                                            ArcadeActionButton(
+                                                label = localized(TextKey.Unblock),
+                                                onClick = { onUnblockPlayer(player.userId) },
+                                                style = ArcadeActionStyle.OUTLINE,
+                                                compact = true
                                             )
                                         }
-                                        ArcadeActionButton(
-                                            label = localized(TextKey.Unblock),
-                                            onClick = { onUnblockPlayer(player.userId) },
-                                            style = ArcadeActionStyle.OUTLINE,
-                                            modifier = Modifier.width(118.dp)
+                                    }
+                                    if (state.social.blockedPlayers.size > visible.size) {
+                                        ArcadeLoadMoreButton(
+                                            visibleItemCount = visible.size,
+                                            totalItemCount = state.social.blockedPlayers.size,
+                                            onLoadMore = {
+                                                visibleBlockedPlayerCount = nextArcadePageItemCount(visibleBlockedPlayerCount, state.social.blockedPlayers.size)
+                                            },
+                                            modifier = Modifier.padding(12.dp),
+                                            testTag = "blocked_players_load_more"
                                         )
                                     }
                                 }
-                            }
-                            item(key = "blocked_players_load_more") {
-                                ArcadeLoadMoreButton(
-                                    visibleItemCount = state.social.blockedPlayers.take(visibleBlockedPlayerCount).size,
-                                    totalItemCount = state.social.blockedPlayers.size,
-                                    onLoadMore = {
-                                        visibleBlockedPlayerCount = nextArcadePageItemCount(
-                                            visibleBlockedPlayerCount,
-                                            state.social.blockedPlayers.size
-                                        )
-                                    },
-                                    testTag = "blocked_players_load_more"
-                                )
                             }
                         }
                     }
@@ -533,123 +476,149 @@ fun FriendsScreen(
     }
 }
 
+/** Thẻ "Mã của bạn": mã người chơi lớn + nút sao chép; ô nhập mã bạn bè và nút xanh Kết bạn. */
 @Composable
-private fun FriendCodeForm(
+private fun FriendCodeCard(
+    ownCode: String?,
     playerCode: String,
     onPlayerCodeChange: (String) -> Unit,
     onSubmit: () -> Unit,
     enabled: Boolean
 ) {
-    ArcadePanel(modifier = Modifier.fillMaxWidth(), accent = ArcadePalette.Blue300) {
-        BoxWithConstraints(modifier = Modifier.fillMaxWidth().padding(12.dp)) {
-            if (maxWidth < 380.dp) {
-                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    FriendCodeField(playerCode, onPlayerCodeChange, Modifier.fillMaxWidth())
-                    ArcadeActionButton(
-                        label = localized(TextKey.AddFriend),
-                        onClick = onSubmit,
-                        enabled = enabled,
-                        modifier = Modifier.fillMaxWidth()
+    val clipboard = LocalClipboardManager.current
+    var copied by remember(ownCode) { mutableStateOf(false) }
+    Column(
+        Modifier.fillMaxWidth().a1Card().padding(horizontal = 18.dp, vertical = 16.dp),
+        verticalArrangement = Arrangement.spacedBy(12.dp)
+    ) {
+        if (ownCode != null) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Column(Modifier.weight(1f)) {
+                    Text(localized(TextKey.FriendsYourCode), style = MaterialTheme.typography.titleSmall, color = A1Palette.Muted)
+                    Text(
+                        ownCode,
+                        style = MaterialTheme.typography.headlineLarge.copy(letterSpacing = 3.sp),
+                        color = A1Palette.Ink,
+                        modifier = Modifier.testTag("own_player_code")
                     )
                 }
-            } else {
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    FriendCodeField(playerCode, onPlayerCodeChange, Modifier.weight(1f))
-                    ArcadeActionButton(
-                        label = localized(TextKey.AddFriend),
-                        onClick = onSubmit,
-                        enabled = enabled,
-                        modifier = Modifier.width(132.dp)
+                com.hienthai.fastowin.ui.components.ArcadeHeaderIconButton(onClick = {
+                    clipboard.setText(AnnotatedString(ownCode))
+                    copied = true
+                }) {
+                    Icon(
+                        if (copied) Icons.Default.Check else Icons.Default.ContentCopy,
+                        contentDescription = localized(if (copied) TextKey.Copied else TextKey.CopyPlayerCode),
+                        tint = A1Palette.Ink
                     )
                 }
             }
         }
+        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+            OutlinedTextField(
+                value = playerCode,
+                onValueChange = onPlayerCodeChange,
+                placeholder = localized(TextKey.PlayerCodeExample),
+                leadingIcon = { Icon(Icons.Default.PersonSearch, contentDescription = null, tint = A1Palette.Muted) },
+                singleLine = true,
+                modifier = Modifier.weight(1f).testTag("friend_code_field")
+            )
+            ArcadeActionButton(
+                label = localized(TextKey.AddFriend),
+                onClick = onSubmit,
+                enabled = enabled,
+                style = ArcadeActionStyle.PRIMARY,
+                modifier = Modifier.width(124.dp)
+            )
+        }
+    }
+}
+
+/** Thẻ nhóm (".card"): tiêu đề + phần phụ bên phải, các dòng gạch đứt bên dưới. */
+@Composable
+private fun SocialCard(title: String, meta: @Composable () -> Unit, content: @Composable ColumnScope.() -> Unit) {
+    Column(Modifier.fillMaxWidth().a1Card().padding(vertical = 6.dp)) {
+        Row(
+            Modifier.fillMaxWidth().padding(start = 18.dp, end = 14.dp, top = 10.dp, bottom = 4.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Text(title, style = MaterialTheme.typography.titleMedium.copy(fontSize = 18.sp), color = A1Palette.Ink,
+                modifier = Modifier.weight(1f).semantics { heading() })
+            meta()
+        }
+        content()
     }
 }
 
 @Composable
-private fun FriendCodeField(
-    value: String,
-    onValueChange: (String) -> Unit,
-    modifier: Modifier
+private fun SocialRow(
+    avatar: @Composable () -> Unit,
+    title: String,
+    subtitle: String,
+    showDivider: Boolean,
+    modifier: Modifier = Modifier,
+    subtitleColor: Color = A1Palette.Muted,
+    onClick: (() -> Unit)? = null,
+    actions: @Composable RowScope.() -> Unit
 ) {
-    OutlinedTextField(
-        value = value,
-        onValueChange = onValueChange,
-        label = localized(TextKey.PlayerCodeLabel),
-        placeholder = localized(TextKey.PlayerCodeExample),
-        singleLine = true,
-        modifier = modifier
-    )
-}
-
-@Composable
-private fun SocialSectionTitle(title: String, meta: String) {
     Row(
-        modifier = Modifier.fillMaxWidth().padding(top = 6.dp),
+        modifier = modifier
+            .fillMaxWidth()
+            .then(if (onClick == null) Modifier else Modifier.clickable(onClick = onClick))
+            .then(if (showDivider) Modifier.drawBehind {
+                drawLine(
+                    A1Palette.SurfaceAlt2,
+                    Offset(0f, size.height - 1.dp.toPx()),
+                    Offset(size.width, size.height - 1.dp.toPx()),
+                    strokeWidth = 2.dp.toPx(),
+                    pathEffect = PathEffect.dashPathEffect(floatArrayOf(6.dp.toPx(), 4.dp.toPx()))
+                )
+            } else Modifier)
+            .padding(start = 16.dp, end = 6.dp, top = 10.dp, bottom = 10.dp),
         verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.SpaceBetween
+        horizontalArrangement = Arrangement.spacedBy(12.dp)
     ) {
-        Text(title, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Black)
-        Text(
-            meta,
-            style = MaterialTheme.typography.labelLarge,
-            color = ArcadePalette.Gold500,
-            fontWeight = FontWeight.Bold
-        )
+        avatar()
+        Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+            Text(title, style = MaterialTheme.typography.titleMedium, color = A1Palette.Ink, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            Text(subtitle, style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.SemiBold, color = subtitleColor,
+                maxLines = 1, overflow = TextOverflow.Ellipsis)
+        }
+        actions()
     }
 }
 
+/** Nút vuông 3D nhỏ (✓ xanh lá / ✕ trắng) cho lời mời kết bạn. */
 @Composable
-private fun NoticePanel(message: String, accent: Color) {
-    SocialPanel(accent = accent) {
-        Text(
-            message,
-            modifier = Modifier.fillMaxWidth().padding(horizontal = 14.dp, vertical = 12.dp),
-            color = MaterialTheme.colorScheme.onSurfaceVariant
-        )
-    }
-}
-
-@Composable
-private fun SocialPanel(
-    modifier: Modifier = Modifier,
-    accent: Color = ArcadePalette.Blue300,
-    content: @Composable () -> Unit
-) {
-    Surface(
-        modifier = modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(18.dp),
-        color = MaterialTheme.colorScheme.surface,
-        contentColor = MaterialTheme.colorScheme.onSurface,
-        border = BorderStroke(1.dp, accent.copy(alpha = 0.42f)),
-        shadowElevation = 2.dp,
-        content = content
-    )
-}
-
-@Composable
-private fun ClickableSocialPanel(
-    onClick: () -> Unit,
-    modifier: Modifier = Modifier,
-    content: @Composable () -> Unit
-) {
-    Surface(
+private fun SquareActionButton(icon: ImageVector, description: String, style: ArcadeActionStyle, onClick: () -> Unit) {
+    ArcadeActionButton(
+        label = description,
         onClick = onClick,
-        modifier = modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(18.dp),
-        color = MaterialTheme.colorScheme.surface,
-        contentColor = MaterialTheme.colorScheme.onSurface,
-        border = BorderStroke(1.dp, ArcadePalette.Blue300.copy(alpha = 0.42f)),
-        shadowElevation = 2.dp,
-        content = content
+        style = style,
+        compact = true,
+        modifier = Modifier.width(52.dp)
+    ) {
+        Icon(icon, contentDescription = description, modifier = Modifier.size(26.dp),
+            tint = if (style == ArcadeActionStyle.OUTLINE) A1Palette.Ink else Color.White)
+    }
+}
+
+@Composable
+private fun NoticePanel(message: String, isError: Boolean) {
+    Text(
+        message,
+        modifier = Modifier
+            .fillMaxWidth()
+            .background(if (isError) Color(0xFFFFE0E0) else Color(0xFFDFF8D0), RoundedCornerShape(14.dp))
+            .border(2.dp, if (isError) Color(0xFFF08A8A) else Color(0xFF6CC24A), RoundedCornerShape(14.dp))
+            .padding(horizontal = 14.dp, vertical = 12.dp),
+        style = MaterialTheme.typography.bodyMedium,
+        fontWeight = FontWeight.SemiBold,
+        color = if (isError) A1Palette.RedDeep else A1Palette.GreenDeep
     )
 }
 
+/** Dòng bạn bè: avatar có chấm trạng thái, tên, trạng thái màu, nút Mời / nhãn Trong trận, menu ba chấm. */
 @Composable
 private fun FriendCard(
     friend: FriendSnapshot,
@@ -659,99 +628,77 @@ private fun FriendCard(
     onInviteFriend: (String) -> Unit,
     onViewInfo: () -> Unit,
     onRemoveFriend: () -> Unit,
-    onBlockPlayer: () -> Unit
+    onBlockPlayer: () -> Unit,
+    showDivider: Boolean
 ) {
     var showActions by remember(friend.userId) { mutableStateOf(false) }
-    ClickableSocialPanel(
+    val statusColor = when (friend.presence) {
+        FriendPresence.ONLINE -> A1Palette.GreenText
+        FriendPresence.PLAYING, FriendPresence.IN_ROOM -> A1Palette.Ink
+        FriendPresence.OFFLINE -> A1Palette.Muted
+    }
+    SocialRow(
+        avatar = {
+            Box {
+                PlayerAvatar(friend.displayName, friend.avatarId, friend.userId, friend.frameId, size = 52.dp)
+                if (friend.presence != FriendPresence.OFFLINE) {
+                    FriendPresenceIndicator(friend.presence, Modifier.align(Alignment.BottomEnd))
+                }
+            }
+        },
+        title = friend.displayName,
+        subtitle = friend.presence.accessibilityLabel(),
+        subtitleColor = statusColor,
+        showDivider = showDivider,
         onClick = onViewInfo,
         modifier = Modifier.testTag("friend_item:${friend.userId}")
     ) {
-        Column(
-            modifier = Modifier.fillMaxWidth().padding(14.dp),
-            verticalArrangement = Arrangement.spacedBy(8.dp)
-        ) {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(12.dp)
+        if (friend.presence == FriendPresence.PLAYING) {
+            A1Tag(localized(TextKey.InMatchShort), A1TagTone.INK, large = true)
+        } else if (canInvite) {
+            ArcadeActionButton(
+                label = when {
+                    isInvited -> localized(TextKey.InviteSent)
+                    isSendingInvitation -> localized(TextKey.SendingInvitation)
+                    else -> localized(TextKey.InviteShort)
+                },
+                onClick = { onInviteFriend(friend.userId) },
+                enabled = isInvitablePresence(friend.presence) && !isSendingInvitation && !isInvited,
+                style = if (isInvited) ArcadeActionStyle.OUTLINE else ArcadeActionStyle.PRIMARY,
+                compact = true,
+                modifier = Modifier.widthIn(min = 84.dp)
+            )
+        }
+        Box {
+            IconButton(
+                onClick = { showActions = true },
+                modifier = Modifier.testTag("friend_more:${friend.userId}")
             ) {
-                PlayerAvatar(
-                    displayName = friend.displayName,
-                    avatarId = friend.avatarId,
-                    userId = friend.userId,
-                    frameId = friend.frameId
+                Icon(
+                    Icons.Default.MoreVert,
+                    contentDescription = localized(TextKey.PlayerActions, "player" to friend.displayName),
+                    tint = A1Palette.Muted
                 )
-                Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                    Text(friend.displayName, fontWeight = FontWeight.Black)
-                    Row(
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(6.dp)
-                    ) {
-                        Text(friend.playerCode, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                        FriendPresenceIndicator(friend.presence)
-                    }
-                }
-                Box {
-                    IconButton(
-                        onClick = { showActions = true },
-                        modifier = Modifier.testTag("friend_more:${friend.userId}")
-                    ) {
-                        Icon(
-                            Icons.Default.MoreVert,
-                            contentDescription = localized(TextKey.PlayerActions, "player" to friend.displayName)
-                        )
-                    }
-                    DropdownMenu(
-                        expanded = showActions,
-                        onDismissRequest = { showActions = false },
-                        containerColor = ArcadePalette.Navy800
-                    ) {
-                        UgcReportMenuItem(UgcTargetType.PLAYER_PROFILE, friend.userId, friend.displayName) {
-                            showActions = false
-                        }
-                        DropdownMenuItem(
-                            text = { Text(localized(TextKey.RemoveFriendAction), color = ArcadePalette.White) },
-                            leadingIcon = {
-                                Icon(
-                                    Icons.Default.PersonRemove,
-                                    contentDescription = null,
-                                    tint = ArcadePalette.White
-                                )
-                            },
-                            onClick = {
-                                showActions = false
-                                onRemoveFriend()
-                            }
-                        )
-                        DropdownMenuItem(
-                            text = { Text(localized(TextKey.Block), color = ArcadePalette.Coral400) },
-                            leadingIcon = {
-                                Icon(
-                                    Icons.Default.Block,
-                                    contentDescription = null,
-                                    tint = ArcadePalette.Coral400
-                                )
-                            },
-                            onClick = {
-                                showActions = false
-                                onBlockPlayer()
-                            }
-                        )
-                    }
-                }
             }
-            if (canInvite) {
-                ArcadeActionButton(
-                    label = when {
-                        isInvited -> localized(TextKey.InviteSent)
-                        isSendingInvitation -> localized(TextKey.SendingInvitation)
-                        else -> localized(TextKey.InviteToRoom)
-                    },
-                    onClick = { onInviteFriend(friend.userId) },
-                    enabled = isInvitablePresence(friend.presence) &&
-                        !isSendingInvitation && !isInvited,
-                    style = if (isInvited) ArcadeActionStyle.OUTLINE else ArcadeActionStyle.GOLD,
-                    modifier = Modifier.fillMaxWidth()
+            DropdownMenu(expanded = showActions, onDismissRequest = { showActions = false }) {
+                UgcReportMenuItem(UgcTargetType.PLAYER_PROFILE, friend.userId, friend.displayName) {
+                    showActions = false
+                }
+                DropdownMenuItem(
+                    text = { Text(localized(TextKey.RemoveFriendAction), color = A1Palette.Ink) },
+                    leadingIcon = { Icon(Icons.Default.PersonRemove, contentDescription = null, tint = A1Palette.Ink) },
+                    onClick = {
+                        showActions = false
+                        onRemoveFriend()
+                    }
+                )
+                DropdownMenuItem(
+                    text = { Text(localized(TextKey.Block), color = A1Palette.RedText) },
+                    leadingIcon = { Icon(Icons.Default.Block, contentDescription = null, tint = A1Palette.RedText) },
+                    onClick = {
+                        showActions = false
+                        onBlockPlayer()
+                    }
                 )
             }
         }

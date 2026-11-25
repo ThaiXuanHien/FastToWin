@@ -41,7 +41,7 @@ class LocalizedSocialShopUiTest {
             )
         }
         composeRule.onNodeWithText("Bạn bè").assertIsDisplayed()
-        composeRule.onNodeWithText("Biệt đội của bạn").assertIsDisplayed()
+        composeRule.onNodeWithText("Danh sách bạn bè").assertIsDisplayed()
     }
 
     @Test
