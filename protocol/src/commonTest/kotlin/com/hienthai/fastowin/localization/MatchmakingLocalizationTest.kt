@@ -8,7 +8,7 @@ class MatchmakingLocalizationTest {
     fun `matchmaking status resolves explicitly in Vietnamese and English`() {
         val expected = mapOf(
             AppLanguage.ENGLISH to listOf("Matchmaking", "Match found", "Finding an opponent…", "Prioritising players near your Elo.", "Finding players in the same mode.", "Elo range", "No Elo impact", "CANCEL MATCHMAKING"),
-            AppLanguage.VIETNAMESE to listOf("Ghép đối thủ", "Đã ghép trận", "Đang tìm đối thủ…", "Ưu tiên người chơi có Elo gần bạn.", "Đang ghép người chơi cùng chế độ.", "Khoảng Elo", "Không ảnh hưởng Elo", "HỦY GHÉP TRẬN"),
+            AppLanguage.VIETNAMESE to listOf("Ghép đối thủ", "Đã ghép trận", "Đang tìm đối thủ…", "Ưu tiên người chơi có Elo gần bạn.", "Đang ghép người chơi cùng chế độ.", "Khoảng Elo", "Không ảnh hưởng Elo", "HỦY TÌM TRẬN"),
         )
         val keys = listOf(
             TextKey.Matchmaking,

@@ -275,7 +275,7 @@ fun A1OutlinedText(
     textAlign: androidx.compose.ui.text.style.TextAlign? = null
 ) {
     val density = androidx.compose.ui.platform.LocalDensity.current
-    Box(modifier) {
+    Box(modifier, contentAlignment = if (textAlign == androidx.compose.ui.text.style.TextAlign.Center) androidx.compose.ui.Alignment.Center else androidx.compose.ui.Alignment.TopStart) {
         androidx.compose.material3.Text(
             text,
             style = style.copy(

@@ -46,6 +46,22 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import com.hienthai.fastowin.ui.components.A1LevelBadge
+import com.hienthai.fastowin.ui.components.drawLightRays
+import com.hienthai.fastowin.ui.components.a1Hills
+import androidx.compose.ui.semantics.clearAndSetSemantics
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.foundation.border
+import androidx.compose.animation.core.animateFloat
+import androidx.compose.ui.semantics.LiveRegionMode
+import androidx.compose.ui.semantics.liveRegion
+import androidx.compose.ui.draw.drawBehind
+import com.hienthai.fastowin.ui.components.A1OutlinedText
+import com.hienthai.fastowin.ui.components.a1Card
+import com.hienthai.fastowin.ui.theme.A1Palette
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -136,6 +152,9 @@ fun LobbyScreen(
 ) {
     val hasBottomNavigation = state.lobbyStage == LobbyStage.SELECT_MODE ||
         state.lobbyStage == LobbyStage.ROOM_BROWSER
+    // Tab "Chơi" (A1) mở màn Chọn chế độ ngay trên sảnh; Tạo/Vào phòng ở Trang chủ vẫn mở danh sách phòng.
+    var showModeSelect by rememberSaveable { mutableStateOf(false) }
+    val modeSelectVisible = showModeSelect && state.lobbyStage == LobbyStage.SELECT_MODE
     val displayName = (state.profile?.displayName ?: state.player.name).ifBlank { localized(TextKey.Player) }
     val localization = LocalLocalization.current
     var isRoomListRefreshing by remember { mutableStateOf(false) }
@@ -157,6 +176,7 @@ fun LobbyScreen(
             onOpenRoomBrowser(displayName)
         }
     }
+    SystemBackHandler(enabled = modeSelectVisible) { showModeSelect = false }
     SystemBackHandler(enabled = state.lobbyStage != LobbyStage.SELECT_MODE) {
         when (state.lobbyStage) {
             LobbyStage.SELECT_MODE -> Unit
@@ -169,10 +189,11 @@ fun LobbyScreen(
     }
     // Consume the keyboard once for the list and bottom bar; sibling inset padding adds twice.
     Column(modifier = modifier.fillMaxSize().imePadding().testTag("lobby_screen")) {
-        FastToWinHeader(
+        // A1: màn Tìm trận không có thanh trên cùng, chỉ có nhãn kiểu trận.
+        if (state.lobbyStage != LobbyStage.MATCHMAKING) FastToWinHeader(
             title = when (state.lobbyStage) {
                 // A1: trang chủ không có tiêu đề; lời chào nằm trong bong bóng của linh vật.
-                LobbyStage.SELECT_MODE -> ""
+                LobbyStage.SELECT_MODE -> if (modeSelectVisible) localized(TextKey.ModeSelectTitle) else ""
                 LobbyStage.ENTER_NAME -> localized(TextKey.DisplayName)
                 LobbyStage.ROOM_BROWSER -> localized(TextKey.GameRooms)
                 LobbyStage.ROOM_WAITING -> localized(TextKey.Ready)
@@ -184,8 +205,11 @@ fun LobbyScreen(
             gems = state.profile?.progression?.gems ?: 0,
             unreadNotifications = state.unreadNotificationCount,
             onNotifications = onOpenNotifications,
+            showBalances = !modeSelectVisible,
+            showNotifications = !modeSelectVisible,
             onBack = when (state.lobbyStage) {
-                LobbyStage.SELECT_MODE, LobbyStage.ROOM_BROWSER, LobbyStage.MATCHED -> null
+                LobbyStage.SELECT_MODE -> if (modeSelectVisible) ({ showModeSelect = false }) else null
+                LobbyStage.ROOM_BROWSER, LobbyStage.MATCHED -> null
                 LobbyStage.ENTER_NAME -> onBackToMode
                 LobbyStage.ROOM_WAITING -> onLeaveRoom
                 LobbyStage.MATCHMAKING -> onCancelMatchmaking
@@ -218,10 +242,19 @@ fun LobbyScreen(
                 modifier = contentModifier.then(
                     if (state.lobbyStage == LobbyStage.SELECT_MODE) Modifier else Modifier.padding(vertical = 16.dp)
                 ),
-                contentAlignment = Alignment.Center
+                // Màn Tìm trận bám mép trên như thiết kế; các màn khác giữ căn giữa.
+                contentAlignment = if (state.lobbyStage == LobbyStage.MATCHMAKING) Alignment.TopCenter else Alignment.Center
             ) {
                 when (state.lobbyStage) {
-                LobbyStage.SELECT_MODE -> HomeDashboard(
+                LobbyStage.SELECT_MODE -> if (modeSelectVisible) ModeSelectContent(
+                    playerLevel = state.profile?.progression?.level ?: 1,
+                    quota = state.playQuota,
+                    onPlay = { mode, matchType ->
+                        if (isGuest) onUpgradeGuest() else onStartMatchmaking(mode, matchType)
+                    },
+                    onPractice = onOpenPractice,
+                    onQuotaExhausted = onPlayQuotaExhausted
+                ) else HomeDashboard(
                     state = state,
                     isGuest = isGuest,
                     serverUrl = serverUrl,
@@ -284,14 +317,20 @@ fun LobbyScreen(
         }
         if (hasBottomNavigation) {
             FastToWinBottomBar(
-                selected = if (state.lobbyStage == LobbyStage.ROOM_BROWSER) MainTab.ROOMS else MainTab.HOME,
+                selected = when {
+                    modeSelectVisible -> MainTab.ROOMS
+                    state.lobbyStage == LobbyStage.ROOM_BROWSER -> MainTab.ROOMS
+                    else -> MainTab.HOME
+                },
                 friendNotificationCount = 0,
                 unclaimedGiftCount = if (isGuest) 0 else unclaimedGiftCount,
-                onHome = if (state.lobbyStage == LobbyStage.ROOM_BROWSER) onBackToMode else ({}),
+                onHome = {
+                    showModeSelect = false
+                    if (state.lobbyStage == LobbyStage.ROOM_BROWSER) onBackToMode()
+                },
                 onRooms = {
-                    if (state.lobbyStage != LobbyStage.ROOM_BROWSER) {
-                        openRoomBrowserAction()
-                    }
+                    if (state.lobbyStage == LobbyStage.ROOM_BROWSER) onBackToMode()
+                    showModeSelect = true
                 },
                 onLeaderboard = if (isGuest) onUpgradeGuest else onOpenLeaderboard,
                 onClan = if (isGuest) onUpgradeGuest else onOpenClan,
@@ -301,6 +340,10 @@ fun LobbyScreen(
     }
 }
 
+/**
+ * Màn Tìm trận theo thiết kế A1: nhãn kiểu trận, thẻ người chơi, chữ VS với vòng sóng lan ra,
+ * thẻ "Đang tìm đối thủ…" (khoảng Elo + đồng hồ), ghi chú và nút HỦY.
+ */
 @Composable
 private fun MatchmakingScreen(state: GameState, onCancel: () -> Unit) {
     var elapsedSeconds by remember(state.matchmakingStartedAtMillis) { mutableStateOf(0L) }
@@ -312,81 +355,189 @@ private fun MatchmakingScreen(state: GameState, onCancel: () -> Unit) {
         }
     }
     val expandedRange = (100 + (elapsedSeconds / 10L).toInt() * 50).coerceAtMost(300)
+    val ranked = state.matchType == MatchType.RANKED
+    val profile = state.profile
+    val elo = profile?.statistics?.eloRating
+    val displayName = (profile?.displayName ?: state.player.name).ifBlank { localized(TextKey.Player) }
+    val frameId = profile?.progression?.cosmetics?.firstOrNull { it.type == com.hienthai.fastowin.protocol.CosmeticType.FRAME && it.equipped }?.id
+        ?: state.player.frameId
+    val timer = "${elapsedSeconds / 60}:${(elapsedSeconds % 60).toString().padStart(2, '0')}"
 
+    // Phần trên cuộn được; ghi chú + nút HỦY luôn nằm sát đáy như thiết kế. Đồi cỏ vẽ theo cả màn.
     Column(
-        modifier = Modifier.fillMaxWidth().verticalScroll(rememberScrollState()),
+        modifier = Modifier
+            .fillMaxSize()
+            .windowInsetsPadding(WindowInsets.safeDrawing.only(WindowInsetsSides.Top))
+            .a1Hills(bushes = false)
+            .testTag("matchmaking_screen"),
+        horizontalAlignment = Alignment.CenterHorizontally
+    ) {
+    Column(
+        modifier = Modifier.weight(1f).fillMaxWidth().verticalScroll(rememberScrollState()),
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.spacedBy(16.dp)
     ) {
-        ArcadeIconHero(
-            kicker = localized(if (state.matchType == MatchType.RANKED) TextKey.Ranked else TextKey.Casual).uppercase(),
-            title = localized(TextKey.FindingOpponent),
-            subtitle = if (state.matchType == MatchType.RANKED) {
-                localized(TextKey.RankedMatchmakingHint)
-            } else {
-                localized(TextKey.CasualMatchmakingHint)
-            },
-            icon = Icons.Default.Search
+        Text(
+            "${localized(if (ranked) TextKey.Ranked else TextKey.Casual)} · ${state.gameMode.displayName()}",
+            style = MaterialTheme.typography.titleSmall,
+            color = Color.White,
+            modifier = Modifier
+                .background(A1Palette.Ink, RoundedCornerShape(11.dp))
+                .padding(horizontal = 14.dp, vertical = 4.dp)
         )
-        Surface(
-            modifier = Modifier.size(128.dp),
-            shape = RoundedCornerShape(36.dp),
-            color = ArcadePalette.Gold500,
-            contentColor = ArcadePalette.Navy950,
-            border = androidx.compose.foundation.BorderStroke(3.dp, Color.White.copy(alpha = 0.38f))
+        // Thẻ người chơi.
+        Row(
+            modifier = Modifier.fillMaxWidth().a1Card().padding(horizontal = 14.dp, vertical = 10.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(12.dp)
         ) {
-            Box(contentAlignment = Alignment.Center) {
-                CircularProgressIndicator(
-                    modifier = Modifier.size(92.dp),
-                    strokeWidth = 4.dp,
-                    color = ArcadePalette.Blue600,
-                    trackColor = ArcadePalette.Gold500
+            Box {
+                PlayerAvatar(
+                    displayName = displayName,
+                    avatarId = profile?.avatarId ?: state.player.avatarId,
+                    userId = profile?.userId,
+                    frameId = frameId,
+                    size = 76.dp
                 )
-                Icon(Icons.Default.Search, contentDescription = null, modifier = Modifier.size(48.dp))
+                A1LevelBadge(profile?.progression?.level ?: 1, Modifier.align(Alignment.BottomEnd))
             }
+            Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                Text(displayName, style = MaterialTheme.typography.titleLarge, color = A1Palette.Ink, maxLines = 1)
+                Text(
+                    listOfNotNull(elo?.let { "Elo $it" }, profile?.progression?.season?.tier).joinToString(" · "),
+                    style = MaterialTheme.typography.labelLarge,
+                    fontWeight = FontWeight.Bold,
+                    color = A1Palette.Muted
+                )
+            }
+            Text(
+                localized(TextKey.MatchmakingYou),
+                style = MaterialTheme.typography.labelMedium,
+                fontWeight = FontWeight.ExtraBold,
+                color = Color(0xFF0D3A7A),
+                modifier = Modifier
+                    .background(Color(0xFFDCEBFF), RoundedCornerShape(11.dp))
+                    .border(2.dp, Color(0xFF6AA4F0), RoundedCornerShape(11.dp))
+                    .padding(horizontal = 10.dp, vertical = 1.dp)
+            )
         }
-        Surface(
-            modifier = Modifier.fillMaxWidth(),
-            shape = RoundedCornerShape(16.dp),
-            color = ArcadePalette.Navy800,
-            border = androidx.compose.foundation.BorderStroke(1.dp, ArcadePalette.OutlineDark.copy(alpha = 0.6f))
-        ) {
-            Row(
-                modifier = Modifier.fillMaxWidth().padding(14.dp),
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Column(
-                    modifier = Modifier.weight(1f),
-                    verticalArrangement = Arrangement.spacedBy(4.dp)
-                ) {
-                    Text(
-                        if (state.matchType == MatchType.RANKED) localized(TextKey.EloRange) else state.gameMode.displayName(),
-                        fontWeight = FontWeight.Black,
-                        color = Color.White
-                    )
-                    Text(
-                        if (state.matchType == MatchType.RANKED) "±$expandedRange" else localized(TextKey.NoEloImpact),
-                        style = MaterialTheme.typography.bodySmall,
-                        color = Color(0xFFA9BADC)
+        MatchmakingVersus()
+        // Thẻ đối thủ đang tìm (viền nét đứt).
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .background(Color.White.copy(alpha = 0.8f), RoundedCornerShape(22.dp))
+                .drawBehind {
+                    drawRoundRect(
+                        A1Palette.Line,
+                        style = androidx.compose.ui.graphics.drawscope.Stroke(
+                            width = 3.dp.toPx(),
+                            pathEffect = androidx.compose.ui.graphics.PathEffect.dashPathEffect(floatArrayOf(10.dp.toPx(), 6.dp.toPx()))
+                        ),
+                        cornerRadius = androidx.compose.ui.geometry.CornerRadius(22.dp.toPx())
                     )
                 }
+                .padding(horizontal = 14.dp, vertical = 12.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(12.dp)
+        ) {
+            Box(
+                modifier = Modifier
+                    .size(56.dp)
+                    .background(A1Palette.SurfaceAlt2, RoundedCornerShape(17.dp))
+                    .border(3.dp, A1Palette.Line, RoundedCornerShape(17.dp)),
+                contentAlignment = Alignment.Center
+            ) {
+                CircularProgressIndicator(modifier = Modifier.size(28.dp), strokeWidth = 3.dp, color = A1Palette.Muted)
+            }
+            Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                Text(localized(TextKey.MatchmakingSearching), style = MaterialTheme.typography.titleLarge, color = A1Palette.Ink)
                 Text(
-                    "${(elapsedSeconds / 60).toString().padStart(2, '0')}:${(elapsedSeconds % 60).toString().padStart(2, '0')}",
-                    style = MaterialTheme.typography.titleMedium,
-                    fontWeight = FontWeight.Black,
-                    color = Color.White
+                    if (ranked && elo != null) {
+                        localized(TextKey.MatchmakingEloWindow, "min" to (elo - expandedRange), "max" to (elo + expandedRange))
+                    } else localized(TextKey.NoEloImpact),
+                    style = MaterialTheme.typography.labelLarge,
+                    fontWeight = FontWeight.Bold,
+                    color = A1Palette.Muted
                 )
             }
+            Text(
+                timer,
+                style = MaterialTheme.typography.headlineSmall,
+                color = A1Palette.Ink,
+                modifier = Modifier.semantics { liveRegion = LiveRegionMode.Polite }
+            )
         }
+        A1OutlinedText(
+            text = localized(if (ranked) TextKey.MatchmakingRankedNote else TextKey.CasualMatchmakingHint),
+            style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.Bold),
+            outlineWidth = 2.dp,
+            textAlign = androidx.compose.ui.text.style.TextAlign.Center,
+            modifier = Modifier.fillMaxWidth()
+        )
         state.latencyMillis?.let {
-            Text(connectionQualityLabel(it), style = MaterialTheme.typography.bodySmall)
+            Text(connectionQualityLabel(it), style = MaterialTheme.typography.bodySmall, color = A1Palette.Ink)
         }
+    }
+    Column(
+        modifier = Modifier.fillMaxWidth().padding(top = 12.dp),
+        verticalArrangement = Arrangement.spacedBy(14.dp)
+    ) {
+        Text(
+            localized(TextKey.MatchmakingBotFallback),
+            style = MaterialTheme.typography.bodySmall,
+            fontWeight = FontWeight.SemiBold,
+            color = A1Palette.Ink,
+            textAlign = androidx.compose.ui.text.style.TextAlign.Center,
+            modifier = Modifier.fillMaxWidth().a1Card(radius = 16.dp, depth = 3.dp).padding(horizontal = 14.dp, vertical = 10.dp)
+        )
         ArcadeActionButton(
             label = localized(TextKey.CancelMatchmaking),
             style = ArcadeActionStyle.OUTLINE,
             onClick = onCancel,
-            modifier = Modifier.fillMaxWidth()
+            modifier = Modifier.fillMaxWidth().testTag("matchmaking_cancel")
+        )
+        Spacer(Modifier.height(8.dp))
+    }
+    }
+}
+
+/** Chữ "VS" đỏ viền đậm giữa ba vòng sóng trắng lan dần ra (".ring" + keyframes "ping"). */
+@Composable
+private fun MatchmakingVersus() {
+    val transition = androidx.compose.animation.core.rememberInfiniteTransition(label = "ping")
+    val t by transition.animateFloat(
+        initialValue = 0f,
+        targetValue = 1f,
+        animationSpec = androidx.compose.animation.core.infiniteRepeatable(
+            androidx.compose.animation.core.tween(2400, easing = androidx.compose.animation.core.LinearOutSlowInEasing)
+        ),
+        label = "pingT"
+    )
+    Box(
+        modifier = Modifier
+            .fillMaxWidth()
+            .height(220.dp)
+            .drawBehind {
+                drawLightRays(center, 320.dp.toPx())
+                for (k in 0 until 3) {
+                    val p = (t + k / 3f) % 1f
+                    val d = 120.dp.toPx() + (330.dp.toPx() - 120.dp.toPx()) * p
+                    drawCircle(
+                        Color.White.copy(alpha = 0.67f * (1f - p)),
+                        radius = d / 2f,
+                        style = androidx.compose.ui.graphics.drawscope.Stroke(3.dp.toPx())
+                    )
+                }
+            }
+            .clearAndSetSemantics { },
+        contentAlignment = Alignment.Center
+    ) {
+        A1OutlinedText(
+            text = "VS",
+            style = MaterialTheme.typography.displayLarge.copy(fontSize = 64.sp),
+            outline = A1Palette.RedDeep,
+            outlineWidth = 5.dp
         )
     }
 }

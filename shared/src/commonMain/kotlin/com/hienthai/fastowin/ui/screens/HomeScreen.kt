@@ -568,22 +568,7 @@ private fun ArcadePlayerSummary(
                 size = 84.dp,
                 imageUrl = avatarImageUrl
             )
-            Text(
-                level.toString(),
-                style = MaterialTheme.typography.labelMedium,
-                fontFamily = MaterialTheme.typography.titleSmall.fontFamily,
-                fontWeight = FontWeight.ExtraBold,
-                color = Color.White,
-                textAlign = androidx.compose.ui.text.style.TextAlign.Center,
-                modifier = Modifier
-                    .align(Alignment.BottomEnd)
-                    .semantics { contentDescription = levelDescription }
-                    .heightIn(min = 26.dp)
-                    .widthIn(min = 26.dp)
-                    .background(Color(0xFF3D8BFF), RoundedCornerShape(13.dp))
-                    .border(2.dp, A1Palette.Line, RoundedCornerShape(13.dp))
-                    .padding(horizontal = 5.dp, vertical = 3.dp)
-            )
+            com.hienthai.fastowin.ui.components.A1LevelBadge(level, Modifier.align(Alignment.BottomEnd))
         }
         Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(6.dp)) {
             Text(

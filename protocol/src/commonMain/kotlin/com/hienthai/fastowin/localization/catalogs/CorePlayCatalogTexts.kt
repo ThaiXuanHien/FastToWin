@@ -104,7 +104,7 @@ internal val vietnameseCorePlayTexts = mapOf(
     TextKey.FindingOpponent to "Đang tìm đối thủ…", TextKey.RankedMatchmakingHint to "Ưu tiên người chơi có Elo gần bạn.",
     TextKey.CasualMatchmakingHint to "Đang ghép người chơi cùng chế độ.", TextKey.EloRange to "Khoảng Elo", TextKey.NoEloImpact to "Không ảnh hưởng Elo",
     TextKey.BotMatch to "Đấu với bot", TextKey.BotMatchRules to "Trận luyện tập không tính Elo, không có thưởng và không trừ lượt chơi.",
-    TextKey.CancelMatchmaking to "HỦY GHÉP TRẬN", TextKey.GuestNameTitle to "Bạn muốn được gọi là gì?",
+    TextKey.CancelMatchmaking to "HỦY TÌM TRẬN", TextKey.GuestNameTitle to "Bạn muốn được gọi là gì?",
     TextKey.GuestNameDescription to "Tên này chỉ dùng trong phiên chơi hiện tại.", TextKey.EnterNickname to "Nhập biệt danh",
     TextKey.SaveNameProgressDescription to "Tạo tài khoản để giữ tên, Elo và lịch sử trên mọi thiết bị.",
     TextKey.RoomLinkUnavailable to "Phòng trong liên kết không còn tồn tại hoặc đã đủ người.", TextKey.ChooseRoomType to "Chọn loại phòng",

@@ -309,14 +309,16 @@ class ArcadeShellUiTest {
         BOTTOM_TAB_TAGS.drop(1).forEach { composeRule.onNodeWithTag(it).assertIsNotSelected() }
 
         if (verifyCallbacks) {
+            // A1: tab "Chơi" mở màn Chọn chế độ (không mở danh sách phòng).
             composeRule.onNodeWithTag(ROOMS_TAB_TAG).performClick()
             composeRule.onNodeWithTag(ROOMS_TAB_TAG).assertIsSelected()
-            composeRule.runOnIdle { assertEquals(1, roomClicks) }
+            composeRule.onNodeWithTag("mode_select_screen").assertExists()
+            composeRule.runOnIdle { assertEquals(0, roomClicks) }
 
             composeRule.onNodeWithTag(HOME_TAB_TAG).performClick()
             composeRule.onNodeWithTag(HOME_TAB_TAG).assertIsSelected()
+            composeRule.onNodeWithTag("home_screen").assertExists()
             composeRule.runOnIdle {
-                assertEquals(1, homeClicks)
                 assertEquals(LobbyStage.SELECT_MODE, stage.value)
             }
 
