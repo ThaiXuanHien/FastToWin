@@ -41,6 +41,7 @@ import androidx.compose.material.icons.rounded.Lightbulb
 import androidx.compose.material.icons.rounded.Replay
 import androidx.compose.material.icons.rounded.Report
 import androidx.compose.material.icons.rounded.Share
+import androidx.compose.material.icons.rounded.SportsEsports
 import androidx.compose.material.icons.rounded.Star
 import androidx.compose.material.icons.rounded.TaskAlt
 import androidx.compose.material3.Icon
@@ -154,6 +155,8 @@ fun ResultScreen(
     onShareResult: ((ResultShareContent) -> Unit)? = null,
     /** Tìm trận mới cùng chế độ (nút CHƠI TIẾP / THỬ LẠI); mặc định về sảnh. */
     onPlayAgain: (() -> Unit)? = null,
+    /** Mở luyện tập (nút "Luyện tập" ở màn thua). */
+    onPractice: (() -> Unit)? = null,
     preferences: AppPreferences = AppPreferences(),
     modifier: Modifier = Modifier
 ) {
@@ -342,6 +345,7 @@ fun ResultScreen(
                     onPlayAgain = onPlayAgain ?: onRestart,
                     onRestart = onRestart,
                     onRematch = onRematch,
+                    onPractice = onPractice,
                     onOpenTournament = onOpenTournament,
                     onShare = {
                         shareError = null
@@ -569,30 +573,21 @@ private fun ResultStatsCard(
             modifier = Modifier.fillMaxWidth(),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            Row(
-                modifier = Modifier.weight(1f),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(8.dp)
-            ) {
-                PlayerAvatar(state.player.name, state.player.avatarId, state.player.id, state.player.frameId, size = 64.dp)
-                ScoreBlock(myName, myScore, A1Palette.Ink, TextAlign.Start)
-            }
+            // Tên nằm ngay dưới avatar; điểm to đặt giữa avatar và chữ VS.
+            PlayerColumn(state.player, myName)
+            ScoreText(myScore, A1Palette.Ink, TextAlign.Start, Modifier.weight(1f).padding(start = 10.dp))
             Text(
                 "VS",
                 style = MaterialTheme.typography.titleLarge.copy(fontSize = 18.sp),
                 color = A1Palette.Muted,
                 modifier = Modifier.padding(horizontal = 4.dp)
             )
-            Row(
-                modifier = Modifier
-                    .weight(1f)
-                    .then(if (onOpponentInfo == null) Modifier else Modifier.clickable(onClick = onOpponentInfo)),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.End)
-            ) {
-                ScoreBlock(opponentName, opponentScore, A1Palette.RedText, TextAlign.End, Modifier.weight(1f, fill = false))
-                PlayerAvatar(opponentAvatar.name, opponentAvatar.avatarId, opponentAvatar.id, opponentAvatar.frameId, size = 64.dp)
-            }
+            ScoreText(opponentScore, A1Palette.RedText, TextAlign.End, Modifier.weight(1f).padding(end = 10.dp))
+            PlayerColumn(
+                opponentAvatar,
+                opponentName,
+                Modifier.then(if (onOpponentInfo == null) Modifier else Modifier.clickable(onClick = onOpponentInfo))
+            )
         }
         // Gạch đứt phân cách + 3 chỉ số.
         Row(
@@ -623,30 +618,41 @@ private fun ResultStatsCard(
 }
 
 @Composable
-private fun ScoreBlock(name: String, score: Int, scoreColor: Color, align: TextAlign, modifier: Modifier = Modifier) {
-    Column(modifier = modifier, horizontalAlignment = if (align == TextAlign.End) Alignment.End else Alignment.Start) {
+private fun PlayerColumn(player: PlayerState, name: String, modifier: Modifier = Modifier) {
+    Column(
+        modifier = modifier.widthIn(max = 96.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.spacedBy(4.dp)
+    ) {
+        PlayerAvatar(player.name, player.avatarId, player.id, player.frameId, size = 64.dp)
         Text(
             name,
-            style = MaterialTheme.typography.titleMedium.copy(fontSize = 17.sp, lineHeight = 20.sp),
+            style = MaterialTheme.typography.titleMedium.copy(fontSize = 15.sp, lineHeight = 18.sp),
             color = A1Palette.Ink,
             maxLines = 1,
             overflow = TextOverflow.Ellipsis,
-            textAlign = align
-        )
-        Text(
-            score.toString(),
-            style = MaterialTheme.typography.headlineLarge.copy(
-                fontSize = 28.sp,
-                lineHeight = 28.sp,
-                lineHeightStyle = androidx.compose.ui.text.style.LineHeightStyle(
-                    alignment = androidx.compose.ui.text.style.LineHeightStyle.Alignment.Center,
-                    trim = androidx.compose.ui.text.style.LineHeightStyle.Trim.Both
-                )
-            ),
-            color = scoreColor,
-            maxLines = 1
+            textAlign = TextAlign.Center
         )
     }
+}
+
+@Composable
+private fun ScoreText(score: Int, color: Color, align: TextAlign, modifier: Modifier = Modifier) {
+    Text(
+        score.toString(),
+        style = MaterialTheme.typography.displayLarge.copy(
+            fontSize = 40.sp,
+            lineHeight = 40.sp,
+            lineHeightStyle = androidx.compose.ui.text.style.LineHeightStyle(
+                alignment = androidx.compose.ui.text.style.LineHeightStyle.Alignment.Center,
+                trim = androidx.compose.ui.text.style.LineHeightStyle.Trim.Both
+            )
+        ),
+        color = color,
+        maxLines = 1,
+        textAlign = align,
+        modifier = modifier
+    )
 }
 
 /** "Nhãn giá trị" nhỏ, đậm, màu muted (hàng Thời gian · Chính xác · …). */
@@ -817,6 +823,7 @@ private fun ResultActions(
     onPlayAgain: () -> Unit,
     onRestart: () -> Unit,
     onRematch: () -> Unit,
+    onPractice: (() -> Unit)?,
     onOpenTournament: () -> Unit,
     onShare: () -> Unit,
     onOpenSafety: () -> Unit,
@@ -846,9 +853,20 @@ private fun ResultActions(
             )
         }
         val showRematch = !state.isTournamentMatch && !state.isBotMatch && state.matchType != MatchType.RANKED
+        // Thua: hàng "Luyện tập + Về sảnh" như thiết kế; tái đấu (nếu được) nằm riêng phía trên.
+        val showPractice = outcome == ResultOutcome.LOSS && onPractice != null && !state.isTournamentMatch
+        if (showPractice && showRematch) RematchButton(state, onRematch, Modifier.fillMaxWidth())
         if (showRematch || !state.isTournamentMatch) {
             Row(horizontalArrangement = Arrangement.spacedBy(14.dp)) {
-                if (showRematch) RematchButton(state, onRematch, Modifier.weight(1f))
+                if (showPractice) {
+                    ArcadeActionButton(
+                        label = localized(TextKey.ModeTabPractice),
+                        onClick = { onPractice?.invoke() },
+                        icon = Icons.Rounded.SportsEsports,
+                        style = ArcadeActionStyle.PRIMARY,
+                        modifier = Modifier.weight(1f).testTag("result_practice")
+                    )
+                } else if (showRematch) RematchButton(state, onRematch, Modifier.weight(1f))
                 if (!state.isTournamentMatch) {
                     ArcadeActionButton(
                         label = localized(TextKey.ReturnToLobby),

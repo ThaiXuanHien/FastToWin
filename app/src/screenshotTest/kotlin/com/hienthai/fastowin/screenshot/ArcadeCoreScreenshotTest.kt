@@ -109,6 +109,7 @@ fun rankedLossResult() = ArcadeScreenshotFrame {
         onDeclineRematch = {},
         onConnectOpponent = {},
         onBlockOpponent = {},
+        onPractice = {},
         preferences = AppPreferences(soundEnabled = false, vibrationEnabled = false, visualEffectsEnabled = false)
     )
 }

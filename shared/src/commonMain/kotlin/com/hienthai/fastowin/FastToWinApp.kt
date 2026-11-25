@@ -2255,6 +2255,10 @@ private fun GameContent(
                         controller.leaveRoom()
                         controller.startMatchmaking(mode, matchType)
                     },
+                    onPractice = {
+                        controller.leaveRoom()
+                        openPractice()
+                    },
                     preferences = appPreferences
                 )
 
