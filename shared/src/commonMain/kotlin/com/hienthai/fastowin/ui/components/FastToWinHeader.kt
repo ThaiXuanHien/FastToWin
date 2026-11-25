@@ -53,6 +53,8 @@ import com.hienthai.fastowin.ui.format.compactNumber
 import com.hienthai.fastowin.ui.format.fullNumber
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Box
+import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.unit.sp
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.ui.platform.LocalDensity
@@ -169,19 +171,11 @@ fun FastToWinHeader(
                     Icon(Icons.Default.Notifications, contentDescription = localized(TextKey.Notifications))
                 }
                 if (unreadNotifications > 0) {
-                    Badge(
-                        containerColor = Color(0xFFFF3B5C),
-                        contentColor = Color.White,
-                        modifier = Modifier
-                            .align(Alignment.TopEnd)
-                            .offset(x = 6.dp, y = (-6).dp)
-                            .border(2.dp, Color.White, RoundedCornerShape(999.dp))
-                    ) {
-                        Text(
-                            if (unreadNotifications > 99) "99+" else unreadNotifications.toString(),
-                            fontWeight = FontWeight.ExtraBold
-                        )
-                    }
+                    A1Badge(
+                        if (unreadNotifications > 99) "99+" else unreadNotifications.toString(),
+                        modifier = Modifier.align(Alignment.TopEnd).offset(x = 6.dp, y = (-6).dp),
+                        decorative = false
+                    )
                 }
             }
         }
@@ -255,10 +249,13 @@ fun HeaderRefreshAction(
     }
 }
 
-/** Ô tiền tệ A1: nền trắng, viền navy, biểu tượng Vàng/Gem, số rút gọn và nút "+" mở cửa hàng. */
+/**
+ * Ô tiền tệ A1 (".pill"): nền trắng 92%, viền navy 2dp, bóng trong ở mép dưới, đồng xu/viên ngọc
+ * 24dp, số Baloo 15sp và nút "+" xanh lá mở cửa hàng.
+ */
 @Composable
 private fun HeaderCurrency(amount: Int, label: String, isGem: Boolean, showPlus: Boolean, onClick: () -> Unit) {
-    val shape = RoundedCornerShape(999.dp)
+    val shape = RoundedCornerShape(22.dp)
     val shown = compactNumber(amount.toLong())
     val spoken = "${fullNumber(amount.toLong())} $label"
     Row(
@@ -268,35 +265,50 @@ private fun HeaderCurrency(amount: Int, label: String, isGem: Boolean, showPlus:
             .clip(shape)
             .clickable(role = Role.Button, onClick = onClick)
             .semantics(mergeDescendants = true) { contentDescription = spoken }
-            .padding(vertical = 6.dp),
+            .padding(vertical = 5.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
         Row(
             modifier = Modifier
-                .background(Color.White.copy(alpha = 0.92f), shape)
+                .clip(shape)
+                .background(Color.White.copy(alpha = 0.92f))
+                .drawBehind {
+                    drawRect(Color.Black.copy(alpha = 0.08f), topLeft = androidx.compose.ui.geometry.Offset(0f, size.height - 3.dp.toPx()))
+                }
                 .border(2.dp, A1Palette.Line, shape)
-                .padding(start = 8.dp, end = if (showPlus) 4.dp else 10.dp, top = 3.dp, bottom = 3.dp),
+                .padding(start = 9.dp, end = if (showPlus) 6.dp else 12.dp, top = 5.dp, bottom = 5.dp),
             verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(6.dp)
+            horizontalArrangement = Arrangement.spacedBy(10.dp)
         ) {
-            if (isGem) A1GemIcon(size = 20.dp) else A1CoinIcon(size = 22.dp)
+            if (isGem) A1GemIcon(size = 24.dp) else A1CoinIcon(size = 24.dp)
             Text(
                 shown,
-                style = MaterialTheme.typography.titleSmall,
+                style = MaterialTheme.typography.titleSmall.copy(fontSize = 15.sp, lineHeight = 18.sp),
                 fontWeight = FontWeight.ExtraBold,
                 color = A1Palette.Ink,
                 maxLines = 1,
                 modifier = Modifier.clearAndSetSemantics { }
             )
-            if (showPlus) Box(
-                modifier = Modifier
-                    .size(22.dp)
-                    .background(Brush.verticalGradient(listOf(A1Palette.Green1, A1Palette.Green2)), RoundedCornerShape(7.dp))
-                    .border(2.dp, A1Palette.GreenDeep, RoundedCornerShape(7.dp)),
-                contentAlignment = Alignment.Center
-            ) {
-                Icon(Icons.Default.Add, contentDescription = null, tint = Color.White, modifier = Modifier.size(16.dp))
-            }
+            if (showPlus) A1PlusChip()
         }
     }
+}
+
+/** Nút "+" nhỏ của ô tiền tệ: vuông bo 7dp, xanh lá, dấu cộng trắng vẽ bằng hai thanh. */
+@Composable
+private fun A1PlusChip() {
+    Box(
+        modifier = Modifier
+            .size(22.dp)
+            .background(Color(0xFF5BD94A), RoundedCornerShape(7.dp))
+            .border(2.dp, A1Palette.GreenDeep, RoundedCornerShape(7.dp))
+            .drawBehind {
+                val c = center
+                val long = 10.dp.toPx()
+                val thick = 3.dp.toPx()
+                val r = androidx.compose.ui.geometry.CornerRadius(2.dp.toPx())
+                drawRoundRect(Color.White, androidx.compose.ui.geometry.Offset(c.x - long / 2, c.y - thick / 2), androidx.compose.ui.geometry.Size(long, thick), r)
+                drawRoundRect(Color.White, androidx.compose.ui.geometry.Offset(c.x - thick / 2, c.y - long / 2), androidx.compose.ui.geometry.Size(thick, long), r)
+            }
+    )
 }

@@ -1,5 +1,11 @@
 package com.hienthai.fastowin.ui.components
 
+import androidx.compose.foundation.shape.RoundedCornerShape
+
+import androidx.compose.foundation.layout.offset
+
+import androidx.compose.ui.graphics.painter.Painter
+
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -59,7 +65,9 @@ fun PlayerAvatar(
     size: Dp = 48.dp,
     imageUrl: String = "",
     previewBitmap: ImageBitmap? = null,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    /** Ảnh khung cục bộ (xem trước / ảnh chụp test); mặc định khung tải từ server. */
+    framePainter: Painter? = null
 ) {
     val avatarServerUrl = LocalAvatarServerUrl.current
     val avatarRevision = LocalAvatarRevision.current
@@ -87,10 +95,21 @@ fun PlayerAvatar(
         },
         contentAlignment = Alignment.Center
     ) {
+        // Có khung: đặt avatar đúng vào lỗ của khung (nhiều khung có lỗ lệch tâm).
+        val previewFrame = framePainter ?: LocalAvatarFramePreview.current?.invoke(frameId)
+        val hole = if (previewFrame != null || frameUrl.isNotBlank()) avatarFrameHole(frameId) else null
+        val avatarModifier = if (hole != null) {
+            val pad = FRAME_HOLE_PAD
+            Modifier
+                .align(Alignment.TopStart)
+                .offset(x = size * hole.left(pad), y = size * hole.top(pad))
+                .size(width = size * hole.width(pad), height = size * hole.height(pad))
+                .clip(RoundedCornerShape(42))
+        } else {
+            Modifier.size(avatarSize).clip(CircleShape)
+        }
         Box(
-            modifier = Modifier
-                .size(avatarSize)
-                .clip(CircleShape)
+            modifier = avatarModifier
                 .background(MaterialTheme.colorScheme.surfaceContainerHighest),
             contentAlignment = Alignment.Center
         ) {
@@ -122,11 +141,21 @@ fun PlayerAvatar(
             }
         }
 
-        NetworkImage(frameUrl, modifier = Modifier.fillMaxSize(), contentScale = ContentScale.Fit) {
-            Box(Modifier.size(avatarSize).border(1.dp, MaterialTheme.colorScheme.outlineVariant, CircleShape))
+        if (previewFrame != null) {
+            Image(previewFrame, contentDescription = null, contentScale = ContentScale.Fit, modifier = Modifier.fillMaxSize())
+        } else {
+            NetworkImage(frameUrl, modifier = Modifier.fillMaxSize(), contentScale = ContentScale.Fit) {
+                Box(Modifier.size(avatarSize).border(1.dp, MaterialTheme.colorScheme.outlineVariant, CircleShape))
+            }
         }
     }
 }
+
+/** Chỉ dùng cho ảnh chụp test/xem trước: trả về ảnh khung cục bộ theo frameId (không cần server). */
+val LocalAvatarFramePreview = staticCompositionLocalOf<(@Composable (String) -> Painter?)?> { null }
+
+/** Nới avatar thêm ~2,4% cạnh khung để lấp kín mép lỗ (3px trên khung 124px của thiết kế). */
+private const val FRAME_HOLE_PAD = 3f / 124f
 
 /** A removed avatar must never resolve a cache key or a remote URL, including explicit callers. */
 internal fun resolvePlayerAvatarImageUrl(avatarId: String?, userId: String?, imageUrl: String,

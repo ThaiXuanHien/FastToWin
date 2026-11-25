@@ -8,6 +8,8 @@ import androidx.compose.foundation.layout.BoxScope
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.layout.size
 import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -24,6 +26,7 @@ import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.Shadow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import com.hienthai.fastowin.ui.theme.A1Palette
 
 /** Màu của một nút 3D A1: dải màu mặt nút, viền, đế (bóng đặc phía dưới) và màu chữ. */
@@ -195,7 +198,12 @@ fun A1GemIcon(size: Dp = 22.dp, modifier: Modifier = Modifier) {
         }
         drawPath(gem, Brush.linearGradient(listOf(Color(0xFFE3FFE9), Color(0xFF5FE08A), Color(0xFF16A34A), Color(0xFF0E7A36))))
         drawPath(gem, Color(0xFF0B4D24), style = androidx.compose.ui.graphics.drawscope.Stroke(w * 0.08f, join = androidx.compose.ui.graphics.StrokeJoin.Round))
-        drawLine(Color(0xFF0B4D24).copy(alpha = 0.5f), Offset(w * 0.06f, top + h * 0.34f), Offset(w * 0.94f, top + h * 0.34f), w * 0.05f)
+        // Mặt cắt sáng phía trên như ".gem::after" của thiết kế.
+        val facet = Path().apply {
+            moveTo(w * 0.22f, top); lineTo(w * 0.78f, top); lineTo(w, top + h * 0.34f); lineTo(0f, top + h * 0.34f); close()
+        }
+        drawPath(facet, Color.White.copy(alpha = 0.5f))
+        drawPath(gem, Color(0xFF0B4D24), style = androidx.compose.ui.graphics.drawscope.Stroke(w * 0.08f, join = androidx.compose.ui.graphics.StrokeJoin.Round))
     }
 }
 
@@ -232,5 +240,41 @@ fun A1OutlinedText(
             modifier = Modifier.clearAndSetSemantics { }
         )
         androidx.compose.material3.Text(text, style = style, color = fill, maxLines = maxLines, overflow = overflow, textAlign = textAlign)
+    }
+}
+
+/**
+ * Huy hiệu số của A1 (".badge"): tối thiểu 20dp, nền hồng đỏ (hoặc [color]), viền trắng 2dp,
+ * chữ Baloo đậm 11sp. Trình đọc màn hình đọc mô tả của phần tử cha, nên huy hiệu không có ngữ nghĩa.
+ */
+@Composable
+fun A1Badge(
+    text: String,
+    modifier: Modifier = Modifier,
+    color: Color = Color(0xFFFF3B5C),
+    /** false: trình đọc màn hình đọc số (vd. số thông báo chưa đọc trên nút chuông). */
+    decorative: Boolean = true
+) {
+    Box(
+        modifier = modifier
+            .then(if (decorative) Modifier.clearAndSetSemantics { } else Modifier)
+            .heightIn(min = 20.dp)
+            .widthIn(min = 20.dp)
+            .background(color, RoundedCornerShape(10.dp))
+            .border(2.dp, Color.White, RoundedCornerShape(10.dp))
+            .padding(horizontal = 5.dp),
+        contentAlignment = androidx.compose.ui.Alignment.Center
+    ) {
+        androidx.compose.material3.Text(
+            text,
+            style = androidx.compose.material3.MaterialTheme.typography.labelSmall.copy(
+                fontFamily = androidx.compose.material3.MaterialTheme.typography.titleSmall.fontFamily,
+                fontWeight = androidx.compose.ui.text.font.FontWeight.ExtraBold,
+                fontSize = 11.sp,
+                lineHeight = 14.sp
+            ),
+            color = Color.White,
+            maxLines = 1
+        )
     }
 }

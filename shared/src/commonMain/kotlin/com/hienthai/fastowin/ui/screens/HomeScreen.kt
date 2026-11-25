@@ -110,6 +110,12 @@ import com.hienthai.fastowin.ui.components.A1Dimens
 import com.hienthai.fastowin.ui.components.TiaMascot
 import com.hienthai.fastowin.ui.components.TiaMood
 import com.hienthai.fastowin.ui.components.a1Card
+import com.hienthai.fastowin.ui.components.A1Badge
+import androidx.compose.material.icons.rounded.Home
+import androidx.compose.material.icons.rounded.Leaderboard
+import androidx.compose.material.icons.rounded.PlayArrow
+import androidx.compose.material.icons.rounded.Shield
+import androidx.compose.material.icons.rounded.Person
 import com.hienthai.fastowin.ui.components.a1Hills
 import com.hienthai.fastowin.ui.components.a1SunnySky
 import com.hienthai.fastowin.ui.components.A1OutlinedText
@@ -471,36 +477,34 @@ private fun HomeSideShortcut(
     badgeText: String? = null,
     badgeTextKey: TextKey = TextKey.GiftUnclaimedCount,
     highlight: Boolean = false,
-    badgeColor: Color = A1Palette.Red2
+    badgeColor: Color = Color(0xFFFF3B5C)
 ) {
     val badgeDescription = if (badgeCount > 0) localized(badgeTextKey, "count" to badgeCount) else null
     Column(
         modifier = modifier
             .widthIn(min = 64.dp, max = 88.dp)
-            .clip(RoundedCornerShape(16.dp))
+            // Không cắt (clip) để huy hiệu ở góc ngoài không bị mất phần trên.
             .clickable(role = Role.Button, onClick = onClick)
             .semantics(mergeDescendants = true) { if (badgeDescription != null) stateDescription = badgeDescription }
             .padding(2.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.spacedBy(6.dp)
     ) {
-        BadgedBox(badge = {
-            when {
-                badgeCount > 0 -> HomeCountBadge(badgeCount)
-                badgeText != null -> Badge(
-                    modifier = Modifier.clearAndSetSemantics {}.border(2.dp, Color.White, CircleShape),
-                    containerColor = badgeColor,
-                    contentColor = Color.White
-                ) { Text(badgeText, fontWeight = FontWeight.ExtraBold) }
-            }
-        }) {
+        Box {
             Box(
                 modifier = Modifier
                     .size(60.dp)
                     .a1Card(radius = 20.dp, depth = 4.dp, background = if (highlight) A1Palette.Highlight else Color.White),
                 contentAlignment = Alignment.Center
             ) {
-                Icon(icon, contentDescription = null, tint = tint, modifier = Modifier.size(32.dp))
+                Icon(icon, contentDescription = null, tint = tint, modifier = Modifier.size(34.dp))
+            }
+            val shown = when {
+                badgeCount > 0 -> if (badgeCount > 99) "99+" else badgeCount.toString()
+                else -> badgeText
+            }
+            shown?.let {
+                A1Badge(it, Modifier.align(Alignment.TopEnd).offset(x = 6.dp, y = (-6).dp), color = if (badgeCount > 0) Color(0xFFFF3B5C) else badgeColor)
             }
         }
         Text(
@@ -650,7 +654,7 @@ internal fun FastToWinBottomBar(
     onAccount: () -> Unit,
     modifier: Modifier = Modifier
 ) {
-    val navigationHeight = 64.dp + 40.dp * (LocalDensity.current.fontScale - 1f).coerceAtLeast(0f)
+    val navigationHeight = 81.dp + 40.dp * (LocalDensity.current.fontScale - 1f).coerceAtLeast(0f)
     Box(
         modifier = modifier
             .fillMaxWidth()
@@ -669,13 +673,14 @@ internal fun FastToWinBottomBar(
                     )
                 )
                 .padding(top = 3.dp)
-                .height(navigationHeight),
+                .height(navigationHeight)
+                .padding(horizontal = 4.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
             BottomBarItem(
                 tab = MainTab.HOME,
                 label = localized(TextKey.Home),
-                icon = Icons.Default.Home,
+                icon = Icons.Rounded.Home,
                 selected = selected == MainTab.HOME,
                 onClick = onHome,
                 modifier = Modifier.weight(1f),
@@ -684,7 +689,7 @@ internal fun FastToWinBottomBar(
             BottomBarItem(
                 MainTab.LEADERBOARD,
                 localized(TextKey.TabRank),
-                Icons.Default.Leaderboard,
+                Icons.Rounded.Leaderboard,
                 selected == MainTab.LEADERBOARD,
                 onLeaderboard,
                 Modifier.weight(1f)
@@ -692,7 +697,7 @@ internal fun FastToWinBottomBar(
             BottomBarItem(
                 tab = MainTab.ROOMS,
                 label = localized(TextKey.TabPlay),
-                icon = Icons.Default.PlayArrow,
+                icon = Icons.Rounded.PlayArrow,
                 selected = selected == MainTab.ROOMS,
                 onClick = onRooms,
                 modifier = Modifier.weight(1f),
@@ -701,7 +706,7 @@ internal fun FastToWinBottomBar(
             BottomBarItem(
                 MainTab.CLAN,
                 localized(TextKey.TabClan),
-                Icons.Default.Shield,
+                Icons.Rounded.Shield,
                 selected == MainTab.CLAN,
                 onClan,
                 Modifier.weight(1f)
@@ -709,7 +714,7 @@ internal fun FastToWinBottomBar(
             BottomBarItem(
                 MainTab.ACCOUNT,
                 localized(TextKey.TabMe),
-                Icons.Default.Person,
+                Icons.Rounded.Person,
                 selected == MainTab.ACCOUNT,
                 onAccount,
                 Modifier.weight(1f)
@@ -743,7 +748,7 @@ private fun BottomBarItem(
                 }
             },
         horizontalAlignment = Alignment.CenterHorizontally,
-        verticalArrangement = Arrangement.spacedBy(2.dp, Alignment.Bottom)
+        verticalArrangement = Arrangement.spacedBy(if (raised) 8.dp else 1.dp, Alignment.Bottom)
     ) {
         if (raised) {
             // Nút "Chơi" nổi lên khỏi thanh tab, nhãn nằm bên dưới như các tab khác.
@@ -752,10 +757,11 @@ private fun BottomBarItem(
                     // Chỉ chiếm 30dp trong thanh tab, phần còn lại nhô lên trên để nhãn "Chơi" luôn hiện.
                     .layout { measurable, constraints ->
                         val placeable = measurable.measure(constraints)
-                        val reserved = 30.dp.roundToPx()
+                        val reserved = 33.dp.roundToPx()
                         layout(placeable.width, reserved) { placeable.place(0, reserved - placeable.height) }
                     }
                     .size(width = 62.dp, height = 63.dp)
+                    .padding(bottom = 0.dp)
                     .a1Card(radius = 20.dp, depth = 5.dp, background = Color.Transparent)
                     .background(
                         Brush.verticalGradient(listOf(A1Palette.Yellow1, A1Palette.Yellow3)),
@@ -767,10 +773,10 @@ private fun BottomBarItem(
                 Icon(icon, contentDescription = null, tint = A1Palette.YellowBorder, modifier = Modifier.size(38.dp))
             }
         } else {
-            BadgedBox(badge = { HomeCountBadge(giftBadgeCount, Modifier.offset(y = 4.dp)) }) {
+            Box {
                 Box(
                     modifier = Modifier
-                        .size(width = 46.dp, height = 34.dp)
+                        .size(width = 44.dp, height = 34.dp)
                         .then(
                             if (selected) Modifier
                                 .background(A1Palette.Highlight, RoundedCornerShape(12.dp))
@@ -781,6 +787,7 @@ private fun BottomBarItem(
                 ) {
                     Icon(icon, contentDescription = null, tint = A1Palette.Line, modifier = Modifier.size(26.dp))
                 }
+                HomeCountBadge(giftBadgeCount, Modifier.align(Alignment.TopEnd).offset(x = 8.dp, y = (-6).dp))
             }
         }
         Text(
@@ -790,7 +797,7 @@ private fun BottomBarItem(
             fontWeight = FontWeight.ExtraBold,
             color = if (selected) A1Palette.Ink else A1Palette.Muted,
             maxLines = 1,
-            modifier = Modifier.padding(bottom = 6.dp)
+            modifier = Modifier.padding(bottom = 12.dp)
         )
     }
 }
@@ -862,13 +869,7 @@ private fun HomeQuickAction(
 @Composable
 private fun HomeCountBadge(count: Long, modifier: Modifier = Modifier) {
     if (count <= 0) return
-    Badge(
-        modifier = modifier.clearAndSetSemantics {}.border(2.dp, Color.White, CircleShape),
-        containerColor = A1Palette.Red2,
-        contentColor = Color.White
-    ) {
-        Text(if (count > 99) "99+" else count.toString(), fontWeight = FontWeight.Bold)
-    }
+    A1Badge(if (count > 99) "99+" else count.toString(), modifier)
 }
 
 @Composable

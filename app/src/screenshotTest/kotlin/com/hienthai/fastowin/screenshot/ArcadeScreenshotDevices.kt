@@ -24,11 +24,15 @@ fun ArcadeScreenshotFrame(content: @Composable () -> Unit) {
     ArcadeScreenshotFixtures.requireValid()
     ProvideLocalization(AppLanguage.VIETNAMESE) {
         FastToWinTheme(preferences = AppPreferences(themeMode = AppThemeMode.DARK)) {
+            androidx.compose.runtime.CompositionLocalProvider(
+                com.hienthai.fastowin.ui.components.LocalAvatarFramePreview provides screenshotFramePainter
+            ) {
             Surface(
                 modifier = Modifier.fillMaxSize(),
                 color = MaterialTheme.colorScheme.background
             ) {
                 content()
+            }
             }
         }
     }
