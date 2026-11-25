@@ -2169,7 +2169,9 @@ private fun GameContent(
                     onLeaderboard = openLeaderboardTab,
                     onClan = controller::openClan,
                     onAccount = openAccountTab,
-                    onNotifications = openNotifications
+                    onNotifications = openNotifications,
+                    // Thiết kế A1: tab Bang chỉ có tiêu đề, không hiện tiền tệ và chuông.
+                    headerActions = {}
                 ) { contentModifier -> ClanScreen(
                      serverUrl = serverUrl,
                      currentUserId = state.profile?.userId,
@@ -2217,6 +2219,8 @@ private fun GameContent(
                     onRefreshMissions = { missionScope.launch { clanMissions?.refresh() } },
                     onClaimMissionInstance = { id -> missionScope.launch { clanMissions?.claim(id) } },
                     onDismissMissionReward = { clanMissions?.clearLastClaimedReward() },
+                    clanRank = state.leaderboard?.let { it.currentLevelClan ?: it.currentClan }
+                        ?.takeIf { it.clanId == state.profile?.clanId }?.rank,
                     onOpenRace = if (state.viewedLeaderboardClanId == null && !isGuest) {
                         { navigateToAppRoute("/clan/race") { showClanRace = true } }
                     } else null,

@@ -306,9 +306,11 @@ class ClanScreenTest {
             }
         }
 
+        // Nút ba chấm của dòng thành viên mở menu có lệnh mời rời bang.
         composeRule.onNodeWithTag("clan_detail_list")
             .performScrollToNode(hasContentDescription("Mời Thành viên thử rời bang"))
         composeRule.onNodeWithContentDescription("Mời Thành viên thử rời bang").performClick()
+        composeRule.onNodeWithTag("clan_kick:member").performClick()
         composeRule.onNodeWithTag("kick_clan_member_dialog").assertIsDisplayed()
         composeRule.runOnIdle { assertEquals(null, kickedMember) }
 

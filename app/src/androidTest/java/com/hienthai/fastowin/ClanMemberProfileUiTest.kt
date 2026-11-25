@@ -49,7 +49,9 @@ class ClanMemberProfileUiTest {
     @Test
     fun kickControlOpensOnlyRemovalConfirmation() {
         composeRule.setContent { FastToWinTheme { detail(clan()) } }
-        composeRule.onNodeWithTag("clan_detail_list").performScrollToNode(hasTestTag("clan_kick:member"))
+        // Đuổi thành viên nằm trong menu ba chấm của dòng thành viên.
+        composeRule.onNodeWithTag("clan_detail_list").performScrollToNode(hasTestTag("clan_member_menu:member"))
+        composeRule.onNodeWithTag("clan_member_menu:member").performClick()
         composeRule.onNodeWithTag("clan_kick:member").performClick()
         composeRule.onNodeWithTag("kick_clan_member_dialog").assertIsDisplayed()
         composeRule.onNodeWithTag("clan_member_profile_dialog").assertDoesNotExist()
