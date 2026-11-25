@@ -756,7 +756,7 @@ class CriticalFlowsUiTest {
             assertEquals("Hiếu", sharedResult?.opponentName)
             assertEquals(420, sharedResult?.opponentScore)
             assertEquals("Cổ điển", sharedResult?.gameMode)
-            assertEquals("42s", sharedResult?.duration)
+            assertEquals("0:42", sharedResult?.duration)
             assertEquals("100%", sharedResult?.accuracy)
         }
         composeRule.onNodeWithText("Về sảnh").performScrollTo().performClick()
@@ -786,7 +786,7 @@ class CriticalFlowsUiTest {
             }
         }
 
-        composeRule.onNodeWithText("THUA CUỘC").assertIsDisplayed()
+        composeRule.onNodeWithText("THẤT BẠI").assertIsDisplayed()
     }
 
     @Test
@@ -813,9 +813,9 @@ class CriticalFlowsUiTest {
             }
         }
 
-        composeRule.onNodeWithText("THUA CUỘC").assertIsDisplayed()
+        composeRule.onNodeWithText("THẤT BẠI").assertIsDisplayed()
         composeRule.onNodeWithText("Bạn đã chủ động rời trận và bị xử thua.").assertIsDisplayed()
-        composeRule.onNodeWithText("Mời đấu lại").assertIsEnabled()
+        composeRule.onNodeWithText("Tái đấu").performScrollTo().assertIsEnabled()
     }
 
     @Test
