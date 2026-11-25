@@ -366,14 +366,15 @@ internal fun HomeDashboard(
                         .onGloballyPositioned { sceneArea = androidx.compose.ui.geometry.Rect(it.positionInParent(), it.size.toSize()) },
                     verticalAlignment = Alignment.Top
                 ) {
-                    Column(verticalArrangement = Arrangement.spacedBy(14.dp)) { leftShortcuts() }
+                    // Căn giữa theo cột để nhãn dài (vd. "Tournament") không làm lệch ô icon.
+                    Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(14.dp)) { leftShortcuts() }
                     Box(
                         modifier = Modifier.weight(1f).heightIn(min = 280.dp),
                         contentAlignment = Alignment.BottomCenter
                     ) {
                         HomeMascot(greeting, mascotSize = if (compactWidth) 110.dp else 140.dp)
                     }
-                    Column(verticalArrangement = Arrangement.spacedBy(14.dp)) { rightShortcuts() }
+                    Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(14.dp)) { rightShortcuts() }
                 }
             }
 
@@ -492,7 +493,7 @@ private fun HomeSideShortcut(
     val badgeDescription = if (badgeCount > 0) localized(badgeTextKey, "count" to badgeCount) else null
     Column(
         modifier = modifier
-            .widthIn(min = 64.dp, max = 88.dp)
+            .widthIn(min = 64.dp)
             // Không cắt (clip) để huy hiệu ở góc ngoài không bị mất phần trên.
             .clickable(role = Role.Button, onClick = onClick)
             .semantics(mergeDescendants = true) { if (badgeDescription != null) stateDescription = badgeDescription }
@@ -524,6 +525,8 @@ private fun HomeSideShortcut(
             fontWeight = FontWeight.ExtraBold,
             color = Color.White,
             textAlign = androidx.compose.ui.text.style.TextAlign.Center,
+            maxLines = 1,
+            softWrap = false,
             modifier = Modifier
                 .background(A1Palette.Ink, RoundedCornerShape(10.dp))
                 .padding(horizontal = 8.dp, vertical = 1.dp)

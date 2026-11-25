@@ -91,6 +91,32 @@ fun rankedWinResult() = ArcadeScreenshotFrame {
 @PreviewTest
 @ArcadeScreenshotDevices
 @Composable
+fun rankedLossResult() = ArcadeScreenshotFrame {
+    val win = ArcadeScreenshotFixtures.rankedWinState()
+    ResultScreen(
+        state = win.copy(
+            player = win.player.copy(score = 240, correctSelections = 24, wrongSelections = 3),
+            opponent = win.opponent.copy(score = 260),
+            winnerPlayerId = win.opponent.id,
+            lastMatchDurationMillis = 64_000L,
+            lastMatchEloChange = -12,
+            lastMatchEloRating = 1_730
+        ),
+        onRestart = {},
+        onBack = {},
+        onRematch = {},
+        onCancelRematch = {},
+        onDeclineRematch = {},
+        onConnectOpponent = {},
+        onBlockOpponent = {},
+        onPractice = {},
+        preferences = AppPreferences(soundEnabled = false, vibrationEnabled = false, visualEffectsEnabled = false)
+    )
+}
+
+@PreviewTest
+@ArcadeScreenshotDevices
+@Composable
 fun profileOverview() = ArcadeScreenshotFrame {
     ProfileScreen(
         serverUrl = "",

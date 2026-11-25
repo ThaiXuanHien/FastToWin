@@ -211,7 +211,7 @@ class LocalizedGameplayUiTest {
         }
 
         composeRule.onNodeWithText("CHIẾN THẮNG!").assertIsDisplayed()
-        composeRule.onNodeWithText("Kết quả trận").assertIsDisplayed()
+        composeRule.onNodeWithText("CHƠI TIẾP").performScrollTo().assertIsDisplayed()
     }
 
     @Test

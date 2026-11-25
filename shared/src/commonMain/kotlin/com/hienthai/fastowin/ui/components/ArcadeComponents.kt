@@ -104,6 +104,8 @@ fun ArcadeActionButton(
     hero: Boolean = false,
     /** Nút ".btn.lg" của thiết kế (TẠO PHÒNG, TÌM PHÒNG…): chữ viền 24sp. */
     large: Boolean = false,
+    /** Màu riêng cho icon (vd. icon chia sẻ xanh trên nút trắng); mặc định theo màu chữ. */
+    iconTint: Color? = null,
     content: (@Composable RowScope.() -> Unit)? = null
 ) {
     val colors = if (!enabled) A1ButtonDefaults.Disabled else when (style) {
@@ -164,7 +166,12 @@ fun ArcadeActionButton(
                     content()
                 } else {
                     icon?.let {
-                        Icon(it, contentDescription = null, modifier = Modifier.size(if (hero) 34.dp else if (compact) 20.dp else 24.dp))
+                        Icon(
+                            it,
+                            contentDescription = null,
+                            tint = iconTint ?: LocalContentColor.current,
+                            modifier = Modifier.size(if (hero) 34.dp else if (compact) 20.dp else 24.dp)
+                        )
                         Box(modifier = Modifier.width(8.dp))
                     }
                     if ((hero || large) && enabled) {

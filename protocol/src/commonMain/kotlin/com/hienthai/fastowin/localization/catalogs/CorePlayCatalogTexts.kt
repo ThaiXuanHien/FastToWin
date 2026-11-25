@@ -148,7 +148,7 @@ internal val vietnameseCorePlayTexts = mapOf(
     TextKey.BlockPlayerTitle to "CHẶN {player}?", TextKey.BlockPlayerDescription to "Hai người sẽ không thể kết bạn, gửi lời mời hoặc đấu lại.",
     TextKey.Block to "CHẶN", TextKey.RematchInviteTitle to "MỜI ĐẤU LẠI", TextKey.RematchInviteDescription to "{player} muốn đấu lại với bạn.",
     TextKey.Processing to "ĐANG XỬ LÝ…", TextKey.Accept to "CHẤP NHẬN", TextKey.Decline to "TỪ CHỐI", TextKey.DrawResult to "HÒA!",
-    TextKey.VictoryResult to "CHIẾN THẮNG!", TextKey.DefeatResult to "THUA CUỘC", TextKey.ForfeitResultDescription to "Bạn đã chủ động rời trận và bị xử thua.",
+    TextKey.VictoryResult to "CHIẾN THẮNG!", TextKey.DefeatResult to "THẤT BẠI", TextKey.ForfeitResultDescription to "Bạn đã chủ động rời trận và bị xử thua.",
     TextKey.DrawResultDescription to "Hai bên ngang điểm sau trận đấu.", TextKey.VictoryResultDescription to "Bạn đã giành chiến thắng!",
     TextKey.OpposingTeamVictoryDescription to "Đội đối thủ đã giành chiến thắng.", TextKey.OpponentVictoryDescription to "{player} đã giành chiến thắng.",
     TextKey.MatchResultTitle to "Kết quả trận", TextKey.GameResultSubtitle to "{mode} • {matchType}", TextKey.ShareResult to "CHIA SẺ KẾT QUẢ",

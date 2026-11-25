@@ -2248,6 +2248,17 @@ private fun GameContent(
                     onOpenFriendProfile = openFriendProfile,
                     onOpenTournament = controller::openTournamentAfterMatch,
                     onOpenRewardEvent = openRewardEvent,
+                    onPlayAgain = {
+                        // Rời phòng vừa đấu rồi tìm trận mới cùng chế độ và loại trận.
+                        val mode = state.gameMode
+                        val matchType = state.matchType
+                        controller.leaveRoom()
+                        controller.startMatchmaking(mode, matchType)
+                    },
+                    onPractice = {
+                        controller.leaveRoom()
+                        openPractice()
+                    },
                     preferences = appPreferences
                 )
 
