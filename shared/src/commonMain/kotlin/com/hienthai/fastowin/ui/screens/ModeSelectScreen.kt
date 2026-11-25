@@ -14,6 +14,8 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.IntrinsicSize
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.rememberScrollState
@@ -119,19 +121,16 @@ fun ModeSelectContent(
                 textAlign = TextAlign.Center,
                 modifier = Modifier.fillMaxWidth()
             )
-            // Lưới 2 cột; thẻ lẻ cuối cùng trải hết hàng như thiết kế.
-            modes.chunked(2).forEach { row ->
-                Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                    row.forEach { mode ->
-                        ModeCard(
-                            mode = mode,
-                            selected = mode == chosen,
-                            unlocked = playerLevel >= mode.unlockLevel,
-                            wide = row.size == 1,
-                            onClick = { selected = mode },
-                            modifier = Modifier.weight(1f)
-                        )
-                    }
+            // Lưới 2 cột: mọi thẻ cao bằng thẻ cao nhất (kể cả thẻ mô tả ngắn); thẻ lẻ cuối trải hết hàng.
+            EqualHeightGrid(spacing = 12.dp) {
+                modes.forEachIndexed { index, mode ->
+                    ModeCard(
+                        mode = mode,
+                        selected = mode == chosen,
+                        unlocked = playerLevel >= mode.unlockLevel,
+                        wide = modes.size % 2 == 1 && index == modes.lastIndex,
+                        onClick = { selected = mode }
+                    )
                 }
             }
         }
@@ -156,6 +155,33 @@ fun ModeSelectContent(
                 },
                 modifier = Modifier.fillMaxWidth().heightIn(min = 76.dp).testTag("mode_select_play")
             )
+        }
+    }
+}
+
+/**
+ * Lưới 2 cột mà mọi ô có cùng chiều cao = ô cao nhất (đo bằng intrinsic height),
+ * ô lẻ cuối cùng chiếm cả hàng.
+ */
+@Composable
+private fun EqualHeightGrid(spacing: Dp, content: @Composable () -> Unit) {
+    androidx.compose.ui.layout.Layout(content = content) { measurables, constraints ->
+        val gap = spacing.roundToPx()
+        val colW = (constraints.maxWidth - gap) / 2
+        val wideLast = measurables.size % 2 == 1
+        val widths = measurables.indices.map { i -> if (wideLast && i == measurables.lastIndex) constraints.maxWidth else colW }
+        val cellH = measurables.mapIndexed { i, m -> m.maxIntrinsicHeight(widths[i]) }.maxOrNull() ?: 0
+        val placeables = measurables.mapIndexed { i, m ->
+            m.measure(androidx.compose.ui.unit.Constraints.fixed(widths[i], cellH))
+        }
+        val rows = (measurables.size + 1) / 2
+        val totalH = if (rows == 0) 0 else rows * cellH + (rows - 1) * gap
+        layout(constraints.maxWidth, totalH) {
+            placeables.forEachIndexed { i, p ->
+                val row = i / 2
+                val col = i % 2
+                p.place(if (widths[i] == constraints.maxWidth) 0 else col * (colW + gap), row * (cellH + gap))
+            }
         }
     }
 }
@@ -190,7 +216,7 @@ private fun ModeCard(
             }
     ) {
         Column(
-            modifier = Modifier.fillMaxWidth().heightIn(min = if (wide) 100.dp else 132.dp).padding(14.dp),
+            modifier = Modifier.fillMaxWidth().fillMaxHeight().padding(14.dp),
             verticalArrangement = Arrangement.spacedBy(6.dp)
         ) {
             Box(

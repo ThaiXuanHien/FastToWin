@@ -410,15 +410,16 @@ private fun MatchmakingScreen(state: GameState, onCancel: () -> Unit) {
                     color = A1Palette.Muted
                 )
             }
+            // Nhãn "Bạn" (".tag.b" của thiết kế): Baloo đậm, cao ~24dp.
             Text(
                 localized(TextKey.MatchmakingYou),
-                style = MaterialTheme.typography.labelMedium,
+                style = MaterialTheme.typography.titleSmall.copy(fontSize = 14.sp, lineHeight = 18.sp),
                 fontWeight = FontWeight.ExtraBold,
                 color = Color(0xFF0D3A7A),
                 modifier = Modifier
-                    .background(Color(0xFFDCEBFF), RoundedCornerShape(11.dp))
-                    .border(2.dp, Color(0xFF6AA4F0), RoundedCornerShape(11.dp))
-                    .padding(horizontal = 10.dp, vertical = 1.dp)
+                    .background(Color(0xFFDCEBFF), RoundedCornerShape(12.dp))
+                    .border(2.dp, Color(0xFF6AA4F0), RoundedCornerShape(12.dp))
+                    .padding(horizontal = 12.dp, vertical = 3.dp)
             )
         }
         MatchmakingVersus()
