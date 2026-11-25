@@ -291,9 +291,7 @@ internal fun HomeDashboard(
                 com.hienthai.fastowin.ui.components.AnnouncementBanner(announcement, announcementState.pending,
                     { onOpenAnnouncement(announcement.announcement.id) }, { onHideAnnouncement(announcement.announcement.id) })
             }
-            rewardEventState?.let { events ->
-                com.hienthai.fastowin.ui.components.RewardEventBanner(events, onOpenRewardEvents, onRefreshRewardEvents)
-            }
+            // A1: sự kiện thưởng mở từ ô "Sự kiện" cạnh linh vật (có huy hiệu số sự kiện), không dùng banner.
 
             // Khu vực giữa: lối tắt hai bên và linh vật Tia ở giữa (theo thiết kế A1).
             val leftShortcuts: @Composable () -> Unit = {
@@ -750,7 +748,13 @@ private fun BottomBarItem(
     Column(
         modifier = modifier
             .fillMaxHeight()
-            .clickable(role = Role.Tab, onClick = onClick)
+            // Không có hiệu ứng gợn sóng khi bấm tab (theo yêu cầu); trạng thái chọn đã đủ phản hồi.
+            .clickable(
+                interactionSource = remember { androidx.compose.foundation.interaction.MutableInteractionSource() },
+                indication = null,
+                role = Role.Tab,
+                onClick = onClick
+            )
             .testTag("bottom_tab:${tab.name.lowercase()}")
             .semantics(mergeDescendants = true) {
                 this.selected = selected
