@@ -1554,18 +1554,15 @@ private fun MatchedStatus(state: GameState, onOpenFriendProfile: (String) -> Uni
             .padding(top = 90.dp)
             .testTag("match_countdown")
     ) {
-        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(18.dp)) {
-            PlayerAvatar(state.player.name, state.player.avatarId, state.player.id, state.player.frameId, size = 110.dp)
-            A1OutlinedText(text = "VS", style = MaterialTheme.typography.displaySmall, outline = A1Palette.RedDeep, outlineWidth = 3.dp)
-            Box(Modifier.clickable(enabled = opponentFriend != null) { opponentFriend?.let { onOpenFriendProfile(it.userId) } }) {
-                PlayerAvatar(state.opponent.name, state.opponent.avatarId, state.opponent.id, state.opponent.frameId, size = 110.dp)
+        // Mỗi tên nằm ngay dưới avatar của người đó; VS căn giữa theo chiều cao avatar.
+        Row(verticalAlignment = Alignment.Top, horizontalArrangement = Arrangement.spacedBy(14.dp)) {
+            CountdownPlayer(state.player)
+            Box(Modifier.height(110.dp), contentAlignment = Alignment.Center) {
+                A1OutlinedText(text = "VS", style = MaterialTheme.typography.displayMedium, outline = A1Palette.RedDeep, outlineWidth = 3.dp)
             }
-        }
-        Row(horizontalArrangement = Arrangement.spacedBy(16.dp)) {
-            A1OutlinedText(text = state.player.name, style = MaterialTheme.typography.titleMedium, maxLines = 1, overflow = TextOverflow.Ellipsis,
-                modifier = Modifier.width(128.dp), textAlign = TextAlign.Center)
-            A1OutlinedText(text = state.opponent.name, style = MaterialTheme.typography.titleMedium, maxLines = 1, overflow = TextOverflow.Ellipsis,
-                modifier = Modifier.width(128.dp), textAlign = TextAlign.Center)
+            Box(Modifier.clickable(enabled = opponentFriend != null) { opponentFriend?.let { onOpenFriendProfile(it.userId) } }) {
+                CountdownPlayer(state.opponent)
+            }
         }
         A1OutlinedText(
             text = "${state.countdown ?: 3}",
@@ -1575,8 +1572,28 @@ private fun MatchedStatus(state: GameState, onOpenFriendProfile: (String) -> Uni
             modifier = Modifier.padding(top = 20.dp).semantics { liveRegion = LiveRegionMode.Assertive }
         )
         A1Tag(
-            "${state.gameMode.displayName()} · ${localized(if (state.matchType == MatchType.RANKED) TextKey.Ranked else TextKey.Casual)}",
-            A1TagTone.INK
+            "${state.gameMode.displayName()} · ${localized(if (state.matchType == MatchType.RANKED) TextKey.Ranked else TextKey.CasualShort)}",
+            A1TagTone.INK,
+            large = true
+        )
+    }
+}
+
+@Composable
+private fun CountdownPlayer(player: PlayerState) {
+    Column(
+        modifier = Modifier.width(120.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.spacedBy(10.dp)
+    ) {
+        PlayerAvatar(player.name, player.avatarId, player.id, player.frameId, size = 110.dp)
+        A1OutlinedText(
+            text = player.name,
+            style = MaterialTheme.typography.titleMedium,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+            textAlign = TextAlign.Center,
+            modifier = Modifier.fillMaxWidth()
         )
     }
 }
