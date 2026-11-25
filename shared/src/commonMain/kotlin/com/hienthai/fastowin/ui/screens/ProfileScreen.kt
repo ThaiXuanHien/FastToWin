@@ -34,6 +34,41 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.rounded.Insights
+import androidx.compose.material.icons.rounded.History
+import androidx.compose.material.icons.rounded.MilitaryTech
+import androidx.compose.material.icons.automirrored.rounded.ReceiptLong
+import androidx.compose.material.icons.rounded.WorkspacePremium
+import androidx.compose.material.icons.rounded.Group
+import androidx.compose.material.icons.rounded.CardGiftcard
+import androidx.compose.material.icons.rounded.Storefront
+import androidx.compose.material.icons.rounded.Settings
+import androidx.compose.material.icons.rounded.Devices
+import androidx.compose.material.icons.rounded.Lock
+import androidx.compose.material.icons.automirrored.rounded.Logout
+import androidx.compose.material.icons.automirrored.rounded.KeyboardArrowRight
+import androidx.compose.material.icons.rounded.ContentCopy
+import androidx.compose.material.icons.rounded.Edit
+import androidx.compose.material.icons.rounded.Star
+import androidx.compose.material.icons.rounded.DeleteForever
+import androidx.compose.foundation.layout.defaultMinSize
+import androidx.compose.ui.graphics.PathEffect
+import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.heading
+import androidx.compose.ui.semantics.clearAndSetSemantics
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.unit.sp
+import com.hienthai.fastowin.ui.components.a1Card
+import com.hienthai.fastowin.ui.components.A1Tag
+import com.hienthai.fastowin.ui.components.A1TagTone
+import com.hienthai.fastowin.ui.components.A1OutlinedText
+import com.hienthai.fastowin.ui.components.ArcadeHeaderIconButton
+import com.hienthai.fastowin.ui.components.nextRankedTier
+import com.hienthai.fastowin.ui.components.ratingProgressWithinTier
+import com.hienthai.fastowin.ui.theme.A1Palette
+import com.hienthai.fastowin.localization.localizedRankedTierName
+import com.hienthai.fastowin.protocol.rankedTierFor
 import androidx.compose.material.icons.automirrored.filled.Assignment
 import androidx.compose.material.icons.automirrored.filled.ExitToApp
 import androidx.compose.material.icons.filled.Edit
@@ -208,6 +243,14 @@ fun ProfileScreen(
     onOpenSettings: () -> Unit = {},
     /** Mở màn Bạn bè (mục "Bạn bè" trong danh sách của màn Tôi). */
     onOpenFriends: (() -> Unit)? = null,
+    /** Số lời mời kết bạn/mời phòng đang chờ (huy hiệu ở mục "Bạn bè"). */
+    friendBadgeCount: Int = 0,
+    /** Mở Lịch sử mùa, Hộp quà, Cửa hàng từ danh sách "Hoạt động" (null thì ẩn mục). */
+    onOpenSeasonHistory: (() -> Unit)? = null,
+    onOpenGifts: (() -> Unit)? = null,
+    /** Số quà chưa nhận (huy hiệu ở mục "Hộp quà"). */
+    giftBadgeCount: Long = 0,
+    onOpenShop: (() -> Unit)? = null,
     onOpenSection: (ProfileSection) -> Unit = {},
     showBackButton: Boolean = true,
     onOpenRewardEvent: ((String) -> Unit)? = null,
@@ -406,12 +449,12 @@ fun ProfileScreen(
         }
 
         if (isEditing) {
-            ArcadePanel(modifier = Modifier.fillMaxWidth(), accent = ArcadeGold) {
+            Box(modifier = Modifier.fillMaxWidth().a1Card()) {
                 Column(
                     modifier = Modifier.fillMaxWidth().padding(16.dp),
                     verticalArrangement = Arrangement.spacedBy(12.dp)
                 ) {
-                    Text(localized(TextKey.EditProfile), style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Black)
+                    Text(localized(TextKey.EditProfile), style = MaterialTheme.typography.titleLarge, color = A1Palette.Ink)
                     OutlinedTextField(
                         value = displayName,
                         onValueChange = { if (it.length <= MAX_PROFILE_DISPLAY_NAME_LENGTH) displayName = it },
@@ -443,7 +486,7 @@ fun ProfileScreen(
                         horizontalArrangement = Arrangement.SpaceBetween,
                         verticalAlignment = Alignment.CenterVertically
                     ) {
-                        Text(localized(TextKey.Avatar), fontWeight = FontWeight.Medium)
+                        Text(localized(TextKey.Avatar), fontWeight = FontWeight.SemiBold, color = A1Palette.Ink)
                         key(avatarSelection) {
                             imagePicker(
                                 { bytes ->
@@ -519,112 +562,67 @@ fun ProfileScreen(
             )
         }
 
-        ProfileSectionTitle(localized(TextKey.Activity))
-        Column(
-            modifier = Modifier.fillMaxWidth(),
-            verticalArrangement = Arrangement.spacedBy(8.dp)
-        ) {
-                AccountActionRow(
-                    icon = Icons.Default.Insights,
-                    title = localized(TextKey.StatisticsAchievements),
-                    subtitle = localized(TextKey.PerformanceMilestones),
-                    onClick = { onOpenSection(ProfileSection.STATISTICS) },
-                    modifier = Modifier.testTag("profile_section_statistics")
-                )
-                if (!isExternalProfile && canEdit) {
-                    AccountActionRow(
-                        icon = Icons.Default.AccountBalanceWallet,
-                        title = localized(TextKey.WalletHistory),
-                        subtitle = localized(TextKey.WalletHistorySubtitle),
-                        onClick = { onOpenSection(ProfileSection.WALLET) },
-                        modifier = Modifier.testTag("profile_section_wallet")
-                    )
-                }
-                if (!isExternalProfile) {
-                    AccountActionRow(
-                        icon = Icons.Default.Collections,
-                        title = localized(TextKey.CollectionTitle),
-                        subtitle = localized(TextKey.CollectionSubtitle),
-                        onClick = { onOpenSection(ProfileSection.COLLECTION) },
-                        modifier = Modifier.testTag("profile_section_collection")
-                    )
-                }
-                AccountActionRow(
-                    icon = Icons.Default.History,
-                    title = localized(TextKey.RecentMatches),
-                    subtitle = localized(TextKey.MatchHistory),
-                    onClick = { onOpenSection(ProfileSection.RECENT_MATCHES) },
-                    modifier = Modifier.testTag("profile_section_recent_matches")
-                )
-                if (!isExternalProfile && onOpenFriends != null) {
-                    AccountActionRow(
-                        icon = Icons.Default.Group,
-                        title = localized(TextKey.Friends),
-                        subtitle = localized(TextKey.FriendList),
-                        onClick = onOpenFriends,
-                        modifier = Modifier.testTag("profile_section_friends")
-                    )
-                }
-        }
-
-        if (canEdit) {
-            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                ProfileSectionTitle(localized(TextKey.SettingsAccount))
-                Column(
-                    modifier = Modifier.fillMaxWidth(),
-                    verticalArrangement = Arrangement.spacedBy(8.dp)
-                ) {
-                        AccountActionRow(
-                            icon = Icons.Default.Settings,
-                            title = localized(TextKey.AppSettings),
-                            subtitle = "",
-                            onClick = onOpenSettings,
-                            modifier = Modifier.testTag("profile_settings")
-                        )
-                        AccountActionRow(
-                            icon = Icons.Default.Devices,
-                            title = localized(TextKey.LoginDevices),
-                            subtitle = "",
-                            onClick = {
-                                onClearAccountFeedback()
-                                showAccountSessions = true
-                                onLoadSessions()
-                            },
-                            modifier = Modifier.testTag("profile_sessions")
-                        )
-                        AccountActionRow(
-                            icon = Icons.Default.Lock,
-                            title = localized(TextKey.AccountSecurity),
-                            subtitle = "",
-                            onClick = {
-                                onClearAccountFeedback()
-                                showAccountSecurity = true
-                            },
-                            modifier = Modifier.testTag("profile_security")
-                        )
-                        AccountActionRow(
-                            icon = Icons.AutoMirrored.Filled.ExitToApp,
-                            title = localized(TextKey.Logout),
-                            subtitle = "",
-                            isDestructive = true,
-                            onClick = { showLogoutConfirmation = true },
-                            modifier = Modifier.testTag("profile_logout")
-                        )
-                        // App Store 5.1.1(v): deletion is one visible row plus one confirmation.
-                        AccountActionRow(
-                            icon = Icons.Default.DeleteForever,
-                            title = localized(TextKey.DeleteAccount),
-                            subtitle = "",
-                            isDestructive = true,
-                            onClick = {
-                                onClearAccountFeedback()
-                                showDeleteAccount = true
-                            },
-                            modifier = Modifier.testTag("profile_delete_account")
-                        )
-                }
+        val activityItems = buildList {
+            add(ProfileMenuItem("profile_section_statistics", Icons.Rounded.Insights, localized(TextKey.StatisticsAchievements),
+                ProfileTile.BLUE, subtitle = localized(TextKey.PerformanceMilestones)) { onOpenSection(ProfileSection.STATISTICS) })
+            add(ProfileMenuItem("profile_section_recent_matches", Icons.Rounded.History, localized(TextKey.MatchHistory),
+                ProfileTile.PURPLE) { onOpenSection(ProfileSection.RECENT_MATCHES) })
+            if (!isExternalProfile) {
+                add(ProfileMenuItem("profile_section_collection", Icons.Rounded.MilitaryTech, localized(TextKey.CollectionTitle),
+                    ProfileTile.YELLOW, subtitle = localized(TextKey.CollectionSubtitle)) { onOpenSection(ProfileSection.COLLECTION) })
+            }
+            if (!isExternalProfile && canEdit) {
+                add(ProfileMenuItem("profile_section_wallet", Icons.AutoMirrored.Rounded.ReceiptLong, localized(TextKey.WalletHistory),
+                    ProfileTile.GREEN) { onOpenSection(ProfileSection.WALLET) })
+            }
+            if (!isExternalProfile && onOpenSeasonHistory != null) {
+                add(ProfileMenuItem("profile_section_season_history", Icons.Rounded.WorkspacePremium, localized(TextKey.SeasonHistoryTitle),
+                    ProfileTile.INK, onClick = onOpenSeasonHistory))
+            }
+            if (!isExternalProfile && onOpenFriends != null) {
+                add(ProfileMenuItem("profile_section_friends", Icons.Rounded.Group, localized(TextKey.Friends),
+                    ProfileTile.BLUE, badge = friendBadgeCount.toLong(), onClick = onOpenFriends))
+            }
+            if (!isExternalProfile && onOpenGifts != null) {
+                add(ProfileMenuItem("profile_section_gifts", Icons.Rounded.CardGiftcard, localized(TextKey.HomeGifts),
+                    ProfileTile.GREEN, badge = giftBadgeCount, onClick = onOpenGifts))
+            }
+            if (!isExternalProfile && onOpenShop != null) {
+                add(ProfileMenuItem("profile_section_shop", Icons.Rounded.Storefront, localized(TextKey.Shop),
+                    ProfileTile.YELLOW, onClick = onOpenShop))
             }
         }
+        ProfileSkyTitle(localized(TextKey.Activity))
+        ProfileMenuCard(activityItems)
+
+        if (canEdit) {
+            ProfileSkyTitle(localized(TextKey.SettingsAccount))
+            ProfileMenuCard(
+                listOf(
+                    ProfileMenuItem("profile_settings", Icons.Rounded.Settings, localized(TextKey.AppSettings),
+                        ProfileTile.WHITE, onClick = onOpenSettings),
+                    ProfileMenuItem("profile_sessions", Icons.Rounded.Devices, localized(TextKey.LoginDevices), ProfileTile.WHITE) {
+                        onClearAccountFeedback()
+                        showAccountSessions = true
+                        onLoadSessions()
+                    },
+                    ProfileMenuItem("profile_security", Icons.Rounded.Lock, localized(TextKey.AccountSecurity), ProfileTile.WHITE) {
+                        onClearAccountFeedback()
+                        showAccountSecurity = true
+                    },
+                    ProfileMenuItem("profile_logout", Icons.AutoMirrored.Rounded.Logout, localized(TextKey.Logout),
+                        ProfileTile.WHITE, showChevron = false) { showLogoutConfirmation = true }
+                )
+            )
+            // App Store 5.1.1(v): xoá tài khoản là một nút luôn hiện, kèm một bước xác nhận.
+            ProfileDangerZone(
+                onDelete = {
+                    onClearAccountFeedback()
+                    showDeleteAccount = true
+                }
+            )
+        }
+        Spacer(Modifier.height(8.dp))
 
         }
         }
@@ -667,188 +665,335 @@ private fun ProfileIdentityPanel(
     val equippedTitle = progression.cosmetics.firstOrNull {
         it.type == CosmeticType.TITLE && it.equipped
     }?.localizedName() ?: localized(TextKey.Rookie)
-
-    val panelShape = RoundedCornerShape(20.dp)
-    Box(
+    val isMaxLevel = progression.level >= 100
+    // Thẻ hồ sơ A1: avatar có khung, tên, danh hiệu tím, mã; cấp + XP; ô hạng vàng.
+    Column(
         modifier = Modifier
             .fillMaxWidth()
             .testTag("profile_identity_card")
-            .clip(panelShape)
-            .background(
-                Brush.verticalGradient(
-                    listOf(
-                        ArcadePalette.Gold800.copy(alpha = 0.72f),
-                        ArcadePalette.Navy900.copy(alpha = 0.98f)
-                    )
-                )
-            )
-            .border(1.dp, ArcadeGold.copy(alpha = 0.52f), panelShape)
+            .a1Card()
+            .padding(start = 18.dp, end = 18.dp, top = 18.dp, bottom = 20.dp),
+        verticalArrangement = Arrangement.spacedBy(14.dp)
     ) {
-        BoxWithConstraints(modifier = Modifier.fillMaxWidth()) {
-            val compact = maxWidth < 330.dp
-            Box(modifier = Modifier.fillMaxWidth().padding(14.dp)) {
-                if (compact) {
-                    Column(
-                        modifier = Modifier.fillMaxWidth().padding(top = if (canEdit) 32.dp else 0.dp),
-                        horizontalAlignment = Alignment.CenterHorizontally,
-                        verticalArrangement = Arrangement.spacedBy(10.dp)
-                    ) {
-                        PlayerAvatar(
-                            displayName = profile.displayName,
-                            avatarId = profile.avatarId,
-                            userId = profile.userId,
-                            frameId = equippedFrame,
-                            size = 76.dp,
-                            imageUrl = serverUrl.toAvatarImageUrl(profile.userId, avatarRevision)
+        Box(Modifier.fillMaxWidth()) {
+            Row(
+                modifier = Modifier.fillMaxWidth().padding(end = if (canEdit) 52.dp else 0.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(14.dp)
+            ) {
+                PlayerAvatar(
+                    displayName = profile.displayName,
+                    avatarId = profile.avatarId,
+                    userId = profile.userId,
+                    frameId = equippedFrame,
+                    size = 96.dp,
+                    imageUrl = serverUrl.toAvatarImageUrl(profile.userId, avatarRevision)
+                )
+                Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                    Text(
+                        profile.displayName,
+                        style = MaterialTheme.typography.titleLarge.copy(fontSize = 24.sp, lineHeight = 28.sp),
+                        color = A1Palette.Ink,
+                        maxLines = 2,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                    val titleDescription = localized(TextKey.TitleValue, "title" to equippedTitle)
+                    A1Tag(
+                        equippedTitle,
+                        A1TagTone.PURPLE,
+                        icon = Icons.Rounded.WorkspacePremium,
+                        modifier = Modifier.clearAndSetSemantics { contentDescription = titleDescription }
+                    )
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Text(
+                            localized(TextKey.PlayerCodeValue, "code" to profile.playerCode),
+                            modifier = Modifier.weight(1f, fill = false),
+                            style = MaterialTheme.typography.titleSmall.copy(fontSize = 16.sp),
+                            color = A1Palette.Muted,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
                         )
-                        ProfileIdentityDetails(
-                            profile = profile,
-                            equippedTitle = equippedTitle,
-                            sessionStartedAtMillis = sessionStartedAtMillis.takeIf { !isExternalProfile },
-                            onCopyCode = onCopyCode,
-                            centered = true
-                        )
-                    }
-                } else {
-                    Row(
-                        modifier = Modifier.fillMaxWidth().padding(end = if (canEdit) 42.dp else 0.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(12.dp)
-                    ) {
-                        PlayerAvatar(
-                            displayName = profile.displayName,
-                            avatarId = profile.avatarId,
-                            userId = profile.userId,
-                            frameId = equippedFrame,
-                            size = 76.dp,
-                            imageUrl = serverUrl.toAvatarImageUrl(profile.userId, avatarRevision)
-                        )
-                        ProfileIdentityDetails(
-                            profile = profile,
-                            equippedTitle = equippedTitle,
-                            sessionStartedAtMillis = sessionStartedAtMillis.takeIf { !isExternalProfile },
-                            onCopyCode = onCopyCode,
-                            centered = false,
-                            modifier = Modifier.weight(1f)
-                        )
-                    }
-                }
-                if (canEdit) {
-                    IconButton(
-                        onClick = onEdit,
-                        enabled = !isSaving,
-                        modifier = Modifier.align(Alignment.TopEnd).size(44.dp).testTag("profile_edit")
-                    ) {
-                        Surface(
-                            modifier = Modifier.size(34.dp),
-                            shape = RoundedCornerShape(10.dp),
-                            color = ArcadePalette.Navy800,
-                            border = BorderStroke(1.dp, ArcadePalette.Blue300.copy(alpha = 0.65f))
-                        ) {
-                            Box(contentAlignment = Alignment.Center) {
-                                Icon(
-                                    Icons.Default.Edit,
-                                    contentDescription = localized(TextKey.EditProfile),
-                                    modifier = Modifier.size(18.dp),
-                                    tint = Color.White
-                                )
-                            }
+                        IconButton(onClick = onCopyCode, modifier = Modifier.size(40.dp)) {
+                            Icon(
+                                Icons.Rounded.ContentCopy,
+                                contentDescription = localized(TextKey.CopyPlayerCode),
+                                modifier = Modifier.size(20.dp),
+                                tint = A1Palette.Ink
+                            )
                         }
                     }
                 }
             }
+            if (canEdit) {
+                ArcadeHeaderIconButton(
+                    onClick = onEdit,
+                    enabled = !isSaving,
+                    modifier = Modifier.align(Alignment.TopEnd).testTag("profile_edit")
+                ) {
+                    Icon(
+                        Icons.Rounded.Edit,
+                        contentDescription = localized(TextKey.EditProfile),
+                        modifier = Modifier.size(24.dp),
+                        tint = A1Palette.Ink
+                    )
+                }
+            }
+        }
+        Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(
+                    localized(TextKey.Level, "level" to progression.level),
+                    modifier = Modifier.testTag("profile_level_label"),
+                    style = MaterialTheme.typography.titleSmall.copy(fontSize = 17.sp),
+                    color = A1Palette.Ink
+                )
+                Text(
+                    if (isMaxLevel) {
+                        localized(TextKey.MaximumLevel)
+                    } else {
+                        "${groupThousands(progression.currentLevelExperience.toLong())} / " +
+                            "${groupThousands(progression.nextLevelExperience.toLong())} XP"
+                    },
+                    modifier = Modifier.testTag("profile_xp_count"),
+                    style = MaterialTheme.typography.titleSmall.copy(fontSize = 16.sp),
+                    color = A1Palette.Muted,
+                    textAlign = TextAlign.End
+                )
+            }
+            A1ProgressBar(
+                progress = if (isMaxLevel) 1f else {
+                    progression.currentLevelExperience.toFloat() / progression.nextLevelExperience.coerceAtLeast(1)
+                },
+                fill = listOf(A1Palette.Blue1, A1Palette.Blue2),
+                height = 16.dp
+            )
+            if (!isMaxLevel) {
+                Text(
+                    localized(
+                        TextKey.XpToNextLevel,
+                        "xp" to groupThousands((progression.nextLevelExperience - progression.currentLevelExperience).coerceAtLeast(0).toLong()),
+                        "level" to progression.level + 1
+                    ),
+                    style = MaterialTheme.typography.bodyMedium,
+                    fontWeight = FontWeight.SemiBold,
+                    color = A1Palette.Muted
+                )
+            }
+            sessionStartedAtMillis.takeIf { !isExternalProfile }?.let { CurrentSessionDuration(it) }
+        }
+        ProfileTierBox(profile.statistics.eloRating)
+    }
+}
+
+/** Ô hạng vàng: khiên, "Vàng · 1742 Elo", thanh tiến độ trong bậc và số Elo còn thiếu. */
+@Composable
+private fun ProfileTierBox(rating: Int) {
+    val tier = rankedTierFor(rating)
+    val next = nextRankedTier(rating)
+    val shape = RoundedCornerShape(18.dp)
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .testTag("profile_tier_card")
+            .background(A1Palette.Highlight, shape)
+            .border(3.dp, A1Palette.Yellow2, shape)
+            .padding(horizontal = 14.dp, vertical = 12.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(14.dp)
+    ) {
+        Box(
+            Modifier
+                .size(width = 48.dp, height = 56.dp)
+                .clip(ClanShieldShape)
+                .background(Brush.verticalGradient(listOf(A1Palette.Yellow1, A1Palette.Yellow3)), ClanShieldShape),
+            contentAlignment = Alignment.Center
+        ) {
+            Icon(Icons.Rounded.Star, contentDescription = null, tint = A1Palette.YellowDeep, modifier = Modifier.size(24.dp))
+        }
+        Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+            Text(
+                "${localizedRankedTierName(tier)} · $rating Elo",
+                style = MaterialTheme.typography.titleMedium.copy(fontSize = 19.sp),
+                color = A1Palette.Ink
+            )
+            A1ProgressBar(
+                progress = ratingProgressWithinTier(rating),
+                fill = listOf(A1Palette.Yellow1, A1Palette.Yellow2),
+                height = 14.dp
+            )
+            Text(
+                next?.let {
+                    localized(TextKey.EloToNextTier, "count" to (it.minimumRating - rating), "tier" to localizedRankedTierName(it))
+                } ?: localized(TextKey.HighestTierReached),
+                style = MaterialTheme.typography.bodyMedium,
+                fontWeight = FontWeight.SemiBold,
+                color = A1TagTone.YELLOW.content
+            )
+        }
+    }
+}
+
+private fun groupThousands(value: Long): String {
+    val raw = kotlin.math.abs(value).toString().reversed().chunked(3).joinToString(".").reversed()
+    return if (value < 0) "-$raw" else raw
+}
+
+/** Màu ô icon của từng dòng (".ico" trong thiết kế). */
+private enum class ProfileTile(val top: Color, val bottom: Color, val edge: Color, val icon: Color) {
+    BLUE(A1Palette.Blue1, A1Palette.Blue2, A1Palette.BlueDeep, Color.White),
+    PURPLE(A1Palette.Purple1, A1Palette.Purple2, A1Palette.PurpleDeep, Color.White),
+    YELLOW(A1Palette.Yellow1, A1Palette.Yellow2, A1Palette.YellowBorder, A1Palette.YellowBorder),
+    GREEN(A1Palette.Green1, A1Palette.Green2, A1Palette.GreenDeep, Color.White),
+    INK(Color(0xFF24508A), A1Palette.Ink, A1Palette.BlueDeep, Color.White),
+    WHITE(Color.White, Color.White, A1Palette.Line, A1Palette.Ink)
+}
+
+private class ProfileMenuItem(
+    val tag: String,
+    val icon: ImageVector,
+    val title: String,
+    val tile: ProfileTile,
+    val subtitle: String? = null,
+    val badge: Long = 0,
+    val showChevron: Boolean = true,
+    val onClick: () -> Unit
+)
+
+@Composable
+private fun ProfileSkyTitle(title: String) {
+    A1OutlinedText(
+        title,
+        style = MaterialTheme.typography.titleLarge.copy(fontSize = 22.sp, lineHeight = 28.sp),
+        modifier = Modifier.padding(start = 4.dp, top = 10.dp).semantics { heading() }
+    )
+}
+
+/** Một thẻ trắng chứa các dòng, ngăn bằng gạch đứt. */
+@Composable
+private fun ProfileMenuCard(items: List<ProfileMenuItem>) {
+    if (items.isEmpty()) return
+    Column(Modifier.fillMaxWidth().a1Card()) {
+        items.forEachIndexed { index, item ->
+            ProfileMenuRow(item, showDivider = index < items.lastIndex)
         }
     }
 }
 
 @Composable
-private fun ProfileIdentityDetails(
-    profile: PlayerProfileSnapshot,
-    equippedTitle: String,
-    sessionStartedAtMillis: Long?,
-    onCopyCode: () -> Unit,
-    centered: Boolean,
-    modifier: Modifier = Modifier
-) {
-    val progression = profile.progression
-    Column(
-        modifier = modifier,
-        horizontalAlignment = if (centered) Alignment.CenterHorizontally else Alignment.Start,
-        verticalArrangement = Arrangement.spacedBy(4.dp)
+private fun ProfileMenuRow(item: ProfileMenuItem, showDivider: Boolean) {
+    val badgeDescription = if (item.badge > 0) localized(TextKey.BadgeNewCount, "count" to item.badge) else null
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .heightIn(min = 72.dp)
+            .testTag(item.tag)
+            .clickable(role = Role.Button, onClick = item.onClick)
+            .then(if (showDivider) Modifier.drawBehind {
+                val y = size.height - 1.dp.toPx()
+                drawLine(
+                    A1Palette.SurfaceAlt2,
+                    Offset(3.dp.toPx(), y),
+                    Offset(size.width - 3.dp.toPx(), y),
+                    strokeWidth = 2.dp.toPx(),
+                    pathEffect = PathEffect.dashPathEffect(floatArrayOf(6.dp.toPx(), 4.dp.toPx()))
+                )
+            } else Modifier)
+            .semantics(mergeDescendants = true) { badgeDescription?.let { stateDescription = it } }
+            .padding(start = 16.dp, end = 12.dp, top = 12.dp, bottom = 12.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(14.dp)
     ) {
-        Text(
-            profile.displayName,
-            modifier = if (centered) Modifier.fillMaxWidth() else Modifier,
-            style = MaterialTheme.typography.titleLarge,
-            fontWeight = FontWeight.Black,
-            textAlign = if (centered) TextAlign.Center else TextAlign.Start,
-            maxLines = 2,
-            overflow = TextOverflow.Ellipsis
-        )
-        Text(
-            localized(TextKey.TitleValue, "title" to equippedTitle),
-            color = ArcadePalette.Gold400,
-            style = MaterialTheme.typography.bodySmall,
-            fontWeight = FontWeight.SemiBold,
-            textAlign = if (centered) TextAlign.Center else TextAlign.Start
-        )
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = if (centered) Arrangement.Center else Arrangement.spacedBy(4.dp)
+        Box(
+            Modifier
+                .size(42.dp)
+                .background(Brush.verticalGradient(listOf(item.tile.top, item.tile.bottom)), RoundedCornerShape(12.dp))
+                .border(2.5.dp, item.tile.edge, RoundedCornerShape(12.dp)),
+            contentAlignment = Alignment.Center
         ) {
+            Icon(item.icon, contentDescription = null, tint = item.tile.icon, modifier = Modifier.size(24.dp))
+        }
+        Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
             Text(
-                localized(TextKey.PlayerCodeValue, "code" to profile.playerCode),
-                modifier = if (centered) Modifier else Modifier.weight(1f),
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                style = MaterialTheme.typography.bodySmall,
-                maxLines = 1,
+                item.title,
+                style = MaterialTheme.typography.titleMedium.copy(fontSize = 17.sp, lineHeight = 22.sp),
+                color = A1Palette.Ink,
+                maxLines = 2,
                 overflow = TextOverflow.Ellipsis
             )
-            IconButton(onClick = onCopyCode, modifier = Modifier.size(40.dp)) {
-                Icon(
-                    Icons.Default.ContentCopy,
-                    contentDescription = localized(TextKey.CopyPlayerCode),
-                    modifier = Modifier.size(18.dp)
+            item.subtitle?.let {
+                Text(
+                    it,
+                    style = MaterialTheme.typography.bodyMedium,
+                    fontWeight = FontWeight.SemiBold,
+                    color = A1Palette.Muted,
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis
                 )
             }
         }
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.SpaceBetween,
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Text(
-                localized(TextKey.Level, "level" to progression.level),
-                modifier = Modifier.testTag("profile_level_label"),
-                style = MaterialTheme.typography.labelSmall,
-                fontWeight = FontWeight.Black,
-                color = ArcadePalette.Gold400
-            )
-            Text(
-                if (progression.level >= 100) {
-                    localized(TextKey.MaximumLevel)
-                } else {
-                    "${progression.currentLevelExperience}/${progression.nextLevelExperience} XP"
-                },
-                modifier = Modifier.testTag("profile_xp_count"),
-                style = MaterialTheme.typography.labelSmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                textAlign = TextAlign.End
+        if (item.badge > 0) {
+            Box(
+                Modifier
+                    .defaultMinSize(minWidth = 30.dp, minHeight = 30.dp)
+                    .background(A1TagTone.RED.background, CircleShape)
+                    .border(2.dp, A1TagTone.RED.border, CircleShape)
+                    .padding(horizontal = 6.dp)
+                    .clearAndSetSemantics { },
+                contentAlignment = Alignment.Center
+            ) {
+                Text(
+                    if (item.badge > 99) "99+" else item.badge.toString(),
+                    style = MaterialTheme.typography.titleSmall.copy(fontSize = 14.sp, lineHeight = 18.sp),
+                    color = A1TagTone.RED.content
+                )
+            }
+        }
+        if (item.showChevron) {
+            Icon(
+                Icons.AutoMirrored.Rounded.KeyboardArrowRight,
+                contentDescription = null,
+                tint = A1Palette.Ink,
+                modifier = Modifier.size(28.dp)
             )
         }
-        LinearProgressIndicator(
-            progress = {
-                if (progression.level >= 100) 1f else {
-                    progression.currentLevelExperience.toFloat() /
-                        progression.nextLevelExperience.coerceAtLeast(1)
-                }
-            },
-            modifier = Modifier.fillMaxWidth().height(6.dp),
-            color = ArcadeGold,
-            trackColor = ArcadePalette.Navy950
+    }
+}
+
+/** Thẻ "Vùng nguy hiểm": nền hồng nhạt, viền đỏ, nút Xóa tài khoản đỏ. */
+@Composable
+private fun ProfileDangerZone(onDelete: () -> Unit) {
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .testTag("profile_danger_zone")
+            .a1Card(background = Color(0xFFFFF4F4), border = Color(0xFFC62A35))
+            .padding(18.dp),
+        verticalArrangement = Arrangement.spacedBy(8.dp)
+    ) {
+        Text(
+            localized(TextKey.DangerZone).uppercase(),
+            style = MaterialTheme.typography.titleSmall.copy(fontSize = 16.sp),
+            color = A1Palette.RedText,
+            modifier = Modifier.semantics { heading() }
         )
-        sessionStartedAtMillis?.let { CurrentSessionDuration(it) }
+        Text(
+            localized(TextKey.DeleteAccountShortWarning),
+            style = MaterialTheme.typography.bodyMedium,
+            fontWeight = FontWeight.SemiBold,
+            color = A1Palette.Ink
+        )
+        Spacer(Modifier.height(4.dp))
+        ArcadeActionButton(
+            label = localized(TextKey.DeleteAccount),
+            onClick = onDelete,
+            icon = Icons.Rounded.DeleteForever,
+            style = ArcadeActionStyle.DANGER,
+            modifier = Modifier.fillMaxWidth().testTag("profile_delete_account")
+        )
     }
 }
 
@@ -1702,74 +1847,6 @@ private fun formatSessionDuration(totalSeconds: Long): String {
 }
 
 @Composable
-private fun AccountActionRow(
-    icon: ImageVector,
-    title: String,
-    subtitle: String,
-    onClick: () -> Unit,
-    isDestructive: Boolean = false,
-    modifier: Modifier = Modifier
-) {
-    val contentColor = if (isDestructive) {
-        MaterialTheme.colorScheme.error
-    } else {
-        MaterialTheme.colorScheme.onSurface
-    }
-    Surface(
-        modifier = modifier
-            .fillMaxWidth()
-            .clip(RoundedCornerShape(16.dp))
-            .clickable(onClick = onClick),
-        shape = RoundedCornerShape(16.dp),
-        color = MaterialTheme.colorScheme.surface,
-        border = BorderStroke(
-            1.dp,
-            if (isDestructive) MaterialTheme.colorScheme.error.copy(alpha = 0.34f)
-            else ArcadePalette.OutlineDark.copy(alpha = 0.42f)
-        )
-    ) {
-        Row(
-            modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 11.dp),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(10.dp)
-        ) {
-            Surface(
-                modifier = Modifier.size(34.dp),
-                shape = CircleShape,
-                color = if (isDestructive) MaterialTheme.colorScheme.errorContainer
-                else MaterialTheme.colorScheme.primaryContainer
-            ) {
-                Box(contentAlignment = Alignment.Center) {
-                    Icon(
-                        imageVector = icon,
-                        contentDescription = null,
-                        modifier = Modifier.size(20.dp),
-                        tint = if (isDestructive) MaterialTheme.colorScheme.onErrorContainer
-                        else MaterialTheme.colorScheme.onPrimaryContainer
-                    )
-                }
-            }
-            Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                Text(title, fontWeight = FontWeight.SemiBold, color = contentColor)
-                if (subtitle.isNotBlank()) {
-                    Text(
-                        subtitle,
-                        style = MaterialTheme.typography.bodySmall,
-                        color = if (isDestructive) contentColor.copy(alpha = 0.78f)
-                        else MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                }
-            }
-            Icon(
-                imageVector = Icons.Default.ChevronRight,
-                contentDescription = null,
-                tint = contentColor.copy(alpha = 0.62f)
-            )
-        }
-    }
-}
-
-@Composable
 private fun DeleteAccountDialog(
     isLoading: Boolean,
     error: String?,
@@ -1859,15 +1936,6 @@ private fun AccountSecurityDialog(
             style = ArcadeActionStyle.OUTLINE
         )
     }
-}
-
-@Composable
-private fun ProfileSectionTitle(title: String) {
-    Text(
-        title,
-        style = MaterialTheme.typography.titleMedium,
-        fontWeight = FontWeight.Black
-    )
 }
 
 @Composable

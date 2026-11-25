@@ -141,6 +141,12 @@ fun profileOverview() = ArcadeScreenshotFrame {
         onRevokeSession = {},
         onRevokeAllSessions = {},
         onLogout = {},
+        onOpenFriends = {},
+        friendBadgeCount = 1,
+        onOpenSeasonHistory = {},
+        onOpenGifts = {},
+        giftBadgeCount = 2,
+        onOpenShop = {},
         showBackButton = true,
         imagePicker = { _, content -> content({}) }
     )
