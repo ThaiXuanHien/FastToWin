@@ -2023,7 +2023,8 @@ private fun GameContent(
                     onBack = {
                         navigateBack {
                             showSeasonHistory = false
-                            if (!state.isLeaderboardOpen) controller.openLeaderboard()
+                            // Mở từ tab Tôi thì quay về Tôi; còn lại về tab Xếp hạng.
+                            if (!state.isLeaderboardOpen && !state.isProfileOpen) controller.openLeaderboard()
                         }
                     },
                     onRefresh = controller::refreshProfile,
@@ -2095,11 +2096,17 @@ private fun GameContent(
                     onAccount = controller::openProfile,
                     onNotifications = openNotifications,
                     isRefreshing = state.isProfileLoading,
-                    onRefresh = controller::openProfile
+                    onRefresh = controller::openProfile,
+                    showHeaderNotifications = false
                 ) { contentModifier -> ProfileScreen(
                     serverUrl = serverUrl,
                     state = state,
                     onOpenFriends = if (isGuest) null else openFriendsTab,
+                    friendBadgeCount = state.pendingSocialInvitationCount,
+                    onOpenSeasonHistory = openSeasonHistory,
+                    onOpenGifts = openGiftMailbox,
+                    giftBadgeCount = mailboxState.availableCount,
+                    onOpenShop = openShop,
                     onBack = {
                         navigateBack(if (showTopLevelNavigation) openHome else controller::closeProfile)
                     },
@@ -2643,6 +2650,8 @@ internal fun TopLevelTabIfNeeded(
     onRefresh: (() -> Unit)? = null,
     /** Nội dung riêng bên phải tiêu đề (vd. nhãn mùa ở tab Xếp hạng); khi có thì ẩn tiền tệ và chuông như thiết kế. */
     headerActions: (@Composable RowScope.() -> Unit)? = null,
+    /** Tab Tôi trong thiết kế A1 chỉ có tiêu đề và tiền tệ, không có chuông. */
+    showHeaderNotifications: Boolean = true,
     content: @Composable (Modifier) -> Unit
 ) {
     if (!enabled) {
@@ -2666,7 +2675,7 @@ internal fun TopLevelTabIfNeeded(
                     MainTab.ROOMS -> localized(TextKey.Rooms)
                     MainTab.LEADERBOARD -> localized(TextKey.Leaderboard)
                     MainTab.CLAN -> localized(TextKey.Clan)
-                    MainTab.ACCOUNT -> localized(TextKey.Account)
+                    MainTab.ACCOUNT -> localized(TextKey.TabMe)
                 },
                 gold = state.profile?.progression?.gold ?: 0,
                 gems = state.profile?.progression?.gems ?: 0,
@@ -2674,7 +2683,7 @@ internal fun TopLevelTabIfNeeded(
                 onNotifications = onNotifications,
                 onBack = null,
                 showBalances = headerActions == null,
-                showNotifications = headerActions == null,
+                showNotifications = headerActions == null && showHeaderNotifications,
                 actions = headerActions ?: {
                     if (onRefresh != null) HeaderRefreshAction(isRefreshing = isRefreshing, onRefresh = onRefresh)
                 }

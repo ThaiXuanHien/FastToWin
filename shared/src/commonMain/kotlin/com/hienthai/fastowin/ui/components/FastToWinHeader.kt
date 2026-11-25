@@ -108,7 +108,8 @@ fun FastToWinHeader(
     val fontScale = LocalDensity.current.fontScale
     // Màn hẹp hoặc chữ lớn: đưa ô tiền tệ xuống hàng thứ hai để tiêu đề còn chỗ đọc.
     val stackBalances = hasTitle && showBalances && (maxWidth < 360.dp || (maxWidth < 480.dp && fontScale >= 1.3f))
-    val showPlus = !hasTitle || maxWidth >= 600.dp
+    // Không có chuông lẫn nút quay lại (tab Tôi) thì đủ chỗ cho nút "+" như thiết kế.
+    val showPlus = !hasTitle || (!showNotifications && onBack == null) || maxWidth >= 600.dp
     val balances: @Composable () -> Unit = {
         HeaderCurrency(amount = gold, label = localized(TextKey.Gold), isGem = false, showPlus = showPlus, onClick = walletNavigation.onGold)
         HeaderCurrency(amount = gems, label = localized(TextKey.Gems), isGem = true, showPlus = showPlus, onClick = walletNavigation.onGems)

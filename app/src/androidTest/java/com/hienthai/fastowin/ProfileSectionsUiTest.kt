@@ -105,7 +105,8 @@ class ProfileSectionsUiTest {
         val editBounds = composeRule.onNodeWithTag("profile_edit").fetchSemanticsNode().boundsInRoot
         assertTrue(editBounds.left >= cardBounds.left && editBounds.top >= cardBounds.top)
         assertTrue(editBounds.right <= cardBounds.right && editBounds.bottom <= cardBounds.bottom)
-        assertTrue(composeRule.onAllNodesWithText("Elo", substring = true).fetchSemanticsNodes().isEmpty())
+        // Thiết kế A1: ô hạng (bậc + Elo) nằm trong thẻ hồ sơ.
+        composeRule.onNodeWithTag("profile_tier_card").assertIsDisplayed()
         composeRule.onNodeWithContentDescription("Chỉnh sửa hồ sơ").assertIsDisplayed()
         assertTrue(composeRule.onAllNodesWithTag("profile_daily_check_in_strip").fetchSemanticsNodes().isEmpty())
 
