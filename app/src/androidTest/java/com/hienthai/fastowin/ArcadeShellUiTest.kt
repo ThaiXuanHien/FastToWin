@@ -163,7 +163,8 @@ class ArcadeShellUiTest {
         val tierTop = composeRule.onNodeWithTag("home_season_tier", useUnmergedTree = true)
             .fetchSemanticsNode().boundsInRoot.top
         composeRule.runOnIdle {
-            assertTrue(tierTop - headerBottom >= with(composeRule.density) { 12.dp.toPx() })
+            // A1: tên và dòng Elo/hạng cách nhau 6dp theo thiết kế.
+            assertTrue(tierTop - headerBottom >= with(composeRule.density) { 4.dp.toPx() })
         }
     }
 

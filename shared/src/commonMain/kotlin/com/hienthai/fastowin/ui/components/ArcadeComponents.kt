@@ -146,14 +146,28 @@ fun ArcadeActionButton(
                         Icon(it, contentDescription = null, modifier = Modifier.size(if (hero) 34.dp else if (compact) 20.dp else 24.dp))
                         Box(modifier = Modifier.width(8.dp))
                     }
-                    Text(
-                        label,
-                        style = (if (hero) MaterialTheme.typography.headlineMedium else if (compact) MaterialTheme.typography.titleSmall else MaterialTheme.typography.titleMedium)
-                            .copy(shadow = a1TextShadow(colors.textShadow)),
-                        fontWeight = FontWeight.ExtraBold,
-                        color = colors.content,
-                        textAlign = TextAlign.Center
-                    )
+                    if (hero && enabled) {
+                        // CTA lớn: chữ trắng viền đậm theo màu đế (như "CHƠI NGAY" trong thiết kế).
+                        A1OutlinedText(
+                            text = label,
+                            style = MaterialTheme.typography.displayMedium.copy(
+                                fontWeight = FontWeight.ExtraBold,
+                                shadow = a1TextShadow(colors.textShadow)
+                            ),
+                            outline = colors.textShadow ?: colors.border,
+                            outlineWidth = 4.dp,
+                            textAlign = TextAlign.Center
+                        )
+                    } else {
+                        Text(
+                            label,
+                            style = (if (hero) MaterialTheme.typography.headlineMedium else if (compact) MaterialTheme.typography.titleSmall else MaterialTheme.typography.titleMedium)
+                                .copy(shadow = a1TextShadow(colors.textShadow)),
+                            fontWeight = FontWeight.ExtraBold,
+                            color = colors.content,
+                            textAlign = TextAlign.Center
+                        )
+                    }
                 }
             }
         }

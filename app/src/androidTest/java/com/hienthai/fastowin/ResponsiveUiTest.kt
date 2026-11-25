@@ -76,7 +76,7 @@ class ResponsiveUiTest {
 
         composeRule.onNodeWithTag("app_header").assertIsDisplayed()
         // A1: lời chào nằm trong bong bóng của linh vật trên trang chủ.
-        composeRule.onNodeWithText("Xin chào,", substring = true).performScrollTo().assertIsDisplayed()
+        composeRule.onNodeWithTag("home_mascot_bubble").performScrollTo().assertIsDisplayed()
         assertTrue(composeRule.onAllNodesWithText("FAST TO WIN").fetchSemanticsNodes().isEmpty())
         assertTrue(composeRule.onAllNodesWithContentDescription("Cài đặt").fetchSemanticsNodes().isEmpty())
 

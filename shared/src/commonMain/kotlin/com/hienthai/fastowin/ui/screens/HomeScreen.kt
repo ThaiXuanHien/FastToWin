@@ -74,6 +74,7 @@ import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.semantics.clearAndSetSemantics
+import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.liveRegion
 import androidx.compose.ui.semantics.LiveRegionMode
 import androidx.compose.ui.semantics.Role
@@ -109,6 +110,10 @@ import com.hienthai.fastowin.ui.components.A1Dimens
 import com.hienthai.fastowin.ui.components.TiaMascot
 import com.hienthai.fastowin.ui.components.TiaMood
 import com.hienthai.fastowin.ui.components.a1Card
+import com.hienthai.fastowin.ui.components.a1Hills
+import com.hienthai.fastowin.ui.components.a1SunnySky
+import com.hienthai.fastowin.ui.components.A1OutlinedText
+import com.hienthai.fastowin.ui.format.fullNumber
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.FlowRow
@@ -123,6 +128,7 @@ import androidx.compose.material.icons.filled.Shield
 import androidx.compose.material.icons.filled.TaskAlt
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.layout.layout
 import kotlinx.coroutines.delay
 
 internal enum class MainTab { HOME, ROOMS, LEADERBOARD, CLAN, ACCOUNT }
@@ -239,10 +245,17 @@ internal fun HomeDashboard(
     BoxWithConstraints(modifier = modifier.fillMaxSize().testTag("home_screen")) {
         val largeText = LocalDensity.current.fontScale >= 1.3f
         val narrow = largeText || maxWidth < 280.dp
-        val compactWidth = maxWidth < 360.dp
-        val greeting = localized(TextKey.GreetingPlayer, "player" to displayName) + "\n" + localized(TextKey.ReadyForRecord)
+        val compactWidth = maxWidth < 320.dp
+        val bestScore = profile?.statistics?.highestScore ?: 0
+        // Bong bóng linh vật: nhắc kỷ lục để phá; chưa có kỷ lục thì chào người chơi.
+        val greeting = if (bestScore > 0) {
+            localized(TextKey.HomeBestScore, "score" to fullNumber(bestScore.toLong())) + "\n" + localized(TextKey.HomeBeatIt)
+        } else {
+            localized(TextKey.GreetingPlayer, "player" to displayName) + "\n" + localized(TextKey.ReadyForRecord)
+        }
+        val activeEvents = rewardEventState?.items?.size ?: 0
         Column(
-            modifier = Modifier.fillMaxSize().verticalScroll(rememberScrollState()),
+            modifier = Modifier.fillMaxSize().a1Hills().verticalScroll(rememberScrollState()),
             verticalArrangement = Arrangement.spacedBy(16.dp)
         ) {
             Spacer(modifier = Modifier.height(4.dp))
@@ -275,6 +288,8 @@ internal fun HomeDashboard(
                     tint = Color(0xFFE0401A),
                     onClick = onOpenRewardEvents,
                     highlight = true,
+                    badgeText = if (activeEvents > 0) activeEvents.toString() else null,
+                    badgeColor = A1Palette.Purple2,
                     modifier = Modifier.testTag("home_events")
                 )
                 HomeSideShortcut(
@@ -307,7 +322,7 @@ internal fun HomeDashboard(
                     )
                 }
                 HomeSideShortcut(
-                    label = localized(TextKey.Tournament),
+                    label = localized(TextKey.HomeTournament),
                     icon = Icons.Default.EmojiEvents,
                     tint = Color(0xFFE09A00),
                     onClick = if (isGuest) onUpgradeGuest else onOpenTournament,
@@ -332,7 +347,7 @@ internal fun HomeDashboard(
                 }
             } else {
                 Row(
-                    modifier = Modifier.fillMaxWidth().heightIn(min = 280.dp),
+                    modifier = Modifier.fillMaxWidth().heightIn(min = 280.dp).a1SunnySky(rayCenterYFraction = 0.42f),
                     verticalAlignment = Alignment.Top
                 ) {
                     Column(verticalArrangement = Arrangement.spacedBy(14.dp)) { leftShortcuts() }
@@ -348,12 +363,11 @@ internal fun HomeDashboard(
 
             ArcadeActionButton(
                 label = localized(if (isGuest) TextKey.LoginToPlay else TextKey.PlayNow),
-                icon = Icons.Default.PlayArrow,
                 style = ArcadeActionStyle.GOLD,
                 hero = true,
                 onClick = if (isGuest) onUpgradeGuest else ({ showMatchTypePicker = true }),
                 enabled = newOnlineIntentAllowed,
-                modifier = Modifier.fillMaxWidth().heightIn(min = 74.dp).testTag("home_quick_match")
+                modifier = Modifier.fillMaxWidth().heightIn(min = 80.dp).testTag("home_quick_match")
             )
             val createRoom: @Composable (Modifier) -> Unit = { m ->
                 ArcadeActionButton(
@@ -367,7 +381,7 @@ internal fun HomeDashboard(
             }
             val joinRoom: @Composable (Modifier) -> Unit = { m ->
                 ArcadeActionButton(
-                    label = localized(TextKey.JoinRoom),
+                    label = localized(TextKey.HomeJoinRoom),
                     icon = Icons.AutoMirrored.Filled.Login,
                     style = ArcadeActionStyle.SPECIAL,
                     onClick = onOpenRooms,
@@ -436,8 +450,9 @@ private fun HomeMascot(message: String, mascotSize: androidx.compose.ui.unit.Dp)
             color = A1Palette.Ink,
             textAlign = androidx.compose.ui.text.style.TextAlign.Center,
             modifier = Modifier
-                .widthIn(max = 200.dp)
-                .a1Card(radius = 18.dp, depth = 3.dp)
+                .testTag("home_mascot_bubble")
+                .widthIn(max = 220.dp)
+                .a1Card(radius = 18.dp, depth = 4.dp)
                 .padding(horizontal = 14.dp, vertical = 8.dp)
         )
         TiaMascot(TiaMood.CHEER, size = mascotSize)
@@ -455,7 +470,8 @@ private fun HomeSideShortcut(
     badgeCount: Long = 0,
     badgeText: String? = null,
     badgeTextKey: TextKey = TextKey.GiftUnclaimedCount,
-    highlight: Boolean = false
+    highlight: Boolean = false,
+    badgeColor: Color = A1Palette.Red2
 ) {
     val badgeDescription = if (badgeCount > 0) localized(badgeTextKey, "count" to badgeCount) else null
     Column(
@@ -472,8 +488,8 @@ private fun HomeSideShortcut(
             when {
                 badgeCount > 0 -> HomeCountBadge(badgeCount)
                 badgeText != null -> Badge(
-                    modifier = Modifier.clearAndSetSemantics {},
-                    containerColor = A1Palette.Red2,
+                    modifier = Modifier.clearAndSetSemantics {}.border(2.dp, Color.White, CircleShape),
+                    containerColor = badgeColor,
                     contentColor = Color.White
                 ) { Text(badgeText, fontWeight = FontWeight.ExtraBold) }
             }
@@ -517,6 +533,7 @@ private fun ArcadePlayerSummary(
     tier: String?,
     onOpenProfile: () -> Unit
 ) {
+    val levelDescription = localized(TextKey.Level, "level" to level)
     Row(
         modifier = Modifier
             .fillMaxWidth()
@@ -524,53 +541,73 @@ private fun ArcadePlayerSummary(
             .a1Card()
             .clip(RoundedCornerShape(A1Dimens.CardRadius))
             .clickable(role = Role.Button, onClick = onOpenProfile)
-            .padding(horizontal = 14.dp, vertical = 12.dp),
+            .padding(start = 10.dp, end = 16.dp, top = 10.dp, bottom = 10.dp),
         verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(14.dp)
+        horizontalArrangement = Arrangement.spacedBy(12.dp)
     ) {
-        PlayerAvatar(
-            displayName = displayName,
-            avatarId = avatarId,
-            frameId = frameId,
-            size = 64.dp,
-            imageUrl = avatarImageUrl
-        )
-        Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(5.dp)) {
+        // Avatar có khung + huy hiệu cấp ở góc dưới phải (theo thiết kế).
+        Box {
+            PlayerAvatar(
+                displayName = displayName,
+                avatarId = avatarId,
+                frameId = frameId,
+                size = 84.dp,
+                imageUrl = avatarImageUrl
+            )
+            Text(
+                level.toString(),
+                style = MaterialTheme.typography.labelMedium,
+                fontFamily = MaterialTheme.typography.titleSmall.fontFamily,
+                fontWeight = FontWeight.ExtraBold,
+                color = Color.White,
+                textAlign = androidx.compose.ui.text.style.TextAlign.Center,
+                modifier = Modifier
+                    .align(Alignment.BottomEnd)
+                    .semantics { contentDescription = levelDescription }
+                    .heightIn(min = 26.dp)
+                    .widthIn(min = 26.dp)
+                    .background(Color(0xFF3D8BFF), RoundedCornerShape(13.dp))
+                    .border(2.dp, A1Palette.Line, RoundedCornerShape(13.dp))
+                    .padding(horizontal = 5.dp, vertical = 3.dp)
+            )
+        }
+        Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+            Text(
+                displayName,
+                style = MaterialTheme.typography.titleLarge,
+                color = A1Palette.Ink,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.fillMaxWidth().testTag("home_header_content")
+            )
             Row(
-                modifier = Modifier.fillMaxWidth().testTag("home_header_content"),
+                modifier = Modifier.testTag("home_season_tier"),
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(8.dp)
             ) {
+                elo?.let {
+                    Text(
+                        "Elo $it",
+                        style = MaterialTheme.typography.labelLarge,
+                        fontWeight = FontWeight.SemiBold,
+                        color = A1Palette.Muted
+                    )
+                }
                 Text(
-                    displayName,
-                    style = MaterialTheme.typography.titleLarge,
-                    color = A1Palette.Ink,
+                    tier?.replaceFirstChar { it.uppercase() } ?: localized(TextKey.PlacementPending),
+                    style = MaterialTheme.typography.labelMedium,
+                    fontFamily = MaterialTheme.typography.titleSmall.fontFamily,
+                    fontWeight = FontWeight.ExtraBold,
+                    color = Color(0xFF7A4D00),
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
-                    modifier = Modifier.weight(1f)
-                )
-                Text(
-                    localized(TextKey.Level, "level" to level),
-                    style = MaterialTheme.typography.labelMedium,
-                    fontWeight = FontWeight.ExtraBold,
-                    color = A1Palette.PurpleDeep,
                     modifier = Modifier
-                        .background(Color(0xFFEDE5FF), RoundedCornerShape(10.dp))
-                        .border(2.dp, A1Palette.Purple2, RoundedCornerShape(10.dp))
-                        .padding(horizontal = 8.dp, vertical = 2.dp)
+                        .background(A1Palette.Highlight, RoundedCornerShape(11.dp))
+                        .border(2.dp, Color(0xFFE0A100), RoundedCornerShape(11.dp))
+                        .padding(horizontal = 10.dp, vertical = 1.dp)
                 )
             }
-            Text(
-                buildString {
-                    append(tier?.replaceFirstChar { it.uppercase() } ?: localized(TextKey.PlacementPending))
-                    elo?.let { append("  ·  Elo ").append(it) }
-                },
-                style = MaterialTheme.typography.labelMedium,
-                fontWeight = FontWeight.SemiBold,
-                color = A1Palette.Muted,
-                modifier = Modifier.padding(top = 12.dp).testTag("home_season_tier")
-            )
-            A1ProgressBar(progress = currentXp.toFloat() / nextXp.coerceAtLeast(1))
+            A1ProgressBar(progress = currentXp.toFloat() / nextXp.coerceAtLeast(1), height = 10.dp)
         }
     }
 }
@@ -706,14 +743,19 @@ private fun BottomBarItem(
                 }
             },
         horizontalAlignment = Alignment.CenterHorizontally,
-        verticalArrangement = Arrangement.spacedBy(if (raised) 4.dp else 2.dp, Alignment.Bottom)
+        verticalArrangement = Arrangement.spacedBy(2.dp, Alignment.Bottom)
     ) {
         if (raised) {
-            // Nút "Chơi" nổi lên khỏi thanh tab như trong thiết kế.
+            // Nút "Chơi" nổi lên khỏi thanh tab, nhãn nằm bên dưới như các tab khác.
             Box(
                 modifier = Modifier
-                    .offset(y = (-6).dp)
-                    .size(width = 60.dp, height = 56.dp)
+                    // Chỉ chiếm 30dp trong thanh tab, phần còn lại nhô lên trên để nhãn "Chơi" luôn hiện.
+                    .layout { measurable, constraints ->
+                        val placeable = measurable.measure(constraints)
+                        val reserved = 30.dp.roundToPx()
+                        layout(placeable.width, reserved) { placeable.place(0, reserved - placeable.height) }
+                    }
+                    .size(width = 62.dp, height = 63.dp)
                     .a1Card(radius = 20.dp, depth = 5.dp, background = Color.Transparent)
                     .background(
                         Brush.verticalGradient(listOf(A1Palette.Yellow1, A1Palette.Yellow3)),
@@ -722,7 +764,7 @@ private fun BottomBarItem(
                     .border(3.dp, A1Palette.Line, RoundedCornerShape(20.dp)),
                 contentAlignment = Alignment.Center
             ) {
-                Icon(icon, contentDescription = null, tint = A1Palette.YellowBorder, modifier = Modifier.size(36.dp))
+                Icon(icon, contentDescription = null, tint = A1Palette.YellowBorder, modifier = Modifier.size(38.dp))
             }
         } else {
             BadgedBox(badge = { HomeCountBadge(giftBadgeCount, Modifier.offset(y = 4.dp)) }) {
@@ -821,7 +863,7 @@ private fun HomeQuickAction(
 private fun HomeCountBadge(count: Long, modifier: Modifier = Modifier) {
     if (count <= 0) return
     Badge(
-        modifier = modifier.clearAndSetSemantics {},
+        modifier = modifier.clearAndSetSemantics {}.border(2.dp, Color.White, CircleShape),
         containerColor = A1Palette.Red2,
         contentColor = Color.White
     ) {

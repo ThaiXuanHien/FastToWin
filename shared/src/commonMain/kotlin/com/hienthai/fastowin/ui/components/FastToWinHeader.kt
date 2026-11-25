@@ -53,6 +53,7 @@ import com.hienthai.fastowin.ui.format.compactNumber
 import com.hienthai.fastowin.ui.format.fullNumber
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.material.icons.filled.Add
@@ -162,20 +163,25 @@ fun FastToWinHeader(
         if (showBalances && !stackBalances) balances()
         if (!hasTitle) Spacer(modifier = Modifier.weight(1f))
         if (showNotifications) {
-            ArcadeHeaderIconButton(onClick = onNotifications) {
-                BadgedBox(
-                    badge = {
-                        if (unreadNotifications > 0) {
-                            Badge(containerColor = A1Palette.Red2, contentColor = Color.White) {
-                                Text(
-                                    if (unreadNotifications > 99) "99+" else unreadNotifications.toString(),
-                                    fontWeight = FontWeight.ExtraBold
-                                )
-                            }
-                        }
-                    }
-                ) {
+            // Số thông báo nằm ở góc ngoài của nút cam (như thiết kế), không đè lên icon.
+            Box {
+                ArcadeHeaderIconButton(onClick = onNotifications, accent = true) {
                     Icon(Icons.Default.Notifications, contentDescription = localized(TextKey.Notifications))
+                }
+                if (unreadNotifications > 0) {
+                    Badge(
+                        containerColor = Color(0xFFFF3B5C),
+                        contentColor = Color.White,
+                        modifier = Modifier
+                            .align(Alignment.TopEnd)
+                            .offset(x = 6.dp, y = (-6).dp)
+                            .border(2.dp, Color.White, RoundedCornerShape(999.dp))
+                    ) {
+                        Text(
+                            if (unreadNotifications > 99) "99+" else unreadNotifications.toString(),
+                            fontWeight = FontWeight.ExtraBold
+                        )
+                    }
                 }
             }
         }
@@ -192,23 +198,34 @@ fun FastToWinHeader(
     }
 }
 
-/** Nút icon trắng của A1: viền navy, đế đặc 3dp; vùng chạm 48dp. */
+/**
+ * Nút icon của A1 (vùng chạm 48dp): mặc định trắng viền navy; [accent] = cam (như nút thông báo
+ * trong thiết kế). Đế đặc 3dp phía dưới.
+ */
 @Composable
 fun ArcadeHeaderIconButton(
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
     enabled: Boolean = true,
+    accent: Boolean = false,
     content: @Composable () -> Unit
 ) {
+    val face = if (accent) Color(0xFFFF8A3D) else Color.White
+    val edge = if (accent) Color(0xFF9A3A00) else A1Palette.Line
     Box(
         modifier = modifier
             .size(width = 48.dp, height = 48.dp)
-            .a1Card(radius = 15.dp, depth = 3.dp)
+            .a1Card(radius = 15.dp, depth = 3.dp, background = face, border = edge)
             .clip(RoundedCornerShape(15.dp))
             .clickable(enabled = enabled, role = Role.Button, onClick = onClick),
         contentAlignment = Alignment.Center
     ) {
-        CompositionLocalProvider(LocalContentColor provides if (enabled) A1Palette.Line else A1Palette.Muted) {
+        val tint = when {
+            !enabled -> A1Palette.Muted
+            accent -> Color.White
+            else -> A1Palette.Line
+        }
+        CompositionLocalProvider(LocalContentColor provides tint) {
             content()
         }
     }
