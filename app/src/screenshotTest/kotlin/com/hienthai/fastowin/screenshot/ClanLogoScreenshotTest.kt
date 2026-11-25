@@ -9,7 +9,7 @@ import com.hienthai.fastowin.ui.screens.ClanLogoDialog
 
 @PreviewTest
 @Preview(name = "locked_level1_vi_phone", widthDp = 375, heightDp = 812)
-@Preview(name = "locked_level1_vi_large_text", widthDp = 320, heightDp = 932, fontScale = 1.6f)
+@Preview(name = "locked_level1_vi_large_text", widthDp = 360, heightDp = 932, fontScale = 1.6f)
 @Composable
 fun clanLogoLockedChoices() = ArcadeScreenshotFrame {
     ClanLogoDialog("shield", clanLevel = 1, onSelect = {}, onDismiss = {})

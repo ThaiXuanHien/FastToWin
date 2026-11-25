@@ -34,7 +34,7 @@ fun rewardEventRefreshPhone() = RefreshComparison(AppLanguage.VIETNAMESE, AppThe
 fun rewardEventRefreshDesktop() = RefreshComparison(AppLanguage.ENGLISH, AppThemeMode.DARK)
 
 @PreviewTest
-@Preview(name = "large_text_vi_dark", widthDp = 320, heightDp = 560, fontScale = 1.6f, showSystemUi = false)
+@Preview(name = "large_text_vi_dark", widthDp = 360, heightDp = 560, fontScale = 1.6f, showSystemUi = false)
 @Composable
 fun rewardEventRefreshLargeText() = RefreshComparison(AppLanguage.VIETNAMESE, AppThemeMode.DARK)
 

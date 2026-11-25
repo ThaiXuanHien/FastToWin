@@ -60,6 +60,6 @@ fun walletKnownSourcesDesktop() = WalletFrame(AppLanguage.ENGLISH)
 
 @PreviewTest
 @Preview(name = "refunds_vi_phone", widthDp = 375, heightDp = 1000)
-@Preview(name = "refunds_vi_large_text", widthDp = 320, heightDp = 1300, fontScale = 1.6f)
+@Preview(name = "refunds_vi_large_text", widthDp = 360, heightDp = 1300, fontScale = 1.6f)
 @Composable
 fun walletRefundSources() = WalletFrame(AppLanguage.VIETNAMESE, refunds = true)

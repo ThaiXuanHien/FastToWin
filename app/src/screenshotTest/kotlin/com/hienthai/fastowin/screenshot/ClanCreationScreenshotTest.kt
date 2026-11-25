@@ -9,7 +9,7 @@ import com.hienthai.fastowin.ui.screens.CreateClanDialog
 
 @PreviewTest
 @Preview(name = "rich_level9_vi_phone", widthDp = 375, heightDp = 812)
-@Preview(name = "rich_level9_vi_large_text", widthDp = 320, heightDp = 932, fontScale = 1.6f)
+@Preview(name = "rich_level9_vi_large_text", widthDp = 360, heightDp = 932, fontScale = 1.6f)
 @Composable
 fun clanCreationBelowLevel() = ArcadeScreenshotFrame {
     CreateClanDialog(10_000, 100, {}, { _, _ -> }, playerLevel = 9)

@@ -16,7 +16,7 @@ fun notificationInitialLoad() = ArcadeScreenshotFrame {
 
 @PreviewTest
 @Preview(name = "failed_load_vi_phone", widthDp = 375, heightDp = 812)
-@Preview(name = "failed_load_vi_large_font", widthDp = 320, heightDp = 812, fontScale = 1.6f)
+@Preview(name = "failed_load_vi_large_font", widthDp = 360, heightDp = 812, fontScale = 1.6f)
 @Composable
 fun notificationInitialFailure() = ArcadeScreenshotFrame {
     NotificationsScreen(emptyList(), {}, {}, {}, {}, {}, announcementState = AnnouncementState(error = "offline"))

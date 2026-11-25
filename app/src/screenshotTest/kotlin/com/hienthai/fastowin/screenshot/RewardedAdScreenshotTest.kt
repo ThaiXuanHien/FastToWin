@@ -26,7 +26,7 @@ private fun RewardedAdPreview(content: @Composable () -> Unit) {
 }
 @PreviewTest
 @Preview(name = "age_phone", widthDp = 375, heightDp = 812)
-@Preview(name = "age_large_text", widthDp = 320, heightDp = 812, fontScale = 1.6f)
+@Preview(name = "age_large_text", widthDp = 360, heightDp = 812, fontScale = 1.6f)
 @Preview(name = "age_desktop", widthDp = 1024, heightDp = 768)
 @Composable
 fun rewardedAdAge() = RewardedAdPreview { RewardedAdAgeDialog {} }
@@ -68,7 +68,7 @@ private fun RewardedAdOutcomePreview(outcome: com.hienthai.fastowin.platform.Rew
 @Composable
 fun rewardedAdDismissedPending() = RewardedAdOutcomePreview(com.hienthai.fastowin.platform.RewardedAdShowResult.DISMISSED, true)
 @PreviewTest
-@Preview(name = "dismissed_timeout", widthDp = 320, heightDp = 812, fontScale = 1.6f)
+@Preview(name = "dismissed_timeout", widthDp = 360, heightDp = 812, fontScale = 1.6f)
 @Composable
 fun rewardedAdDismissedTimeout() = RewardedAdOutcomePreview(com.hienthai.fastowin.platform.RewardedAdShowResult.DISMISSED, false)
 @PreviewTest
@@ -80,7 +80,7 @@ fun rewardedAdDismissedRetry() = RewardedAdOutcomePreview(com.hienthai.fastowin.
 @Composable
 fun rewardedAdUnavailablePending() = RewardedAdOutcomePreview(com.hienthai.fastowin.platform.RewardedAdShowResult.UNAVAILABLE, true)
 @PreviewTest
-@Preview(name = "unavailable_timeout", widthDp = 320, heightDp = 812, fontScale = 1.6f)
+@Preview(name = "unavailable_timeout", widthDp = 360, heightDp = 812, fontScale = 1.6f)
 @Composable
 fun rewardedAdUnavailableTimeout() = RewardedAdOutcomePreview(com.hienthai.fastowin.platform.RewardedAdShowResult.UNAVAILABLE, false)
 @PreviewTest

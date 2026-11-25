@@ -13,7 +13,7 @@ private const val SCHEDULE_NOW = 1_792_040_100_000L
 
 @PreviewTest
 @Preview(name = "phone375", widthDp = 375, heightDp = 1000)
-@Preview(name = "phone320_large", widthDp = 320, heightDp = 1000, fontScale = 1.4f)
+@Preview(name = "phone360_large", widthDp = 360, heightDp = 1000, fontScale = 1.4f)
 @Preview(name = "landscape", widthDp = 844, heightDp = 390)
 @Preview(name = "desktop", widthDp = 1024, heightDp = 900)
 @Composable

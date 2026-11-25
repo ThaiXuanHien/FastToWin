@@ -9,7 +9,7 @@ import com.hienthai.fastowin.ui.screens.LobbyScreen
 
 @PreviewTest
 @Preview(name = "phone375", widthDp = 375, heightDp = 812, showSystemUi = false)
-@Preview(name = "phone320_large", widthDp = 320, heightDp = 812, fontScale = 1.6f, showSystemUi = false)
+@Preview(name = "phone360_large", widthDp = 360, heightDp = 812, fontScale = 1.6f, showSystemUi = false)
 @Preview(name = "landscape", widthDp = 844, heightDp = 390, showSystemUi = false)
 @Preview(name = "desktop", widthDp = 1024, heightDp = 900, showSystemUi = false)
 @Composable

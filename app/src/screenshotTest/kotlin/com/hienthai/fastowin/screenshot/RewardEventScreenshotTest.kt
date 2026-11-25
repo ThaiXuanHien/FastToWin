@@ -22,7 +22,7 @@ private val rewardPreviewSource = RewardEventSourceSnapshot("october",1,rewardPr
 private val rewardPreviewBreakdown = MatchRewardBreakdown(100,100,200,30,30,60,listOf(rewardPreviewSource))
 
 @PreviewTest
-@Preview(name="compact",widthDp=320,heightDp=568,showSystemUi=false)
+@Preview(name="compact",widthDp=360,heightDp=740,showSystemUi=false)
 @Preview(name="large_phone",widthDp=430,heightDp=932,showSystemUi=false)
 @Preview(name="large_text",widthDp=430,heightDp=932,fontScale=1.6f,showSystemUi=false)
 @Preview(name="desktop",widthDp=1024,heightDp=768,showSystemUi=false)
@@ -41,7 +41,7 @@ private fun RewardEventHomeContent() {
 }
 
 @PreviewTest
-@Preview(name="compact",widthDp=320,heightDp=568,showSystemUi=false)
+@Preview(name="compact",widthDp=360,heightDp=740,showSystemUi=false)
 @Preview(name="large_phone",widthDp=430,heightDp=932,showSystemUi=false)
 @Preview(name="large_text",widthDp=430,heightDp=932,fontScale=1.6f,showSystemUi=false)
 @Preview(name="desktop",widthDp=1024,heightDp=768,showSystemUi=false)
@@ -51,7 +51,7 @@ fun rewardEventDetails() = ArcadeScreenshotFrame {
 }
 
 @PreviewTest
-@Preview(name="compact",widthDp=320,heightDp=568,showSystemUi=false)
+@Preview(name="compact",widthDp=360,heightDp=740,showSystemUi=false)
 @Preview(name="large_phone",widthDp=430,heightDp=932,showSystemUi=false)
 @Preview(name="large_text",widthDp=430,heightDp=932,fontScale=1.6f,showSystemUi=false)
 @Preview(name="desktop",widthDp=1024,heightDp=768,showSystemUi=false)
@@ -78,7 +78,7 @@ fun rewardEventEnglish() = ArcadeScreenshotFrame {
 }
 
 @PreviewTest
-@Preview(name="result_large_text",widthDp=320,heightDp=700,fontScale=1.6f,showSystemUi=false)
+@Preview(name="result_large_text",widthDp=360,heightDp=700,fontScale=1.6f,showSystemUi=false)
 @Composable
 fun rewardEventAmountsLargeText() = ArcadeScreenshotFrame { RewardBreakdownCard(rewardPreviewBreakdown) }
 

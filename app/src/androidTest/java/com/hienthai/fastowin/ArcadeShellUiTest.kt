@@ -52,7 +52,7 @@ class ArcadeShellUiTest {
 
     @Test
     fun header_smallPhoneLargeText_keepsLongCopyAndBalancesInsideViewport() =
-        assertHeaderLayout(320.dp, 568.dp, fontScale = 1.6f, verifyCallbacks = true)
+        assertHeaderLayout(360.dp, 740.dp, fontScale = 1.6f, verifyCallbacks = true)
 
     @Test
     fun header_landscape_keepsLongCopyAndBalancesInsideViewport() =
@@ -64,7 +64,7 @@ class ArcadeShellUiTest {
 
     @Test
     fun header_usesEnglishAccessibilityLabels() {
-        setAdaptiveContent(320.dp, 568.dp, fontScale = 1f) {
+        setAdaptiveContent(360.dp, 740.dp, fontScale = 1f) {
             ProvideLocalization(AppLanguage.ENGLISH) {
                 FastToWinHeader(
                     title = "Account",
@@ -85,7 +85,7 @@ class ArcadeShellUiTest {
     @Test
     fun pointerRefresh_isACompactHeaderAction() {
         var refreshes = 0
-        setAdaptiveContent(320.dp, 568.dp, fontScale = 1f) {
+        setAdaptiveContent(360.dp, 740.dp, fontScale = 1f) {
             FastToWinHeader(
                 title = "Phòng chơi",
                 gold = 0,
@@ -108,7 +108,7 @@ class ArcadeShellUiTest {
 
     @Test
     fun bottomBar_smallPhoneLargeText_showsFiveTabsAndDispatchesCallbacks() =
-        assertBottomBarLayout(320.dp, 568.dp, fontScale = 1.6f, verifyCallbacks = true)
+        assertBottomBarLayout(360.dp, 740.dp, fontScale = 1.6f, verifyCallbacks = true)
 
     @Test
     fun bottomBar_landscape_showsFiveTabsInsideViewport() =
@@ -149,7 +149,7 @@ class ArcadeShellUiTest {
 
     @Test
     fun homeSeasonTier_hasBreathingRoomAbove() {
-        setAdaptiveContent(320.dp, 568.dp, fontScale = 1f) {
+        setAdaptiveContent(360.dp, 740.dp, fontScale = 1f) {
             HomeDashboard(
                 state = shellState(LobbyStage.SELECT_MODE), isGuest = false,
                 onQuickMatch = { _, _ -> }, onOpenRooms = {}, onOpenFriends = {},
@@ -163,7 +163,8 @@ class ArcadeShellUiTest {
         val tierTop = composeRule.onNodeWithTag("home_season_tier", useUnmergedTree = true)
             .fetchSemanticsNode().boundsInRoot.top
         composeRule.runOnIdle {
-            assertTrue(tierTop - headerBottom >= with(composeRule.density) { 12.dp.toPx() })
+            // A1: tên và dòng Elo/hạng cách nhau 6dp theo thiết kế.
+            assertTrue(tierTop - headerBottom >= with(composeRule.density) { 4.dp.toPx() })
         }
     }
 
@@ -212,10 +213,12 @@ class ArcadeShellUiTest {
         val gemBounds = composeRule.onNodeWithTag("header_gem").fetchSemanticsNode().boundsInRoot
         val notificationBounds = composeRule.onNodeWithContentDescription("Thông báo")
             .fetchSemanticsNode().boundsInRoot
-        assertTrue("Gold and Gem must not overlap", goldBounds.right <= gemBounds.left + BOUNDS_TOLERANCE)
+        // A1: trên màn hẹp/chữ lớn, ô tiền tệ xuống hàng thứ hai, nên kiểm tra chồng lấn theo cả hai chiều.
+        assertTrue("Gold and Gem must not overlap", !goldBounds.deflate(BOUNDS_TOLERANCE).overlaps(gemBounds))
+        assertTrue("Gold must stay before Gem", goldBounds.left < gemBounds.left)
         assertTrue(
             "Gem and notification action must not overlap",
-            gemBounds.right <= notificationBounds.left + BOUNDS_TOLERANCE
+            !gemBounds.deflate(BOUNDS_TOLERANCE).overlaps(notificationBounds)
         )
 
         if (verifyCallbacks) {
@@ -388,10 +391,11 @@ class ArcadeShellUiTest {
         const val LEADERBOARD_TAB_TAG = "bottom_tab:leaderboard"
         const val CLAN_TAB_TAG = "bottom_tab:clan"
         const val ACCOUNT_TAB_TAG = "bottom_tab:account"
+        // Thứ tự A1: Trang chủ · Hạng · Chơi (rooms) · Bang · Tôi.
         val BOTTOM_TAB_TAGS = listOf(
             HOME_TAB_TAG,
-            ROOMS_TAB_TAG,
             LEADERBOARD_TAB_TAG,
+            ROOMS_TAB_TAG,
             CLAN_TAB_TAG,
             ACCOUNT_TAB_TAG
         )

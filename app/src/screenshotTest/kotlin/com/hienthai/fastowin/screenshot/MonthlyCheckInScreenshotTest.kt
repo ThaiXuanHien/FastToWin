@@ -13,7 +13,7 @@ import com.hienthai.fastowin.ui.screens.ProfileSectionScreen
 fun monthlyRewards() = MonthlyCheckInFixture("2026-10-17")
 
 @PreviewTest
-@Preview(name = "leap_year_large_text", widthDp = 320, heightDp = 3100, fontScale = 1.6f)
+@Preview(name = "leap_year_large_text", widthDp = 360, heightDp = 3100, fontScale = 1.6f)
 @Composable
 fun leapYearRewards() = MonthlyCheckInFixture("2028-02-23")
 

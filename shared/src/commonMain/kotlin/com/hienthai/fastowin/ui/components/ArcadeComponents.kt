@@ -1,5 +1,6 @@
 package com.hienthai.fastowin.ui.components
 
+import androidx.compose.animation.core.animateFloat
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.Image
@@ -69,6 +70,7 @@ import androidx.compose.material3.LocalContentColor
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
+import androidx.compose.ui.graphics.graphicsLayer
 import org.jetbrains.compose.resources.DrawableResource
 import org.jetbrains.compose.resources.painterResource
 
@@ -96,6 +98,8 @@ fun ArcadeActionButton(
     style: ArcadeActionStyle = ArcadeActionStyle.PRIMARY,
     enabled: Boolean = true,
     compact: Boolean = false,
+    /** Nút CTA lớn (vd. CHƠI NGAY): chữ và icon to hơn. */
+    hero: Boolean = false,
     content: (@Composable RowScope.() -> Unit)? = null
 ) {
     val colors = if (!enabled) A1ButtonDefaults.Disabled else when (style) {
@@ -111,12 +115,27 @@ fun ArcadeActionButton(
     val depth = if (compact) A1Dimens.SoftDepth else A1Dimens.CardDepth
     val radius = if (compact) 14.dp else A1Dimens.ButtonRadius
 
+    // CTA lớn "thở" nhẹ (scale 1 → 1.035, chu kỳ 1,8s) như ".breathe" của thiết kế.
+    val breathe = if (hero && enabled) {
+        val t = androidx.compose.animation.core.rememberInfiniteTransition(label = "breathe")
+        t.animateFloat(
+            initialValue = 1f,
+            targetValue = 1.035f,
+            animationSpec = androidx.compose.animation.core.infiniteRepeatable(
+                androidx.compose.animation.core.tween(900, easing = androidx.compose.animation.core.FastOutSlowInEasing),
+                androidx.compose.animation.core.RepeatMode.Reverse
+            ),
+            label = "breatheScale"
+        )
+    } else null
     A1RaisedSurface(
         colors = colors,
         radius = radius,
         depth = depth,
         pressed = pressed && enabled,
+        shine = hero && enabled,
         modifier = modifier
+            .then(breathe?.let { s -> Modifier.graphicsLayer { scaleX = s.value; scaleY = s.value } } ?: Modifier)
             .semantics(mergeDescendants = true) {
                 role = Role.Button
                 if (!enabled) disabled()
@@ -141,17 +160,31 @@ fun ArcadeActionButton(
                     content()
                 } else {
                     icon?.let {
-                        Icon(it, contentDescription = null, modifier = Modifier.size(if (compact) 20.dp else 24.dp))
+                        Icon(it, contentDescription = null, modifier = Modifier.size(if (hero) 34.dp else if (compact) 20.dp else 24.dp))
                         Box(modifier = Modifier.width(8.dp))
                     }
-                    Text(
-                        label,
-                        style = (if (compact) MaterialTheme.typography.titleSmall else MaterialTheme.typography.titleMedium)
-                            .copy(shadow = a1TextShadow(colors.textShadow)),
-                        fontWeight = FontWeight.ExtraBold,
-                        color = colors.content,
-                        textAlign = TextAlign.Center
-                    )
+                    if (hero && enabled) {
+                        // CTA lớn: chữ trắng viền đậm theo màu đế (như "CHƠI NGAY" trong thiết kế).
+                        A1OutlinedText(
+                            text = label,
+                            style = MaterialTheme.typography.displayMedium.copy(
+                                fontWeight = FontWeight.ExtraBold,
+                                shadow = a1TextShadow(colors.textShadow)
+                            ),
+                            outline = colors.textShadow ?: colors.border,
+                            outlineWidth = 4.dp,
+                            textAlign = TextAlign.Center
+                        )
+                    } else {
+                        Text(
+                            label,
+                            style = (if (hero) MaterialTheme.typography.headlineMedium else if (compact) MaterialTheme.typography.titleSmall else MaterialTheme.typography.titleMedium)
+                                .copy(shadow = a1TextShadow(colors.textShadow)),
+                            fontWeight = FontWeight.ExtraBold,
+                            color = colors.content,
+                            textAlign = TextAlign.Center
+                        )
+                    }
                 }
             }
         }
