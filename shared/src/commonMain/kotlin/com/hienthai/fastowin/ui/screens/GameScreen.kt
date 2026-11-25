@@ -10,6 +10,9 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
@@ -41,6 +44,24 @@ import androidx.compose.material.icons.rounded.LocalFireDepartment
 import androidx.compose.material.icons.rounded.SentimentSatisfiedAlt
 import androidx.compose.material.icons.rounded.SentimentVerySatisfied
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.mutableStateListOf
+import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.border
+import androidx.compose.ui.text.withStyle
+import androidx.compose.ui.semantics.LiveRegionMode
+import androidx.compose.ui.semantics.liveRegion
+import androidx.compose.ui.semantics.clearAndSetSemantics
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.graphics.Shadow
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.CornerRadius
+import androidx.compose.ui.draw.drawBehind
+import androidx.compose.material.icons.rounded.Timer
+import androidx.compose.material.icons.rounded.AddReaction
+import com.hienthai.fastowin.ui.components.ArcadeHeaderIconButton
+import com.hienthai.fastowin.ui.components.a1Card
+import com.hienthai.fastowin.ui.components.A1Dimens
+import com.hienthai.fastowin.ui.theme.A1Palette
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
@@ -124,6 +145,22 @@ fun GameScreen(
     var showExitConfirmation by remember { mutableStateOf(false) }
     var wrongNumber by remember { mutableStateOf<Int?>(null) }
     var wrongFeedbackToken by remember { mutableIntStateOf(0) }
+    // Bàn số dùng chung: server chỉ gửi các số đã bị lấy, nên app tự đối chiếu các lần bấm của mình với
+    // kết quả server trả về để tô ô của đối thủ màu hồng (".tile.opp"). Vào lại giữa trận thì không tô hồng.
+    val tileOwners = remember(state.currentRoomId, state.gameMode) { OpponentTileTracker() }
+    val opponentNumbers = tileOwners.opponentNumbers(
+        selectedNumbers = state.player.selectedNumbers,
+        correctSelections = state.player.correctSelections
+    )
+    // Ô vừa bấm đúng lóe xanh trong chốc lát (".tile.hit" của thiết kế).
+    var hitNumber by remember { mutableStateOf<Int?>(null) }
+    var hitFeedbackToken by remember { mutableIntStateOf(0) }
+    LaunchedEffect(hitFeedbackToken) {
+        if (hitFeedbackToken > 0) {
+            delay(320)
+            hitNumber = null
+        }
+    }
     val opponentFriend = state.social.friends.firstOrNull { it.userId == state.opponent.id }
     LaunchedEffect(wrongFeedbackToken) {
         if (wrongFeedbackToken > 0) {
@@ -193,6 +230,7 @@ fun GameScreen(
                 backIcon = Icons.Rounded.Close,
                 showBalances = false,
                 showNotifications = false,
+                actions = { if (state.timeLeftMillis > 0L) TimerBadge(state.timeLeftMillis) }
 
             )
         }
@@ -204,38 +242,30 @@ fun GameScreen(
         ) { contentModifier ->
             BoxWithConstraints(modifier = contentModifier) {
             val compactLandscape = maxHeight < 430.dp && maxWidth > maxHeight
-            Column(modifier = Modifier.fillMaxSize()) {
+            val sidePanelWidth = maxWidth * 0.42f
+            val scoreBar: @Composable () -> Unit = {
                 PlayerScoreBar(
                     state = state,
-                    timeLeftMillis = state.timeLeftMillis,
                     onOpponentInfo = if (opponentFriend == null) null else ({
                         onOpenFriendProfile(opponentFriend.userId)
                     })
                 )
-
-                TargetPanel(
-                    currentTarget = state.currentTarget,
-                    completedCount = state.player.selectedNumbers.size,
-                    compact = compactLandscape
-                )
-
-                if (!compactLandscape) LiveMetricsBar(state, onSendEmoji)
-
-                GameConnectionNotice(state)
-
-                HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
-
+            }
+            val board: @Composable (Modifier) -> Unit = { boardModifier ->
                 Box(
-                    modifier = Modifier.fillMaxWidth().weight(1f).testTag("game_board"),
+                    modifier = boardModifier.testTag("game_board"),
                     contentAlignment = Alignment.Center
                 ) {
                     NumberGrid(
                         numbers = state.numbers,
                         selectedNumbers = state.player.selectedNumbers,
+                        opponentNumbers = opponentNumbers,
                         wrongNumber = wrongNumber,
+                        hitNumber = hitNumber,
                         enabled = state.connectionStatus == ConnectionStatus.CONNECTED && !state.player.isFinished,
                         boardStyle = preferences.boardStyle,
                         onNumberClick = { number ->
+                            if (number !in state.player.selectedNumbers) tileOwners.onTap(number)
                             val effect = if (number == state.currentTarget) {
                                 GameFeedbackEffect.CORRECT
                             } else {
@@ -248,13 +278,38 @@ fun GameScreen(
                             if (number != state.currentTarget) {
                                 wrongNumber = number
                                 wrongFeedbackToken += 1
+                            } else {
+                                hitNumber = number
+                                hitFeedbackToken += 1
                             }
                             onNumberClick(number)
                         },
                         modifier = Modifier.fillMaxSize()
                     )
                 }
-                if (!compactLandscape) GameBottomSummary(state)
+            }
+            if (compactLandscape) {
+                // Màn ngang thấp: điểm, số tiếp theo và thống kê bên trái; bàn số chiếm phần còn lại bên phải.
+                Row(modifier = Modifier.fillMaxSize()) {
+                    Column(modifier = Modifier.width(sidePanelWidth).fillMaxHeight()) {
+                        scoreBar()
+                        TargetPanel(state = state, compact = true)
+                        Spacer(Modifier.weight(1f))
+                        GameFooter(state, onSendEmoji, compact = true)
+                    }
+                    Column(modifier = Modifier.weight(1f).fillMaxHeight()) {
+                        GameConnectionNotice(state)
+                        board(Modifier.fillMaxWidth().weight(1f))
+                    }
+                }
+            } else {
+                Column(modifier = Modifier.fillMaxSize()) {
+                    scoreBar()
+                    TargetPanel(state = state)
+                    GameConnectionNotice(state)
+                    board(Modifier.fillMaxWidth().weight(1f))
+                    GameFooter(state, onSendEmoji)
+                }
             }
             EmojiOverlay(state.activeEmojis)
             }
@@ -277,85 +332,70 @@ private fun GameConnectionNotice(state: GameState) {
             Text(
                 text = it,
                 modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp),
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                color = A1Palette.Ink,
                 style = MaterialTheme.typography.labelMedium,
                 textAlign = TextAlign.Center,
-                fontWeight = FontWeight.SemiBold
+                fontWeight = FontWeight.Bold
             )
         }
     }
 }
 
+/**
+ * Thanh dưới trận đấu (thiết kế A1): "Đúng N · Sai N · Tốc độ x s/số" và nút gửi biểu cảm.
+ */
 @Composable
-private fun LiveMetricsBar(state: GameState, onSendEmoji: (String) -> Unit) {
-    val speed = state.player.averageReactionMillis.takeIf { it > 0 }?.let {
-        (10_000L / it).coerceAtMost(99L) / 10.0
-    }
+private fun GameFooter(state: GameState, onSendEmoji: (String) -> Unit, compact: Boolean = false) {
+    val secondsPerNumber = state.player.averageReactionMillis.takeIf { it > 0 }?.let { ((it + 50) / 100) / 10.0 }
     var showEmojiMenu by remember { mutableStateOf(false) }
     val sendReactionLabel = localized(TextKey.SendReaction)
     Row(
-        modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 4.dp),
-        horizontalArrangement = Arrangement.SpaceBetween,
-        verticalAlignment = Alignment.CenterVertically
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 14.dp, vertical = 8.dp)
+            .a1Card(radius = 18.dp, depth = 3.dp)
+            .heightIn(min = 56.dp)
+            .padding(start = 14.dp, end = 8.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(8.dp)
     ) {
-        val modeMetric = when (state.gameMode) {
-            GameMode.SURVIVAL -> localized(TextKey.LivesCount, "count" to state.player.lives)
-            GameMode.SPEED_UP -> localized(TextKey.PaceProgress, "current" to state.player.correctSelections + 1, "total" to GAME_NUMBER_COUNT)
-            GameMode.COMBO -> "${localized(TextKey.ComboLabel).uppercase()} x${comboMultiplier(state.player.combo)}"
-            else -> null
-        }
-        if (modeMetric != null) {
-            val comboBoostActive = state.gameMode == GameMode.COMBO && state.player.combo >= 5
-            Surface(
-                shape = RoundedCornerShape(11.dp),
-                color = if (comboBoostActive) ArcadePalette.Violet600 else Color(0xFF102B60),
-                border = BorderStroke(1.dp, ArcadePalette.Violet400.copy(alpha = 0.72f))
-            ) {
-                Row(
-                    modifier = Modifier.padding(horizontal = 11.dp, vertical = 8.dp),
-                    horizontalArrangement = Arrangement.spacedBy(5.dp),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    if (state.gameMode == GameMode.SURVIVAL) {
-                        Icon(
-                            imageVector = Icons.Rounded.Favorite,
-                            contentDescription = null,
-                            modifier = Modifier.size(15.dp),
-                            tint = Color(0xFFFF6B84)
-                        )
-                    }
-                    Text(
-                        modeMetric,
-                        style = MaterialTheme.typography.labelMedium,
-                        fontWeight = FontWeight.Black,
-                        color = Color.White
+        Text(
+            text = androidx.compose.ui.text.buildAnnotatedString {
+                withStyle(androidx.compose.ui.text.SpanStyle(color = A1Palette.GreenText)) {
+                    append(localized(TextKey.GameCorrect, "count" to state.player.correctSelections))
+                }
+                append(" · ")
+                withStyle(androidx.compose.ui.text.SpanStyle(color = A1Palette.RedText)) {
+                    append(localized(TextKey.GameWrong, "count" to state.player.wrongSelections))
+                }
+                append(" · ")
+                withStyle(androidx.compose.ui.text.SpanStyle(color = A1Palette.Muted)) {
+                    append(
+                        secondsPerNumber?.let { localized(TextKey.GameSpeedPerNumber, "value" to it) } ?: localized(TextKey.Measuring)
                     )
                 }
-            }
-        }
-        Text(
-            text = localized(TextKey.SpeedValue, "speed" to (speed?.let { "$it/s" } ?: "--")),
-            style = MaterialTheme.typography.labelMedium,
-            fontWeight = FontWeight.Black,
-            color = Color(0xFFA9BADC)
+            },
+            style = MaterialTheme.typography.bodyMedium.copy(fontSize = if (compact) 13.sp else 15.sp),
+            fontWeight = FontWeight.Bold,
+            color = A1Palette.Ink,
+            maxLines = 2,
+            modifier = Modifier.weight(1f).testTag("game_footer_stats")
         )
         Box {
-            Surface(
+            ArcadeHeaderIconButton(
                 onClick = { showEmojiMenu = true },
-                modifier = Modifier
-                    .size(42.dp)
-                    .testTag("open_emoji_menu")
-                    .semantics { contentDescription = sendReactionLabel },
-                shape = RoundedCornerShape(12.dp),
-                color = Color.White.copy(alpha = 0.08f),
-                contentColor = Color.White
+                modifier = Modifier.testTag("open_emoji_menu").semantics { contentDescription = sendReactionLabel }
             ) {
-                Box(contentAlignment = Alignment.Center) {
-                    Icon(Icons.Rounded.SentimentSatisfiedAlt, contentDescription = null)
-                }
+                Icon(Icons.Rounded.AddReaction, contentDescription = null)
             }
-            DropdownMenu(expanded = showEmojiMenu, onDismissRequest = { showEmojiMenu = false }) {
-                Column(modifier = Modifier.padding(8.dp)) {
+            DropdownMenu(
+                expanded = showEmojiMenu,
+                onDismissRequest = { showEmojiMenu = false },
+                containerColor = Color.White,
+                shape = RoundedCornerShape(18.dp),
+                border = BorderStroke(3.dp, A1Palette.Line)
+            ) {
+                Column(modifier = Modifier.padding(6.dp)) {
                     gameReactions.chunked(3).forEach { row ->
                         Row {
                             row.forEach { reaction ->
@@ -387,36 +427,6 @@ private fun LiveMetricsBar(state: GameState, onSendEmoji: (String) -> Unit) {
     }
 }
 
-@Composable
-private fun GameBottomSummary(state: GameState) {
-    val speed = state.player.averageReactionMillis.takeIf { it > 0 }?.let {
-        (10_000L / it).coerceAtMost(99L) / 10.0
-    }
-    Surface(
-        modifier = Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 5.dp),
-        shape = RoundedCornerShape(14.dp),
-        color = Color(0xFF0A1E45),
-        border = BorderStroke(1.dp, ArcadePalette.OutlineDark.copy(alpha = 0.58f))
-    ) {
-        Row(
-            modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 9.dp),
-            horizontalArrangement = Arrangement.SpaceBetween
-        ) {
-            Text(
-                localized(TextKey.CorrectWrongSummary, "correct" to state.player.correctSelections, "wrong" to state.player.wrongSelections),
-                style = MaterialTheme.typography.labelMedium,
-                color = Color(0xFFA9BADC)
-            )
-            Text(
-                "${speed?.let { "$it/s" } ?: localized(TextKey.Measuring)}",
-                style = MaterialTheme.typography.labelMedium,
-                fontWeight = FontWeight.Black,
-                color = ArcadePalette.Blue300
-            )
-        }
-    }
-}
-
 private fun comboMultiplier(combo: Int): Int = when {
     combo >= 20 -> 4
     combo >= 10 -> 3
@@ -424,23 +434,26 @@ private fun comboMultiplier(combo: Int): Int = when {
     else -> 1
 }
 
+/** Đồng hồ trận: nhãn nền navy, chữ vàng Baloo 20sp (đỏ khi còn dưới 10 giây). */
 @Composable
 private fun TimerBadge(timeLeftMillis: Long, modifier: Modifier = Modifier) {
     val seconds = (timeLeftMillis / 1_000) % 60
     val minutes = (timeLeftMillis / 1_000) / 60
     val urgent = timeLeftMillis < 10_000
-
-    Surface(
-        modifier = modifier,
-        shape = RoundedCornerShape(14.dp),
-        color = if (urgent) ArcadePalette.Coral800 else ArcadePalette.Navy800,
-        border = BorderStroke(1.dp, if (urgent) ArcadePalette.Coral400 else ArcadePalette.Gold400)
+    Row(
+        modifier = modifier
+            .testTag("game_timer")
+            .background(if (urgent) A1Palette.Red2 else A1Palette.Ink, RoundedCornerShape(12.dp))
+            .border(2.dp, if (urgent) A1Palette.RedDeep else A1Palette.Ink, RoundedCornerShape(12.dp))
+            .padding(horizontal = 12.dp, vertical = 4.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(4.dp)
     ) {
+        Icon(Icons.Rounded.Timer, contentDescription = null, tint = if (urgent) Color.White else A1Palette.Yellow1, modifier = Modifier.size(20.dp))
         Text(
             text = "${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}",
-            modifier = Modifier.padding(horizontal = 12.dp, vertical = 7.dp),
-            fontWeight = FontWeight.Black,
-            color = if (urgent) Color.White else ArcadePalette.Gold400
+            style = MaterialTheme.typography.titleLarge.copy(fontSize = 20.sp, lineHeight = 24.sp),
+            color = if (urgent) Color.White else A1Palette.Yellow1
         )
     }
 }
@@ -448,7 +461,6 @@ private fun TimerBadge(timeLeftMillis: Long, modifier: Modifier = Modifier) {
 @Composable
 private fun PlayerScoreBar(
     state: GameState,
-    timeLeftMillis: Long,
     onOpponentInfo: (() -> Unit)? = null,
     modifier: Modifier = Modifier
 ) {
@@ -464,44 +476,31 @@ private fun PlayerScoreBar(
         state.opponent.score
     }
     val labelMe = localized(if (is2v2) TextKey.YourTeam else TextKey.LocalPlayerLabel)
-    val labelOpp = localized(if (is2v2) TextKey.OpponentTeam else TextKey.OpponentLabel)
+    val labelOpp = if (is2v2) localized(TextKey.OpponentTeam) else state.opponent.name.uppercase()
     val nameMe = if (is2v2) "(${state.player.name} & ${state.teammates.firstOrNull()?.name ?: "..."})" else state.player.name
     val nameOpp = if (is2v2) "(${state.opponents.joinToString(" & ") { it.name }})" else state.opponent.name
     val opponent = state.opponents.firstOrNull() ?: state.opponent
     val opponentAvatar = if (state.isBotMatch) opponent.copy(id = null) else opponent
 
     BoxWithConstraints(modifier = modifier.fillMaxWidth()) {
-        val compact = maxWidth < 380.dp
+        val compact = maxWidth < 360.dp
         Row(
-            modifier = Modifier.fillMaxWidth().padding(
-                horizontal = if (compact) 6.dp else 12.dp,
-                vertical = 8.dp
-            ),
+            modifier = Modifier.fillMaxWidth().padding(horizontal = 14.dp, vertical = 6.dp),
             verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(if (compact) 6.dp else 8.dp)
+            horizontalArrangement = Arrangement.spacedBy(if (compact) 8.dp else 12.dp)
         ) {
             PlayerScoreCard(
                 label = labelMe,
-                name = nameMe,
+                found = state.player.correctSelections,
                 score = myScore,
                 avatar = state.player,
                 isLocal = true,
                 compact = compact,
                 modifier = Modifier.weight(1f).testTag("player_score_local")
             )
-            if (timeLeftMillis > 0L) {
-                TimerBadge(timeLeftMillis)
-            } else {
-                Text(
-                    text = localized(TextKey.Versus),
-                    style = MaterialTheme.typography.labelLarge,
-                    fontWeight = FontWeight.Black,
-                    color = MaterialTheme.colorScheme.outline
-                )
-            }
             PlayerScoreCard(
                 label = labelOpp,
-                name = nameOpp,
+                found = (state.opponents.firstOrNull() ?: state.opponent).correctSelections,
                 score = opponentScore,
                 avatar = opponentAvatar,
                 isLocal = false,
@@ -513,10 +512,11 @@ private fun PlayerScoreBar(
     }
 }
 
+/** Thẻ điểm (".sc" của thiết kế): avatar khung, nhãn BẠN/tên, "N số", điểm Baloo; đối thủ viền đỏ. */
 @Composable
 private fun PlayerScoreCard(
     label: String,
-    name: String,
+    found: Int,
     score: Int,
     avatar: PlayerState,
     isLocal: Boolean,
@@ -524,146 +524,134 @@ private fun PlayerScoreCard(
     compact: Boolean = false,
     modifier: Modifier = Modifier
 ) {
-    val containerColor = ArcadePalette.Navy800
-    val contentColor = Color.White
-    val accentColor = if (isLocal) ArcadePalette.Blue300 else ArcadePalette.Coral400
-
-    Surface(
-        modifier = modifier.then(
-            if (onViewInfo == null) Modifier else Modifier.clickable(onClick = onViewInfo)
-        ),
-        shape = RoundedCornerShape(18.dp),
-        color = containerColor,
-        border = BorderStroke(2.dp, accentColor.copy(alpha = 0.55f)),
-        shadowElevation = 0.dp
+    val edge = if (isLocal) A1Palette.Line else A1Palette.RedDeep
+    Row(
+        modifier = modifier
+            .a1Card(radius = 16.dp, depth = 5.dp, border = edge)
+            .clip(RoundedCornerShape(16.dp))
+            .then(if (onViewInfo == null) Modifier else Modifier.clickable(onClick = onViewInfo))
+            .padding(start = 6.dp, end = if (compact) 8.dp else 12.dp, top = 4.dp, bottom = 4.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(if (compact) 6.dp else 8.dp)
     ) {
-        if (compact) {
-            Column(
-                modifier = Modifier.fillMaxWidth().padding(horizontal = 5.dp, vertical = 7.dp),
-                horizontalAlignment = Alignment.CenterHorizontally,
-                verticalArrangement = Arrangement.spacedBy(2.dp)
-            ) {
-                Text(
-                    text = label,
-                    style = MaterialTheme.typography.labelSmall,
-                    color = contentColor.copy(alpha = 0.7f),
-                    fontWeight = FontWeight.Bold,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis
-                )
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(4.dp)
-                ) {
-                    PlayerAvatar(
-                        displayName = avatar.name,
-                        avatarId = avatar.avatarId,
-                        userId = avatar.id,
-                        frameId = avatar.frameId,
-                        size = 34.dp
-                    )
-                    Text(
-                        text = score.toString(),
-                        style = MaterialTheme.typography.headlineSmall,
-                        color = contentColor,
-                        fontWeight = FontWeight.Black,
-                        fontSize = 25.sp
-                    )
-                }
-                Text(
-                    text = name,
-                    modifier = Modifier.fillMaxWidth(),
-                    style = MaterialTheme.typography.labelSmall,
-                    color = contentColor.copy(alpha = 0.82f),
-                    fontWeight = FontWeight.Bold,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                    textAlign = TextAlign.Center
-                )
-            }
-        } else {
-            Row(
-                modifier = Modifier.fillMaxWidth().padding(start = 9.dp, end = 7.dp, top = 11.dp, bottom = 11.dp),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(7.dp)
-            ) {
-                PlayerAvatar(
-                    displayName = avatar.name,
-                    avatarId = avatar.avatarId,
-                    userId = avatar.id,
-                    frameId = avatar.frameId,
-                    size = 40.dp
-                )
-                Column(modifier = Modifier.weight(1f)) {
-                    Text(
-                        text = label,
-                        style = MaterialTheme.typography.labelSmall,
-                        color = contentColor.copy(alpha = 0.7f),
-                        fontWeight = FontWeight.Bold
-                    )
-                    Text(
-                        text = name,
-                        style = MaterialTheme.typography.labelLarge,
-                        color = contentColor,
-                        fontWeight = FontWeight.Bold,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis
-                    )
-                }
-                Text(
-                    text = score.toString(),
-                    modifier = Modifier.padding(end = 5.dp),
-                    style = MaterialTheme.typography.headlineSmall,
-                    color = contentColor,
-                    fontWeight = FontWeight.Black,
-                    fontSize = 27.sp
-                )
-            }
+        PlayerAvatar(
+            displayName = avatar.name,
+            avatarId = avatar.avatarId,
+            userId = avatar.id,
+            frameId = avatar.frameId,
+            size = if (compact) 38.dp else 52.dp
+        )
+        Column(modifier = Modifier.weight(1f)) {
+            Text(
+                text = label,
+                style = MaterialTheme.typography.bodySmall,
+                fontWeight = FontWeight.ExtraBold,
+                color = if (isLocal) A1Palette.Ink else A1Palette.RedDeep,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis
+            )
+            Text(
+                text = localized(TextKey.GameFoundCount, "count" to found),
+                style = MaterialTheme.typography.bodySmall,
+                fontWeight = FontWeight.SemiBold,
+                color = A1Palette.Muted,
+                maxLines = 1
+            )
         }
+        Text(
+            text = score.toString(),
+            style = MaterialTheme.typography.headlineMedium.copy(
+                fontSize = if (compact) 22.sp else 28.sp,
+                lineHeight = if (compact) 24.sp else 30.sp
+            ),
+            color = if (isLocal) A1Palette.Ink else A1Palette.RedText
+        )
     }
 }
 
+/**
+ * Thẻ "SỐ TIẾP THEO" (thiết kế A1): nền trắng → vàng nhạt, chữ nhỏ bên trái, số lớn 66sp,
+ * "+điểm" xanh bay lên mỗi khi điểm tăng.
+ */
 @Composable
-private fun TargetPanel(currentTarget: Int, completedCount: Int, compact: Boolean = false) {
-    val displayedTarget = currentTarget.coerceAtMost(GAME_NUMBER_COUNT)
-
-    Surface(
-        modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 4.dp),
-        shape = RoundedCornerShape(22.dp),
-        color = Color.Transparent,
-        border = BorderStroke(1.dp, Color(0xFF9FB8FF).copy(alpha = 0.72f)),
-        shadowElevation = 4.dp
+private fun TargetPanel(state: GameState, compact: Boolean = false) {
+    val displayedTarget = state.currentTarget.coerceAtMost(GAME_NUMBER_COUNT)
+    val completed = state.player.selectedNumbers.size.coerceIn(0, GAME_NUMBER_COUNT)
+    val modeMetric = when (state.gameMode) {
+        GameMode.SURVIVAL -> localized(TextKey.LivesCount, "count" to state.player.lives)
+        GameMode.SPEED_UP -> localized(TextKey.PaceProgress, "current" to state.player.correctSelections + 1, "total" to GAME_NUMBER_COUNT)
+        GameMode.COMBO -> "${localized(TextKey.ComboLabel)} x${comboMultiplier(state.player.combo)}"
+        else -> null
+    }
+    // "+N" khi điểm tăng (".d" xanh + keyframes "up").
+    var lastScore by remember { mutableIntStateOf(state.player.score) }
+    var gain by remember { mutableIntStateOf(0) }
+    var gainToken by remember { mutableIntStateOf(0) }
+    LaunchedEffect(state.player.score) {
+        val delta = state.player.score - lastScore
+        lastScore = state.player.score
+        if (delta > 0) {
+            gain = delta
+            gainToken += 1
+        }
+    }
+    val rise = remember { androidx.compose.animation.core.Animatable(1f) }
+    LaunchedEffect(gainToken) {
+        if (gainToken > 0) {
+            rise.snapTo(0f)
+            rise.animateTo(1f, androidx.compose.animation.core.tween(1000))
+        }
+    }
+    Box(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 14.dp, vertical = 6.dp)
+            .a1Card(background = Color.Transparent)
+            .background(Brush.verticalGradient(listOf(Color.White, Color(0xFFFFF8D6))), RoundedCornerShape(A1Dimens.CardRadius))
+            .border(A1Dimens.Border, A1Palette.Line, RoundedCornerShape(A1Dimens.CardRadius))
+            .heightIn(min = if (compact) 56.dp else 94.dp)
+            .testTag("game_target"),
+        contentAlignment = Alignment.Center
     ) {
-        Column(
-            modifier = Modifier
-                .fillMaxWidth()
-                .background(
-                    Brush.horizontalGradient(listOf(Color(0xFF643BD1), Color(0xFF3D72EF))),
-                    RoundedCornerShape(22.dp)
-                )
-                    .padding(horizontal = 18.dp, vertical = if (compact) 4.dp else 11.dp),
-            horizontalAlignment = Alignment.CenterHorizontally
-        ) {
-            Text(
-                text = localized(TextKey.NextNumber),
-                style = MaterialTheme.typography.labelMedium,
-                color = Color.White.copy(alpha = 0.78f),
-                fontWeight = FontWeight.Black
-            )
-            Text(
-                text = displayedTarget.toString(),
-                fontSize = if (compact) 29.sp else 42.sp,
-                lineHeight = if (compact) 30.sp else 44.sp,
-                fontWeight = FontWeight.Black,
-                color = Color.White
-            )
-            if (!compact) {
+        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(18.dp)) {
+            Column(horizontalAlignment = Alignment.End) {
                 Text(
-                    text = "${completedCount.coerceIn(0, GAME_NUMBER_COUNT)}/$GAME_NUMBER_COUNT",
-                    style = MaterialTheme.typography.labelSmall,
-                    color = Color.White.copy(alpha = 0.72f)
+                    localized(TextKey.NextNumber),
+                    style = MaterialTheme.typography.bodySmall,
+                    fontWeight = FontWeight.ExtraBold,
+                    color = A1Palette.Muted
+                )
+                Text(
+                    listOfNotNull(
+                        localized(TextKey.GameProgress, "done" to completed, "total" to GAME_NUMBER_COUNT),
+                        modeMetric ?: gain.takeIf { it > 0 }?.let { localized(TextKey.GamePointsGain, "points" to it) }
+                    ).joinToString(" · "),
+                    style = MaterialTheme.typography.bodySmall,
+                    fontWeight = FontWeight.Bold,
+                    color = A1Palette.Muted
                 )
             }
+            Text(
+                text = displayedTarget.toString(),
+                style = MaterialTheme.typography.displayLarge.copy(fontSize = if (compact) 40.sp else 66.sp, lineHeight = if (compact) 42.sp else 68.sp),
+                color = A1Palette.Ink,
+                modifier = Modifier.semantics { liveRegion = LiveRegionMode.Polite }
+            )
+        }
+        if (rise.value < 1f && gain > 0) {
+            Text(
+                "+$gain",
+                style = MaterialTheme.typography.titleLarge.copy(fontSize = 20.sp),
+                color = A1Palette.Green2,
+                modifier = Modifier
+                    .align(Alignment.TopEnd)
+                    .padding(top = 10.dp, end = 18.dp)
+                    .graphicsLayer {
+                        translationY = -30.dp.toPx() * rise.value
+                        alpha = 1f - rise.value
+                    }
+                    .clearAndSetSemantics { }
+            )
         }
     }
 }
@@ -672,16 +660,19 @@ private fun TargetPanel(currentTarget: Int, completedCount: Int, compact: Boolea
 fun NumberGrid(
     numbers: List<Int>,
     selectedNumbers: List<Int> = emptyList(),
+    opponentNumbers: Set<Int> = emptySet(),
     wrongNumber: Int? = null,
+    hitNumber: Int? = null,
     enabled: Boolean = true,
     boardStyle: BoardStyle = BoardStyle.CLASSIC,
     onNumberClick: (Int) -> Unit,
     modifier: Modifier = Modifier
 ) {
     BoxWithConstraints(modifier = modifier) {
-        fun paddingFor(columns: Int) = if (columns >= 8) 6.dp else 8.dp
-        fun spacingFor(columns: Int) = if (columns >= 8) 4.dp else 6.dp
-        val columnCount = (5..10).minBy { columns ->
+        fun paddingFor(columns: Int) = if (columns >= 8) 10.dp else 14.dp
+        fun spacingFor(columns: Int) = 6.dp
+        // Điện thoại dọc: 7 cột như thiết kế; màn rộng/ngang tự chọn số cột cho ô gần vuông.
+        val columnCount = if (maxWidth < 600.dp && maxHeight > maxWidth) 7 else (5..10).minBy { columns ->
             val padding = paddingFor(columns)
             val spacing = spacingFor(columns)
             val rows = ((numbers.size + columns - 1) / columns).coerceAtLeast(1)
@@ -690,7 +681,7 @@ fun NumberGrid(
             ) / columns
             val cellHeight = (
                 (maxHeight - (padding * 2) - (spacing * (rows - 1))) / rows
-            ).coerceAtMost(54.dp)
+            ).coerceAtMost(56.dp)
             abs(cellWidth.value - cellHeight.value)
         }
         val gridPadding = paddingFor(columnCount)
@@ -702,7 +693,7 @@ fun NumberGrid(
         val availableCellHeight = (
             maxHeight - (gridPadding * 2) - (gridSpacing * (rowCount - 1))
         ) / rowCount
-        val cellHeight = availableCellHeight.coerceAtMost(54.dp)
+        val cellHeight = availableCellHeight.coerceAtMost(if (columnCount == 7) 52.dp else 56.dp)
         val cellSize = minOf(availableCellWidth, cellHeight)
         val compactCells = cellHeight < 46.dp || availableCellWidth < 46.dp
         LazyVerticalGrid(
@@ -721,11 +712,13 @@ fun NumberGrid(
                     NumberCell(
                         number = number,
                         isCompleted = number in selectedNumbers,
+                        takenByOpponent = number in opponentNumbers,
                         isWrong = number == wrongNumber,
+                        isHit = number == hitNumber,
                         enabled = enabled,
                         boardStyle = boardStyle,
                         compact = compactCells,
-                        modifier = Modifier.size(cellSize),
+                        modifier = Modifier.fillMaxWidth().height(cellHeight),
                         onClick = { onNumberClick(number) }
                     )
                 }
@@ -734,79 +727,66 @@ fun NumberGrid(
     }
 }
 
+/**
+ * Ô số A1 (".tile"): trắng viền navy 3dp, đế 4dp; ô đã tìm lún xuống, xanh xám nhạt;
+ * bấm đúng lóe xanh lá, bấm sai lóe đỏ.
+ */
 @Composable
 fun NumberCell(
     number: Int,
     isCompleted: Boolean,
+    takenByOpponent: Boolean = false,
     isWrong: Boolean = false,
+    isHit: Boolean = false,
     enabled: Boolean = true,
     boardStyle: BoardStyle = BoardStyle.CLASSIC,
     compact: Boolean = false,
     modifier: Modifier = Modifier,
     onClick: () -> Unit
 ) {
-    val classicColor = Color(0xFFF6F8FF)
-    val classicContentColor = Color(0xFF10234A)
-    val classicBorderColor = Color(0xFFD6DEF1)
-    val activeColor = when {
-        isWrong -> ArcadePalette.Coral600
-        boardStyle == BoardStyle.HIGH_CONTRAST -> Color.White
-        else -> when (boardStyle) {
-            BoardStyle.CLASSIC -> classicColor
-            BoardStyle.OCEAN -> ArcadePalette.Blue900
-            BoardStyle.HIGH_CONTRAST -> Color.White
-        }
+    val radius = if (compact) 11.dp else 13.dp
+    val depth = if (compact) 3.dp else 4.dp
+    val shape = RoundedCornerShape(radius)
+    data class TileColors(val face: Brush, val border: Color, val base: Color, val text: Color, val textShadow: Color?)
+    val colors = when {
+        isWrong -> TileColors(Brush.verticalGradient(listOf(A1Palette.Red1, A1Palette.Red2)), A1Palette.RedDeep, A1Palette.RedDeep, Color.White, A1Palette.RedDeep)
+        isHit -> TileColors(Brush.verticalGradient(listOf(A1Palette.Green1, A1Palette.Green2)), A1Palette.GreenDeep, A1Palette.GreenDeep, Color.White, A1Palette.GreenDeep)
+        isCompleted && takenByOpponent -> TileColors(androidx.compose.ui.graphics.SolidColor(Color(0xFFFFD9D9)), Color(0xFFC07A7A), Color.Transparent, Color(0xFF9A4A4A), null)
+        isCompleted -> TileColors(androidx.compose.ui.graphics.SolidColor(Color(0xFFCFE0F5)), Color(0xFF8AA6C8), Color.Transparent, Color(0xFF5B7AA3), null)
+        boardStyle == BoardStyle.OCEAN -> TileColors(Brush.verticalGradient(listOf(A1Palette.Blue1, A1Palette.Blue2)), A1Palette.BlueDeep, A1Palette.BlueDeep, Color.White, A1Palette.BlueDeep)
+        boardStyle == BoardStyle.HIGH_CONTRAST -> TileColors(androidx.compose.ui.graphics.SolidColor(Color.White), Color.Black, Color.Black, Color.Black, null)
+        else -> TileColors(androidx.compose.ui.graphics.SolidColor(Color.White), A1Palette.Line, A1Palette.Line, A1Palette.Ink, null)
     }
-    val activeContentColor = when {
-        isWrong -> Color.White
-        boardStyle == BoardStyle.HIGH_CONTRAST -> Color.Black
-        else -> when (boardStyle) {
-            BoardStyle.CLASSIC -> classicContentColor
-            BoardStyle.OCEAN, BoardStyle.HIGH_CONTRAST -> Color.White
-        }
-    }
-    val activeBorderColor = when {
-        isWrong -> ArcadePalette.Coral400
-        boardStyle == BoardStyle.HIGH_CONTRAST -> Color.Black
-        else -> when (boardStyle) {
-            BoardStyle.CLASSIC -> classicBorderColor.copy(alpha = 0.64f)
-            BoardStyle.OCEAN -> ArcadePalette.Blue300
-            BoardStyle.HIGH_CONTRAST -> MaterialTheme.colorScheme.outline
-        }
-    }
+    val pressedDown = isCompleted
     Box(
-        modifier = modifier.testTag("game_number_$number")
+        modifier = modifier
+            .testTag("game_number_$number")
+            .padding(bottom = depth)
+            .drawBehind {
+                if (!pressedDown) {
+                    drawRoundRect(colors.base, topLeft = Offset(0f, depth.toPx()), size = size, cornerRadius = CornerRadius(radius.toPx()))
+                }
+            }
     ) {
-        if (!isCompleted) {
-            Box(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .offset(y = if (compact) 2.dp else 3.dp)
-                    .background(
-                        if (isWrong) Color(0xFF9E2940) else Color(0xFFAAB7D2),
-                        RoundedCornerShape(if (compact) 8.dp else 11.dp)
-                    )
-            )
-        }
-        Surface(
+        Box(
             modifier = Modifier
                 .fillMaxSize()
-                .padding(bottom = if (isCompleted) 0.dp else if (compact) 2.dp else 3.dp)
-                .clip(RoundedCornerShape(if (compact) 8.dp else 11.dp))
+                .offset(y = if (pressedDown) depth else 0.dp)
+                .clip(shape)
+                .background(colors.face)
+                .border(A1Dimens.Border, colors.border, shape)
                 .clickable(enabled = enabled && !isCompleted, onClick = onClick),
-            color = if (isCompleted) Color(0xFF244F99) else activeColor,
-            shape = RoundedCornerShape(if (compact) 8.dp else 11.dp),
-            border = if (isCompleted) null else BorderStroke(1.dp, activeBorderColor)
+            contentAlignment = Alignment.Center
         ) {
-            Box(contentAlignment = Alignment.Center) {
-                Text(
-                    text = number.toString(),
-                    style = MaterialTheme.typography.titleLarge,
-                    fontWeight = FontWeight.Black,
-                    color = if (isCompleted) Color(0xFF7995C9) else activeContentColor,
-                    fontSize = if (compact) 15.sp else 18.sp
-                )
-            }
+            Text(
+                text = number.toString(),
+                style = MaterialTheme.typography.headlineSmall.copy(
+                    fontSize = if (compact) 18.sp else 21.sp,
+                    lineHeight = if (compact) 20.sp else 24.sp,
+                    shadow = colors.textShadow?.let { Shadow(it, Offset(0f, 4f), 0f) }
+                ),
+                color = colors.text
+            )
         }
     }
 }
@@ -869,5 +849,40 @@ private fun EmojiOverlay(emojis: List<com.hienthai.fastowin.state.EmojiEvent>) {
                 }
             }
         }
+    }
+}
+
+/**
+ * Đoán ô nào do đối thủ lấy trên bàn số dùng chung. Mỗi lần server gửi trạng thái mới, các số vừa bị lấy
+ * mà mình đang chờ kết quả được tính là của mình (tối đa bằng số lần đúng tăng thêm), số còn lại là của
+ * đối thủ. Khi tổng không khớp với số lần đúng (vd. vào lại giữa trận) thì không tô.
+ */
+internal class OpponentTileTracker {
+    private val pendingTaps = ArrayDeque<Int>()
+    private val mine = mutableSetOf<Int>()
+    private var seen = emptySet<Int>()
+    private var lastCorrect = 0
+
+    fun onTap(number: Int) {
+        if (number !in pendingTaps) pendingTaps.addLast(number)
+    }
+
+    fun opponentNumbers(selectedNumbers: List<Int>, correctSelections: Int): Set<Int> {
+        val selected = selectedNumbers.toSet()
+        val newlyTaken = selected - seen
+        var correctGain = (correctSelections - lastCorrect).coerceAtLeast(0)
+        for (number in pendingTaps.toList()) {
+            if (correctGain == 0) break
+            if (number in newlyTaken) {
+                mine += number
+                pendingTaps.remove(number)
+                correctGain -= 1
+            }
+        }
+        // Số người khác vừa lấy mà mình bấm trễ thì không còn chờ nữa.
+        pendingTaps.removeAll { it in selected }
+        seen = selected
+        lastCorrect = correctSelections
+        return if (mine.size == correctSelections) selected - mine else emptySet()
     }
 }

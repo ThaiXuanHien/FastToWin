@@ -696,13 +696,13 @@ class CriticalFlowsUiTest {
             }
         }
 
-        composeRule.onNodeWithText("Đúng 0  ·  Sai 0").assertIsDisplayed()
+        composeRule.onNodeWithText("Đúng 0 · Sai 0", substring = true).assertIsDisplayed()
         composeRule.runOnIdle {
             state.value = state.value.copy(
                 player = state.value.player.copy(wrongSelections = 1)
             )
         }
-        composeRule.onNodeWithText("Đúng 0  ·  Sai 1").assertIsDisplayed()
+        composeRule.onNodeWithText("Đúng 0 · Sai 1", substring = true).assertIsDisplayed()
     }
 
     @Test
