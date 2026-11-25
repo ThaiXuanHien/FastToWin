@@ -98,7 +98,7 @@ fun ModeSelectContent(
     val chosen = selected.takeIf { playerLevel >= it.unlockLevel } ?: GameMode.ORDER
 
     Column(modifier = modifier.fillMaxSize().testTag("mode_select_screen")) {
-        // Thanh chọn kiểu trận + chú thích đứng cố định; chỉ lưới chế độ cuộn.
+        // Thanh chọn kiểu trận đứng cố định; chú thích và lưới chế độ cuộn bên dưới.
         Column(
             modifier = Modifier.fillMaxWidth().padding(top = 8.dp, bottom = 12.dp),
             verticalArrangement = Arrangement.spacedBy(14.dp)
@@ -109,24 +109,25 @@ fun ModeSelectContent(
                     onSelected = { kind = PlayKind.entries[it] },
                     itemTestTag = { "play_kind:${PlayKind.entries[it].name}" }
                 )
-                com.hienthai.fastowin.ui.components.A1OutlinedText(
-                    text = localized(
-                        when (kind) {
-                            PlayKind.PRACTICE -> TextKey.ModePracticeHint
-                            PlayKind.CASUAL -> TextKey.ModeCasualHint
-                            PlayKind.RANKED -> TextKey.ModeRankedHint
-                        }
-                    ),
-                    style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.Bold),
-                    outlineWidth = 2.dp,
-                    textAlign = TextAlign.Center,
-                    modifier = Modifier.fillMaxWidth()
-                )
         }
         Column(
             modifier = Modifier.weight(1f).verticalScroll(rememberScrollState()).padding(top = 4.dp, bottom = 12.dp),
             verticalArrangement = Arrangement.spacedBy(16.dp)
         ) {
+            // Chú thích cuộn cùng lưới; chỉ thanh chọn kiểu trận đứng cố định.
+            com.hienthai.fastowin.ui.components.A1OutlinedText(
+                text = localized(
+                    when (kind) {
+                        PlayKind.PRACTICE -> TextKey.ModePracticeHint
+                        PlayKind.CASUAL -> TextKey.ModeCasualHint
+                        PlayKind.RANKED -> TextKey.ModeRankedHint
+                    }
+                ),
+                style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.Bold),
+                outlineWidth = 2.dp,
+                textAlign = TextAlign.Center,
+                modifier = Modifier.fillMaxWidth()
+            )
             // Lưới 2 cột: mọi thẻ cao bằng thẻ cao nhất (kể cả thẻ mô tả ngắn); thẻ lẻ cuối trải hết hàng.
             EqualHeightGrid(spacing = 12.dp) {
                 modes.forEachIndexed { index, mode ->
@@ -148,7 +149,7 @@ fun ModeSelectContent(
             if (kind != PlayKind.PRACTICE) PlayCostBar(quota)
             ArcadeActionButton(
                 label = if (kind == PlayKind.PRACTICE) localized(TextKey.ModePracticeButton)
-                else localized(TextKey.ModePlayShort),
+                else localized(TextKey.PlayNow),
                 style = ArcadeActionStyle.GOLD,
                 hero = true,
                 enabled = kind == PlayKind.PRACTICE || onlineAllowed,
