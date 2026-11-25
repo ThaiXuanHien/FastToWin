@@ -75,15 +75,13 @@ class PlayCreditsUiTest {
                 }
             )
         }
-        composeRule.onNodeWithText("Lượt hằng ngày").assertIsDisplayed()
-        composeRule.onNodeWithText("Lượt tích lũy").assertIsDisplayed()
-        composeRule.onNodeWithText("2").assertIsDisplayed()
-        composeRule.onNodeWithText("15").assertIsDisplayed()
+        composeRule.onNodeWithText("Bạn còn 2 lượt").assertIsDisplayed()
+        composeRule.onNodeWithText("Tích lũy 15 · hồi 5 lượt lúc 00:00").assertIsDisplayed()
         val header = composeRule.onNodeWithTag("shop_header").fetchSemanticsNode().boundsInRoot
-        val hero = composeRule.onNodeWithTag("shop_feature_hero").fetchSemanticsNode().boundsInRoot
-        assertTrue(hero.top - header.bottom >= with(composeRule.density) { 16.dp.toPx() } - 1)
+        val tabs = composeRule.onNodeWithTag("shop_category_tabs").fetchSemanticsNode().boundsInRoot
+        assertTrue(tabs.top - header.bottom >= with(composeRule.density) { 16.dp.toPx() } - 1)
         capture("play-credit-balances")
-        composeRule.onAllNodesWithText("Đổi")[0].performClick()
+        composeRule.onNodeWithTag("play_credit_exchange:plays_5").performClick()
         composeRule.runOnIdle { assertEquals(0, exchanges) }
         composeRule.onNodeWithText("Đổi 20 Gem lấy 5 lượt tích lũy?").assertIsDisplayed()
         composeRule.onNodeWithText("Xác nhận", ignoreCase = true).performClick()
@@ -93,8 +91,8 @@ class PlayCreditsUiTest {
         composeRule.onNodeWithTag("reward_receipt_close").performClick()
         composeRule.onNodeWithTag("reward_receipt_dialog").assertDoesNotExist()
         composeRule.onNodeWithText("Đã đổi lượt chơi.").assertDoesNotExist()
-        composeRule.onNodeWithText("20").assertIsDisplayed()
-        composeRule.onNodeWithText("2").assertIsDisplayed()
+        composeRule.onNodeWithText("Tích lũy 20 · hồi 5 lượt lúc 00:00").assertIsDisplayed()
+        composeRule.onNodeWithText("Bạn còn 2 lượt").assertIsDisplayed()
         composeRule.runOnIdle { assertEquals(1, exchanges) }
         capture("play-credit-exchanged")
     }
@@ -113,7 +111,7 @@ class PlayCreditsUiTest {
             )
         }
         repeat(2) {
-            composeRule.onAllNodesWithText("Đổi")[0].performClick()
+            composeRule.onNodeWithTag("play_credit_exchange:plays_5").performClick()
             composeRule.onNodeWithText("Xác nhận", ignoreCase = true).performClick()
             composeRule.waitForIdle()
         }
@@ -142,7 +140,7 @@ class PlayCreditsUiTest {
         composeRule.onNodeWithTag("gold_exchange_confirm").performClick()
         composeRule.onNodeWithTag("reward_receipt_dialog").assertIsDisplayed()
         composeRule.onNodeWithTag("reward_receipt_gold").assertIsDisplayed()
-        composeRule.onNodeWithText("+1.234").assertIsDisplayed()
+        composeRule.onNodeWithText("+1.234", substring = true).assertIsDisplayed()
         capture("gold-reward-popup")
         composeRule.onNodeWithTag("reward_receipt_close").performClick()
         composeRule.onNodeWithTag("reward_receipt_dialog").assertDoesNotExist()
