@@ -142,10 +142,16 @@ fun LeaderboardScreen(
                     )
                 }
                 ArcadeSegmentedControl(
-                    labels = listOf(localized(TextKey.Individual), localized(TextKey.Clan)),
+                    labels = listOf(localized(TextKey.Individual), localized(TextKey.Clan), localized(TextKey.Friends)),
                     selectedIndex = selectedMainTab,
                     onSelected = { selectedMainTab = it },
-                    itemTestTag = { if (it == 0) "leaderboard_tab_players" else "leaderboard_tab_clans" },
+                    itemTestTag = {
+                        when (it) {
+                            0 -> "leaderboard_tab_players"
+                            1 -> "leaderboard_tab_clans"
+                            else -> "leaderboard_tab_friends"
+                        }
+                    },
                     modifier = Modifier.padding(top = 8.dp, bottom = 12.dp)
                 )
 
@@ -167,6 +173,8 @@ fun LeaderboardScreen(
                             }
                         }
                     )
+                } else if (selectedMainTab == 2) {
+                    FriendLeaderboard(state = state, onSelectPlayer = { selectedPlayer = it })
                 } else {
                     ClanLeaderboard(
                         state = state,
@@ -549,6 +557,44 @@ private fun ClanLeaderboard(
             }
         }
         currentEntry?.let {
+            CurrentPositionCard(it, Modifier.align(Alignment.BottomCenter).padding(bottom = 26.dp))
+        }
+    }
+}
+
+/** Tab "Bạn bè": chính người chơi và bạn bè, xếp theo Elo (server gửi sẵn hạng trong nhóm). */
+@Composable
+private fun FriendLeaderboard(state: GameState, onSelectPlayer: (LeaderboardEntrySnapshot) -> Unit) {
+    val friends = state.leaderboard?.friendPlayers.orEmpty()
+    val selfId = state.profile?.userId
+    val toBoard: @Composable (LeaderboardEntrySnapshot, String?) -> BoardEntry = { entry, tag ->
+        BoardEntry(
+            key = entry.playerCode,
+            rank = entry.rank,
+            name = entry.displayName,
+            details = localizedRankedTierName(rankedTierFor(entry.eloRating)),
+            value = entry.eloRating.toString(),
+            testTag = tag ?: "leaderboard_friend_${entry.playerCode}",
+            highlighted = entry.userId != null && entry.userId == selfId,
+            onClick = { onSelectPlayer(entry) },
+            emblem = { size -> PlayerAvatar(entry.displayName, entry.avatarId, entry.userId, entry.frameId, size = size) }
+        )
+    }
+    val boardEntries = friends.map { toBoard(it, null) }
+    val currentEntry = friends.firstOrNull { it.userId != null && it.userId == selfId }?.let { toBoard(it, "leaderboard_current_friend") }
+    Box(Modifier.fillMaxSize()) {
+        LazyColumn(
+            modifier = Modifier.fillMaxSize().testTag("leaderboard_friends_list"),
+            contentPadding = PaddingValues(bottom = if (currentEntry != null) 128.dp else 24.dp),
+            verticalArrangement = Arrangement.spacedBy(14.dp)
+        ) {
+            item(key = "friend_board") {
+                // Chỉ có mình mình (chưa có bạn) thì gợi ý kết bạn thay vì một bảng một người.
+                if (friends.size <= 1) LeaderboardEmptyPanel(localized(TextKey.FriendLeaderboardEmpty))
+                else LeaderboardBoard(boardEntries)
+            }
+        }
+        if (friends.size > 1) currentEntry?.let {
             CurrentPositionCard(it, Modifier.align(Alignment.BottomCenter).padding(bottom = 26.dp))
         }
     }

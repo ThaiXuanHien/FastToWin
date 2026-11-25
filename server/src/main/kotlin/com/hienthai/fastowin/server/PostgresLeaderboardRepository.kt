@@ -29,6 +29,7 @@ class PostgresLeaderboardRepository(
             var goldClanLeaderboard = RankedClans()
             var gemClanLeaderboard = RankedClans()
             var playerClans = emptyMap<String, PlayerClan>()
+            var friendPlayers = emptyList<LeaderboardEntrySnapshot>()
             val safeLimit = limit.coerceIn(1, MAX_LEADERBOARD_SIZE)
 
             dataSource.connection.use { connection ->
@@ -84,6 +85,7 @@ class PostgresLeaderboardRepository(
                 levelClanLeaderboard = connection.loadClanLeaderboard(currentId, safeLimit, ClanMetric.LEVEL)
                 goldClanLeaderboard = connection.loadClanLeaderboard(currentId, safeLimit, ClanMetric.GOLD)
                 gemClanLeaderboard = connection.loadClanLeaderboard(currentId, safeLimit, ClanMetric.GEMS)
+                friendPlayers = connection.loadFriendLeaderboard(currentId)
                 
                 connection.prepareStatement(
                     "SELECT id, name FROM seasons WHERE CURRENT_TIMESTAMP >= starts_at AND CURRENT_TIMESTAMP < ends_at ORDER BY starts_at DESC LIMIT 1"
@@ -211,7 +213,8 @@ class PostgresLeaderboardRepository(
                 topGoldClans = goldClanLeaderboard.top,
                 currentGoldClan = goldClanLeaderboard.current,
                 topGemClans = gemClanLeaderboard.top,
-                currentGemClan = gemClanLeaderboard.current
+                currentGemClan = gemClanLeaderboard.current,
+                friendPlayers = friendPlayers
             )
         }
 
@@ -253,6 +256,63 @@ class PostgresLeaderboardRepository(
     }
 
     private data class PlayerClan(val id: String, val name: String, val logoId: String?, val logoRevision: String?)
+
+    /**
+     * Bảng "Bạn bè": người chơi và các bạn đã chấp nhận kết bạn (tài khoản còn hoạt động), xếp theo Elo hiện tại.
+     * Người chưa đấu trận nào vẫn có mặt với Elo khởi điểm để danh sách bạn bè luôn đầy đủ.
+     */
+    private fun Connection.loadFriendLeaderboard(currentPlayerId: UUID): List<LeaderboardEntrySnapshot> =
+        prepareStatement(
+            """
+            WITH circle AS (
+                SELECT CASE WHEN f.requester_id = ? THEN f.addressee_id ELSE f.requester_id END AS user_id
+                FROM friendships f
+                WHERE (f.requester_id = ? OR f.addressee_id = ?) AND f.status = 'ACCEPTED'
+                UNION
+                SELECT ?
+            )
+            SELECT p.user_id, p.display_name, p.player_code, p.avatar_url,
+                   COALESCE(s.wins, 0) AS wins, COALESCE(s.total_matches, 0) AS total_matches,
+                   COALESCE(s.highest_score, 0) AS highest_score, COALESCE(s.elo_rating, 1000) AS elo_rating,
+                   COALESCE(s.equipped_frame_id, 'frame_default') AS frame_id,
+                   ROW_NUMBER() OVER (
+                       ORDER BY COALESCE(s.elo_rating, 1000) DESC,
+                                COALESCE(s.wins, 0) DESC,
+                                LOWER(p.display_name) ASC,
+                                p.user_id ASC
+                   ) AS rank
+            FROM circle c
+            JOIN users u ON u.id = c.user_id
+            JOIN profiles p ON p.user_id = c.user_id
+            LEFT JOIN player_stats s ON s.user_id = c.user_id
+            WHERE u.status = 'ACTIVE'
+            ORDER BY rank
+            LIMIT $MAX_FRIEND_LEADERBOARD_SIZE
+            """.trimIndent()
+        ).use { statement ->
+            statement.setObject(1, currentPlayerId)
+            statement.setObject(2, currentPlayerId)
+            statement.setObject(3, currentPlayerId)
+            statement.setObject(4, currentPlayerId)
+            statement.executeQuery().use { result ->
+                buildList {
+                    while (result.next()) add(
+                        LeaderboardEntrySnapshot(
+                            rank = result.getInt("rank"),
+                            displayName = result.getString("display_name"),
+                            playerCode = result.getString("player_code"),
+                            wins = result.getInt("wins"),
+                            totalMatches = result.getInt("total_matches"),
+                            highestScore = result.getInt("highest_score"),
+                            eloRating = result.getInt("elo_rating"),
+                            userId = result.getObject("user_id", UUID::class.java).toString(),
+                            avatarId = result.getString("avatar_url"),
+                            frameId = result.getString("frame_id")
+                        )
+                    )
+                }
+            }
+        }
 
     private fun Connection.loadAssetLeaderboard(
         currentPlayerId: UUID,
@@ -395,5 +455,6 @@ class PostgresLeaderboardRepository(
 
     private companion object {
         const val MAX_LEADERBOARD_SIZE = 100
+        const val MAX_FRIEND_LEADERBOARD_SIZE = 200
     }
 }
