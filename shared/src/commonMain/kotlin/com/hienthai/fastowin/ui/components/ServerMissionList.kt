@@ -49,13 +49,22 @@ fun ServerMissionList(
         if (state.loadError != null) MissionError()
         // A1: nút tải lại chỉ hiện khi lỗi hoặc chưa có nhiệm vụ.
         if (state.loadError != null || (!state.isLoading && state.items.isEmpty())) {
-            ArcadeActionButton(
-                label = localized(if (state.loadError != null) TextKey.Retry else TextKey.MissionRefresh),
-                onClick = onRefresh, enabled = !state.isLoading, style = ArcadeActionStyle.OUTLINE,
-                modifier = Modifier.fillMaxWidth().testTag("refresh_missions")
-            )
+            // Chưa có nhiệm vụ / lỗi: một thẻ gọn có lời nhắn và nút tải lại.
+            Column(
+                Modifier.fillMaxWidth().a1Card().padding(horizontal = 18.dp, vertical = 14.dp),
+                verticalArrangement = Arrangement.spacedBy(10.dp)
+            ) {
+                if (!state.isLoading && state.loadError == null && state.items.isEmpty()) {
+                    Text(localized(TextKey.NoMissions), style = MaterialTheme.typography.bodyMedium,
+                        fontWeight = FontWeight.SemiBold, color = A1Palette.Muted)
+                }
+                ArcadeActionButton(
+                    label = localized(if (state.loadError != null) TextKey.Retry else TextKey.MissionRefresh),
+                    onClick = onRefresh, enabled = !state.isLoading, style = ArcadeActionStyle.OUTLINE, compact = true,
+                    modifier = Modifier.fillMaxWidth().testTag("refresh_missions")
+                )
+            }
         }
-        if (!state.isLoading && state.loadError == null && state.items.isEmpty()) Text(localized(TextKey.NoMissions))
         MissionCadence.entries.forEach { cadence ->
             state.items.filter { it.period == cadence }.forEach { mission -> key(mission.instanceId) {
                 ServerMissionCard(mission, mission.instanceId in state.pendingIds, state.itemErrors[mission.instanceId] != null) { onClaim(mission.instanceId) }
