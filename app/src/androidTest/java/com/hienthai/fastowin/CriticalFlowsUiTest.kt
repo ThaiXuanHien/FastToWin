@@ -415,9 +415,12 @@ class CriticalFlowsUiTest {
         }
         assertTrue(shopTabWidths.all { width -> abs(width - shopTabWidths.first()) <= 1f })
         composeRule.onNodeWithTag("shop_tab:GEMS").assertIsDisplayed().performClick()
-        composeRule.onNodeWithText("Kho Gem").assertIsDisplayed()
-        composeRule.onNodeWithText("Gói Tân binh").assertIsDisplayed()
+        composeRule.onNodeWithText("80 Gem").assertIsDisplayed()
         composeRule.onNodeWithText("Sandbox").performClick()
+        // Thiết kế A1: bảng xác nhận trước khi mở thanh toán của cửa hàng ứng dụng.
+        composeRule.runOnIdle { assertEquals(null, purchasedProductId) }
+        composeRule.onNodeWithText("MUA · Sandbox").assertIsDisplayed()
+        composeRule.onNodeWithTag("gem_purchase_confirm").performClick()
         composeRule.runOnIdle { assertEquals(gemPackage.productId, purchasedProductId) }
     }
 
@@ -1049,9 +1052,8 @@ class CriticalFlowsUiTest {
         // the screen content behind it. Validate the dialog against its real host window.
         val displayMetrics = InstrumentationRegistry.getInstrumentation()
             .targetContext.resources.displayMetrics
-        val expectedMaxDialogWidth = with(composeRule.density) {
-            minOf(420.dp.toPx(), displayMetrics.widthPixels - 20.dp.toPx())
-        }
+        // Thiết kế A1: xác nhận đổi là bảng trượt từ đáy, rộng tối đa bằng cửa sổ.
+        val expectedMaxDialogWidth = displayMetrics.widthPixels.toFloat()
         val expectedMaxDialogHeight = with(composeRule.density) {
             displayMetrics.heightPixels - 24.dp.toPx()
         }

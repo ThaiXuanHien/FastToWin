@@ -837,11 +837,6 @@ private fun ProfileTierBox(rating: Int) {
     }
 }
 
-private fun groupThousands(value: Long): String {
-    val raw = kotlin.math.abs(value).toString().reversed().chunked(3).joinToString(".").reversed()
-    return if (value < 0) "-$raw" else raw
-}
-
 /** Màu ô icon của từng dòng (".ico" trong thiết kế). */
 private enum class ProfileTile(val top: Color, val bottom: Color, val edge: Color, val icon: Color) {
     BLUE(A1Palette.Blue1, A1Palette.Blue2, A1Palette.BlueDeep, Color.White),

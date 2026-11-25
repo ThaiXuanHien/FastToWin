@@ -8,6 +8,7 @@ import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.performScrollTo
 import androidx.compose.ui.test.performScrollToNode
 import com.hienthai.fastowin.localization.AppLanguage
 import com.hienthai.fastowin.localization.ProvideLocalization
@@ -112,7 +113,7 @@ class LocalizedSocialShopUiTest {
             ShopScreen(progression = null, onClose = {})
         }
         composeRule.onNodeWithText("Cửa hàng").assertIsDisplayed()
-        composeRule.onNodeWithText("Kho Gem").assertIsDisplayed()
+        composeRule.onNodeWithText("Giá hiển thị theo App Store / Google Play của bạn.").assertIsDisplayed()
     }
 
     @Test
@@ -125,11 +126,11 @@ class LocalizedSocialShopUiTest {
         }
 
         composeRule.onNodeWithText("Vàng").performClick()
-        composeRule.onNodeWithText("Túi Vàng").assertIsDisplayed()
-        composeRule.onNodeWithText("Rương Vàng").assertIsDisplayed()
-        composeRule.onNodeWithTag("gold_exchange_list")
-            .performScrollToNode(hasText("Kho Báu Vàng"))
-        composeRule.onNodeWithText("Kho Báu Vàng").assertIsDisplayed()
+        composeRule.onNodeWithText("Đổi Gem lấy Vàng").assertIsDisplayed()
+        composeRule.onNodeWithText("1.000 Vàng").assertIsDisplayed()
+        composeRule.onNodeWithText("5.000 Vàng").assertIsDisplayed()
+        composeRule.onNodeWithText("+11% thêm").assertIsDisplayed()
+        composeRule.onNodeWithText("10.000 Vàng").performScrollTo().assertIsDisplayed()
     }
 
     @Test

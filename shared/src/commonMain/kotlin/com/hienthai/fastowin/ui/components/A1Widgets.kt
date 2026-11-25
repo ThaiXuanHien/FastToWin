@@ -204,7 +204,7 @@ fun A1BottomSheet(
                                 .heightIn(min = 5.dp)
                                 .background(A1Palette.SurfaceAlt2, RoundedCornerShape(3.dp))
                         )
-                        Text(
+                        if (title.isNotBlank()) Text(
                             title,
                             style = MaterialTheme.typography.headlineSmall,
                             color = A1Palette.Ink,

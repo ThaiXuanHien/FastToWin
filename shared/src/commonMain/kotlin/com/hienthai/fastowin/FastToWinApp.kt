@@ -2049,6 +2049,38 @@ private fun GameContent(
                     modifier = Modifier.fillMaxSize()
                 )
 
+                // Cửa hàng phủ lên các tab (mở từ mục "Cửa hàng" ở tab Tôi thì Back quay lại Tôi).
+                state.isShopOpen -> ShopScreen(
+                    progression = state.profile?.progression,
+                    gemPackages = state.gemStorePackages,
+                    billingState = storeBillingState.copy(isReady = storeBillingState.isReady && newCheckoutAllowed),
+                    isCatalogLoading = state.isGemStoreCatalogLoading,
+                    isAccount = !isGuest,
+                    onBuyGems = { productId ->
+                        if (newCheckoutAllowed) storeBillingGateway.purchase(productId, accountUserId)
+                    },
+                    onExchangeGold = { offerId -> controller.exchangeGemsForGold(offerId) },
+                    quota = state.playQuota,
+                    onExchangePlays = giftClient?.takeIf { newCheckoutAllowed }?.let { client ->
+                        { offerId, requestId ->
+                            client.exchangePlays(offerId, requestId)
+                            controller.refreshProfileAfterGiftClaim()
+                            controller.requestPlayQuota()
+                        }
+                    },
+                    isGoldExchangePending = state.exchangingGoldRequestId != null,
+                    exchangeNotice = state.profileNotice,
+                    goldExchangeResult = state.goldExchangeResult,
+                    onDismissGoldExchangeResult = controller::clearGoldExchangeResult,
+                    storePurchaseResult = state.storePurchaseResult,
+                    onDismissStorePurchaseResult = { requestId -> controller.clearStorePurchaseResult(requestId) },
+                    onClose = { navigateBack(controller::closeShop) },
+                    unreadNotifications = state.unreadNotificationCount,
+                    onNotifications = openNotifications,
+                    initialTab = shopInitialTab,
+                    onOpenPurchaseHistory = if (isGuest) null else ({ openOwnProfileSection(ProfileSection.WALLET) })
+                )
+
                 state.isLeaderboardOpen -> TopLevelTabIfNeeded(
                     enabled = showTopLevelNavigation,
                     state = state,
@@ -2139,36 +2171,6 @@ private fun GameContent(
                     profileEditState = profileEditor
                 ) }
                 
-                state.isShopOpen -> ShopScreen(
-                    progression = state.profile?.progression,
-                    gemPackages = state.gemStorePackages,
-                    billingState = storeBillingState.copy(isReady = storeBillingState.isReady && newCheckoutAllowed),
-                    isCatalogLoading = state.isGemStoreCatalogLoading,
-                    isAccount = !isGuest,
-                    onBuyGems = { productId ->
-                        if (newCheckoutAllowed) storeBillingGateway.purchase(productId, accountUserId)
-                    },
-                    onExchangeGold = { offerId -> controller.exchangeGemsForGold(offerId) },
-                    quota = state.playQuota,
-                    onExchangePlays = giftClient?.takeIf { newCheckoutAllowed }?.let { client ->
-                        { offerId, requestId ->
-                            client.exchangePlays(offerId, requestId)
-                            controller.refreshProfileAfterGiftClaim()
-                            controller.requestPlayQuota()
-                        }
-                    },
-                    isGoldExchangePending = state.exchangingGoldRequestId != null,
-                    exchangeNotice = state.profileNotice,
-                    goldExchangeResult = state.goldExchangeResult,
-                    onDismissGoldExchangeResult = controller::clearGoldExchangeResult,
-                    storePurchaseResult = state.storePurchaseResult,
-                    onDismissStorePurchaseResult = { requestId -> controller.clearStorePurchaseResult(requestId) },
-                    onClose = { navigateBack(controller::closeShop) },
-                    unreadNotifications = state.unreadNotificationCount,
-                    onNotifications = openNotifications,
-                    initialTab = shopInitialTab
-                )
-
                 state.isClanOpen -> TopLevelTabIfNeeded(
                     enabled = showTopLevelNavigation && state.viewedLeaderboardClanId == null,
                     state = state,

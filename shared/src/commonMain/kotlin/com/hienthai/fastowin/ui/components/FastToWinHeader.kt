@@ -107,12 +107,16 @@ fun FastToWinHeader(
     val hasTitle = title.isNotBlank() && !(showBrand && onBack == null)
     val fontScale = LocalDensity.current.fontScale
     // Màn hẹp hoặc chữ lớn: đưa ô tiền tệ xuống hàng thứ hai để tiêu đề còn chỗ đọc.
-    val stackBalances = hasTitle && showBalances && (maxWidth < 360.dp || (maxWidth < 480.dp && fontScale >= 1.3f))
+    // Có nút quay lại thì máy 360dp không đủ chỗ cho tiêu đề (vd. "Cửa hàng" bị cắt thành "Cửa hà…").
+    val stackBalances = hasTitle && showBalances && (maxWidth < 360.dp || (onBack != null && maxWidth < 380.dp) ||
+        (maxWidth < 480.dp && fontScale >= 1.3f))
     // Không có chuông lẫn nút quay lại (tab Tôi) thì đủ chỗ cho nút "+" như thiết kế.
     val showPlus = !hasTitle || (!showNotifications && onBack == null) || maxWidth >= 600.dp
+    // Có nút quay lại trên điện thoại thường (< 420dp): ô tiền gọn hơn để tiêu đề không bị cắt.
+    val tightBalances = onBack != null && hasTitle && !stackBalances && maxWidth < 420.dp
     val balances: @Composable () -> Unit = {
-        HeaderCurrency(amount = gold, label = localized(TextKey.Gold), isGem = false, showPlus = showPlus, onClick = walletNavigation.onGold)
-        HeaderCurrency(amount = gems, label = localized(TextKey.Gems), isGem = true, showPlus = showPlus, onClick = walletNavigation.onGems)
+        HeaderCurrency(amount = gold, label = localized(TextKey.Gold), isGem = false, showPlus = showPlus, onClick = walletNavigation.onGold, tight = tightBalances)
+        HeaderCurrency(amount = gems, label = localized(TextKey.Gems), isGem = true, showPlus = showPlus, onClick = walletNavigation.onGems, tight = tightBalances)
     }
     Column(Modifier.fillMaxWidth()) {
     Row(
@@ -130,7 +134,7 @@ fun FastToWinHeader(
             .heightIn(min = 64.dp)
             .padding(horizontal = 16.dp, vertical = 8.dp),
         verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(10.dp)
+        horizontalArrangement = Arrangement.spacedBy(if (tightBalances) 6.dp else 10.dp)
     ) {
         if (onBack != null) {
             ArcadeHeaderIconButton(onClick = onBack) {
@@ -265,7 +269,7 @@ fun HeaderRefreshAction(
  * 24dp, số Baloo 15sp và nút "+" xanh lá mở cửa hàng.
  */
 @Composable
-private fun HeaderCurrency(amount: Int, label: String, isGem: Boolean, showPlus: Boolean, onClick: () -> Unit) {
+private fun HeaderCurrency(amount: Int, label: String, isGem: Boolean, showPlus: Boolean, onClick: () -> Unit, tight: Boolean = false) {
     val shape = RoundedCornerShape(22.dp)
     val shown = compactNumber(amount.toLong())
     val spoken = "${fullNumber(amount.toLong())} $label"
@@ -287,11 +291,11 @@ private fun HeaderCurrency(amount: Int, label: String, isGem: Boolean, showPlus:
                     drawRect(Color.Black.copy(alpha = 0.08f), topLeft = androidx.compose.ui.geometry.Offset(0f, size.height - 3.dp.toPx()))
                 }
                 .border(2.dp, A1Palette.Line, shape)
-                .padding(start = 9.dp, end = if (showPlus) 6.dp else 12.dp, top = 5.dp, bottom = 5.dp),
+                .padding(start = if (tight) 6.dp else 9.dp, end = if (showPlus) 6.dp else if (tight) 9.dp else 12.dp, top = 5.dp, bottom = 5.dp),
             verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(10.dp)
+            horizontalArrangement = Arrangement.spacedBy(if (tight) 5.dp else 10.dp)
         ) {
-            if (isGem) A1GemIcon(size = 24.dp) else A1CoinIcon(size = 24.dp)
+            if (isGem) A1GemIcon(size = if (tight) 20.dp else 24.dp) else A1CoinIcon(size = if (tight) 20.dp else 24.dp)
             Text(
                 shown,
                 style = MaterialTheme.typography.titleSmall.copy(fontSize = 15.sp, lineHeight = 18.sp),

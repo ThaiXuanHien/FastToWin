@@ -19,6 +19,28 @@ import com.hienthai.fastowin.ui.screens.TournamentScreen
 @PreviewTest
 @ArcadeScreenshotDevices
 @Composable
+fun shopGemCatalog() = ArcadeScreenshotFrame {
+    val packages = ArcadeScreenshotFixtures.gemPackages()
+    ShopScreen(
+        progression = ArcadeScreenshotFixtures.profile().progression,
+        onClose = {},
+        gemPackages = packages,
+        billingState = StoreBillingState(
+            platform = StorePlatform.GOOGLE_PLAY,
+            isReady = true,
+            prices = packages.associate { item ->
+                item.productId to StoreProductPrice(item.productId, "49.000 ₫")
+            }
+        ),
+        isAccount = true,
+        initialTab = ShopTab.GEMS,
+        onOpenPurchaseHistory = {}
+    )
+}
+
+@PreviewTest
+@ArcadeScreenshotDevices
+@Composable
 fun shopGoldCatalog() = ArcadeScreenshotFrame {
     val packages = ArcadeScreenshotFixtures.gemPackages()
     ShopScreen(
