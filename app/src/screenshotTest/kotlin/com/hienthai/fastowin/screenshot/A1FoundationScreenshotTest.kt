@@ -62,3 +62,17 @@ fun a1Foundation() = ArcadeScreenshotFrame {
         }
     }
 }
+
+/** Nút 3D trong hộp thoại (chiều cao có giới hạn) phải cao theo nội dung, không giãn hết cỡ. */
+@PreviewTest
+@Preview(name = "a1_dialog_buttons", widthDp = 390, heightDp = 844)
+@Composable
+fun a1DialogButtons() = ArcadeScreenshotFrame {
+    com.hienthai.fastowin.ui.components.ArcadeDialog(title = "Lời mời kết bạn", subtitle = "Bạn Dev muốn kết bạn với bạn.", onDismissRequest = {}) {
+        Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            ArcadeActionButton("CHẤP NHẬN", onClick = {}, modifier = Modifier.fillMaxWidth())
+            ArcadeActionButton("Để sau", onClick = {}, style = ArcadeActionStyle.OUTLINE, modifier = Modifier.fillMaxWidth())
+            ArcadeActionButton("Từ chối", onClick = {}, style = ArcadeActionStyle.DANGER, modifier = Modifier.fillMaxWidth())
+        }
+    }
+}

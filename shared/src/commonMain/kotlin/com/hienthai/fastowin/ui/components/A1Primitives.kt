@@ -7,6 +7,7 @@ import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxScope
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.heightIn
@@ -172,9 +173,11 @@ internal fun A1RaisedSurface(
                 drawRoundRect(colors.base, topLeft = Offset(0f, depth.toPx()), size = Size(size.width, size.height), cornerRadius = CornerRadius(r, r))
             }
     ) {
+        // Chỉ lấp chiều ngang; chiều cao theo nội dung (tối thiểu theo min của cha nhờ propagateMinConstraints).
+        // Không dùng fillMaxSize: trong hộp thoại (chiều cao có giới hạn) nút sẽ giãn hết cỡ.
         Box(
             modifier = Modifier
-                .fillMaxSize()
+                .fillMaxWidth()
                 .offset(y = if (pressed) depth else 0.dp)
                 .clip(shape)
                 .background(Brush.verticalGradient(listOf(colors.top, colors.bottom)))
