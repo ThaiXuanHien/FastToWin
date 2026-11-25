@@ -141,3 +141,33 @@ fun notificationInbox() = ArcadeScreenshotFrame {
         nowMillis = ArcadeScreenshotFixtures.NOW_MILLIS
     )
 }
+
+@PreviewTest
+@ArcadeScreenshotDevices
+@Composable
+fun clanDiscovery() = ArcadeScreenshotFrame {
+    ClanScreen(
+        serverUrl = "",
+        currentUserId = "player-1",
+        myClanId = null,
+        clanList = listOf(
+            com.hienthai.fastowin.protocol.ClanSummarySnapshot("c1", "Thần Tốc Việt", 46, 50, 6449, logoId = "eagle", level = 18),
+            com.hienthai.fastowin.protocol.ClanSummarySnapshot("c2", "Sói Đêm", 30, 50, 4102, logoId = "wolf", level = 12),
+            com.hienthai.fastowin.protocol.ClanSummarySnapshot("c3", "Vương Miện 50", 21, 40, 2876, logoId = "crown", level = 9)
+        ),
+        pendingJoinClanIds = setOf("c2"),
+        currentClan = null,
+        notice = null,
+        onCreateClan = { _, _ -> },
+        onJoinClan = {},
+        onLeaveClan = {},
+        onSearch = {},
+        onKickMember = { _, _ -> },
+        onRespondJoinRequest = { _, _, _ -> },
+        onUpdateLogo = { _, _ -> },
+        onClaimQuest = {},
+        onViewClan = {},
+        onBack = {},
+        showBackButton = false
+    )
+}

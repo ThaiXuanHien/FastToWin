@@ -3,6 +3,8 @@ package com.hienthai.fastowin
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.RowScope
+import androidx.compose.material.icons.rounded.Settings
+import com.hienthai.fastowin.protocol.canModerateClan
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.CircularProgressIndicator
@@ -612,6 +614,7 @@ private fun GameContent(
         clanMissions?.state?.collectAsState() ?: remember { mutableStateOf(com.hienthai.fastowin.state.MissionState()) }
     }
     var showClanRace by rememberSaveable(accountUserId) { mutableStateOf(false) }
+    var clanSettingsRequest by remember { mutableStateOf(0) }
     val currentRaceTokenProvider by rememberUpdatedState(accessTokenProvider)
     val raceController = remember(serverUrl, accountUserId, isGuest, authRequestConfigurator) {
         if (isGuest || accountUserId == null || accessTokenProvider == null) null else
@@ -2169,7 +2172,23 @@ private fun GameContent(
                     onLeaderboard = openLeaderboardTab,
                     onClan = controller::openClan,
                     onAccount = openAccountTab,
-                    onNotifications = openNotifications
+                    onNotifications = openNotifications,
+                    // Thiết kế A1: tab Bang chỉ có tiêu đề (không tiền tệ, chuông) và nút bánh răng cho bang chủ/phó bang.
+                    headerActions = {
+                        val clan = state.currentClan
+                        val userId = state.profile?.userId
+                        val canManageClan = clan != null && clan.id == state.profile?.clanId && userId != null &&
+                            (clan.ownerId == userId || clan.members.firstOrNull { it.userId == userId }?.role?.canModerateClan() == true)
+                        if (canManageClan) {
+                            com.hienthai.fastowin.ui.components.ArcadeHeaderIconButton(
+                                onClick = { clanSettingsRequest += 1 },
+                                modifier = Modifier.testTag("clan_settings")
+                            ) {
+                                androidx.compose.material3.Icon(androidx.compose.material.icons.Icons.Rounded.Settings, contentDescription = localized(TextKey.SelectClanLogo),
+                                    tint = com.hienthai.fastowin.ui.theme.A1Palette.Ink)
+                            }
+                        }
+                    }
                 ) { contentModifier -> ClanScreen(
                      serverUrl = serverUrl,
                      currentUserId = state.profile?.userId,
@@ -2217,6 +2236,9 @@ private fun GameContent(
                     onRefreshMissions = { missionScope.launch { clanMissions?.refresh() } },
                     onClaimMissionInstance = { id -> missionScope.launch { clanMissions?.claim(id) } },
                     onDismissMissionReward = { clanMissions?.clearLastClaimedReward() },
+                    settingsRequest = clanSettingsRequest,
+                    clanRank = state.leaderboard?.let { it.currentLevelClan ?: it.currentClan }
+                        ?.takeIf { it.clanId == state.profile?.clanId }?.rank,
                     onOpenRace = if (state.viewedLeaderboardClanId == null && !isGuest) {
                         { navigateToAppRoute("/clan/race") { showClanRace = true } }
                     } else null,

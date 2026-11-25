@@ -63,6 +63,7 @@ import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.LiveRegionMode
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.disabled
 import androidx.compose.ui.semantics.liveRegion
 import androidx.compose.ui.semantics.role
 import androidx.compose.ui.semantics.selected
@@ -120,6 +121,24 @@ import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.material.icons.automirrored.rounded.Logout
+import androidx.compose.material.icons.rounded.Lock
+import androidx.compose.material.icons.automirrored.rounded.Notes
+import androidx.compose.material.icons.rounded.AddModerator
+import androidx.compose.material.icons.rounded.VolunteerActivism
+import androidx.compose.foundation.layout.widthIn
+import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.unit.sp
+import com.hienthai.fastowin.ui.components.A1CoinIcon
+import com.hienthai.fastowin.ui.components.A1Dimens
+import com.hienthai.fastowin.ui.components.A1GemIcon
+import com.hienthai.fastowin.ui.components.A1Tag
+import com.hienthai.fastowin.ui.components.A1TagTone
+import com.hienthai.fastowin.ui.components.UgcReportMenuItem
+import com.hienthai.fastowin.ui.components.a1Card
+import com.hienthai.fastowin.ui.theme.A1Palette
+import com.hienthai.fastowin.protocol.FriendPresence
+
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -171,7 +190,11 @@ fun ClanScreen(
     onUploadLogo: (clanId: String, bytes: ByteArray) -> Unit = { _, _ -> },
     onRemoveLogo: (clanId: String) -> Unit = {},
     onSetMemberRole: (clanId: String, memberId: String, role: ClanRole) -> Unit = { _, _, _ -> },
-    isLogoUploading: Boolean = false
+    isLogoUploading: Boolean = false,
+    /** Hạng của bang trên bảng xếp hạng bang (ô "Xếp hạng"), null khi chưa có. */
+    clanRank: Int? = null,
+    /** Tăng mỗi lần bấm nút bánh răng trên tiêu đề: mở cài đặt bang (biểu tượng bang). */
+    settingsRequest: Int = 0
 ) {
     SystemBackHandler(enabled = showBackButton, onBack = onBack)
     val ownClanChat = clanChat?.takeIf { viewedClanId == null && myClanId != null && currentClan?.id == myClanId }
@@ -200,12 +223,6 @@ fun ClanScreen(
             applySafeDrawingInsets = false
         ) { contentModifier ->
             Column(contentModifier) {
-                onOpenRace?.let { open ->
-                    androidx.compose.material3.OutlinedButton(open,
-                        modifier = Modifier.fillMaxWidth().padding(top = 12.dp).heightIn(min = 48.dp).testTag("clan_weekly_race_entry")) {
-                        Text(localized(TextKey.ClanRaceTitle), fontWeight = FontWeight.Bold)
-                    }
-                }
                 Box(Modifier.weight(1f)) {
                     val targetClanId = viewedClanId ?: myClanId
                     when {
@@ -256,7 +273,10 @@ fun ClanScreen(
                             onUploadLogo = { bytes -> onUploadLogo(currentClan.id, bytes) },
                             onRemoveLogo = { onRemoveLogo(currentClan.id) },
                             onSetMemberRole = { memberId, role -> onSetMemberRole(currentClan.id, memberId, role) },
-                            isLogoUploading = isLogoUploading
+                            isLogoUploading = isLogoUploading,
+                            onOpenRace = onOpenRace.takeIf { viewedClanId == null },
+                            clanRank = clanRank.takeIf { viewedClanId == null },
+                            settingsRequest = settingsRequest
                         )
 
                         else -> {
@@ -321,60 +341,46 @@ private fun ClanDiscoveryView(
         contentPadding = PaddingValues(top = 12.dp, bottom = 24.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp)
     ) {
-        item(key = "clan_hero") {
-            ArcadeFeatureHero(
-                illustration = Res.drawable.arcade_clan_crest,
-                title = localized(TextKey.ClanTogetherTitle),
-                subtitle = localized(TextKey.ClanTogetherDescription),
-                accent = ArcadePalette.Violet600
-            )
-        }
+        item(key = "clan_hero") { ClanDiscoveryHero() }
 
         notice?.let { item(key = "clan_notice") { ClanNotice(it) } }
+
+        item(key = "create_clan") {
+            ArcadeActionButton(
+                label = localized(TextKey.CreateClan),
+                onClick = { showCreateDialog = true },
+                icon = Icons.Rounded.AddModerator,
+                style = ArcadeActionStyle.GOLD,
+                large = true,
+                modifier = Modifier.fillMaxWidth().testTag("open_create_clan")
+            )
+        }
 
         // A native background editor would otherwise paint over the modal and
         // remain reachable by keyboard. Keep its lazy item observing modal state
         // so the cached composition disposes the editor, retaining the query.
         item(key = "clan_search") {
             if (!showCreateDialog) {
+                val runSearch = {
+                    visibleClanCount = DEFAULT_ARCADE_PAGE_SIZE
+                    onSearch(searchQuery.trim().takeIf(String::isNotEmpty))
+                }
                 OutlinedTextField(
                     value = searchQuery,
                     onValueChange = { searchQuery = it },
-                    label = localized(TextKey.SearchClan),
                     placeholder = localized(TextKey.SearchClanPlaceholder),
                     modifier = Modifier.fillMaxWidth().testTag("clan_search_field"),
                     singleLine = true,
-                    leadingIcon = { Icon(Icons.Rounded.Search, contentDescription = null) },
-                    trailingIcon = {
+                    leadingIcon = {
                         IconButton(
-                            onClick = {
-                                visibleClanCount = DEFAULT_ARCADE_PAGE_SIZE
-                                onSearch(searchQuery.trim().takeIf(String::isNotEmpty))
-                            },
+                            onClick = runSearch,
                             modifier = Modifier.semantics { contentDescription = searchActionDescription }
                         ) {
-                            Icon(Icons.Rounded.Search, contentDescription = null)
+                            Icon(Icons.Rounded.Search, contentDescription = null, tint = A1Palette.Ink)
                         }
                     }
                 )
             }
-        }
-
-        item(key = "create_clan") {
-            ArcadeActionButton(
-                label = localized(TextKey.CreateClan),
-                onClick = { showCreateDialog = true },
-                icon = Icons.Rounded.Add,
-                style = ArcadeActionStyle.GOLD,
-                modifier = Modifier.fillMaxWidth().testTag("open_create_clan")
-            )
-        }
-
-        item(key = "clan_list_title") {
-            ArcadeSectionHeading(
-                title = localized(TextKey.ExploreClans),
-                supporting = localizedQuantity(QuantityKey.Clans, clanList.size)
-            )
         }
 
         if (clanList.isEmpty()) {
@@ -420,68 +426,99 @@ private fun ClanDiscoveryView(
     }
 }
 
+/** Thẻ giới thiệu ở đầu màn tìm bang: khiên xanh + "Sát cánh tranh tài". */
+@Composable
+private fun ClanDiscoveryHero() {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .a1Card(background = Color.Transparent)
+            .background(Brush.linearGradient(listOf(Color.White, Color(0xFFE6F0FF))), RoundedCornerShape(A1Dimens.CardRadius))
+            .padding(horizontal = 16.dp, vertical = 16.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(14.dp)
+    ) {
+        ClanShieldEmblem("sword", Modifier.size(width = 72.dp, height = 82.dp))
+        Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+            Text(localized(TextKey.ClanTogetherTitle), style = MaterialTheme.typography.headlineSmall, color = A1Palette.Ink)
+            Text(
+                localized(TextKey.ClanTogetherDescription),
+                style = MaterialTheme.typography.bodyMedium,
+                fontWeight = FontWeight.SemiBold,
+                color = A1Palette.Muted
+            )
+        }
+    }
+}
+
+/** Thẻ bang trong danh sách (".card"): khiên, tên, "Cấp · thành viên · điểm", nút Xin vào / nhãn Đang chờ, menu ba chấm. */
 @Composable
 private fun ClanSummaryCard(
     clan: ClanSummarySnapshot,
     isPending: Boolean,
     onJoin: () -> Unit
 ) {
-    ArcadePanel(modifier = Modifier.fillMaxWidth(), accent = ArcadePalette.Violet400) {
-        BoxWithConstraints(modifier = Modifier.fillMaxWidth().padding(14.dp)) {
-            val compact = maxWidth < 400.dp || LocalDensity.current.fontScale >= 1.3f
-            if (compact) {
-                Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                    ClanSummaryIdentity(clan)
-                    ClanJoinButton(isPending, onJoin, Modifier.fillMaxWidth())
-                }
-            } else {
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(12.dp)
-                ) {
-                    ClanSummaryIdentity(clan, Modifier.weight(1f))
-                    ClanJoinButton(isPending, onJoin, Modifier.width(124.dp))
-                }
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .a1Card()
+            .padding(start = 14.dp, end = 4.dp, top = 12.dp, bottom = 12.dp)
+            .testTag("clan_card:${clan.id}"),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(12.dp)
+    ) {
+        ClanLogoMark(logoId = clan.logoId, modifier = Modifier.size(width = 56.dp, height = 64.dp), clanId = clan.id, logoRevision = clan.logoRevision)
+        Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+            Text(
+                clan.name,
+                style = MaterialTheme.typography.titleMedium.copy(fontSize = 17.sp),
+                color = A1Palette.Ink,
+                maxLines = 2,
+                overflow = TextOverflow.Ellipsis
+            )
+            Text(
+                localized(
+                    TextKey.ClanSummaryShort,
+                    "level" to clan.level,
+                    "members" to "${clan.memberCount}/${clan.maxMembers}",
+                    "points" to formatNumber(clan.trophies)
+                ),
+                style = MaterialTheme.typography.bodyMedium,
+                fontWeight = FontWeight.SemiBold,
+                color = A1Palette.Muted
+            )
+        }
+        ClanJoinButton(isPending, onJoin)
+        if (canReportUgcTarget(UgcTargetType.CLAN, clan.id)) {
+            ClanOverflowMenu(localized(TextKey.MoreActions)) { dismiss ->
+                UgcReportMenuItem(UgcTargetType.CLAN, clan.id, clan.name, dismiss)
             }
         }
     }
 }
 
 @Composable
-private fun ClanSummaryIdentity(clan: ClanSummarySnapshot, modifier: Modifier = Modifier) {
-    Row(
-        modifier = modifier,
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(12.dp)
-    ) {
-        ClanLogoMark(logoId = clan.logoId, modifier = Modifier.size(56.dp), clanId = clan.id, logoRevision = clan.logoRevision)
-        Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(3.dp)) {
-            Text(
-                clan.name,
-                style = MaterialTheme.typography.titleMedium,
-                fontWeight = FontWeight.Black,
-                maxLines = 2,
-                overflow = TextOverflow.Ellipsis
-            )
-            Text(
-                localized(TextKey.ClanSummary, "members" to "${clan.memberCount}/${clan.maxMembers}", "trophies" to formatNumber(clan.trophies)),
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant
-            )
-        }
-    }
-}
-
-@Composable
 private fun ClanJoinButton(isPending: Boolean, onJoin: () -> Unit, modifier: Modifier = Modifier) {
-    ArcadeActionButton(
-        label = localized(if (isPending) TextKey.PendingApproval else TextKey.RequestToJoin),
-        onClick = onJoin,
-        enabled = !isPending,
-        style = if (isPending) ArcadeActionStyle.OUTLINE else ArcadeActionStyle.PRIMARY,
-        modifier = modifier
-    )
+    if (isPending) {
+        // Nhãn "Đang chờ" thay cho nút: đọc như một nút đã tắt.
+        A1Tag(
+            localized(TextKey.PendingApproval),
+            A1TagTone.YELLOW,
+            modifier = modifier.semantics(mergeDescendants = true) {
+                role = Role.Button
+                disabled()
+            },
+            large = true
+        )
+    } else {
+        ArcadeActionButton(
+            label = localized(TextKey.RequestToJoin),
+            onClick = onJoin,
+            style = ArcadeActionStyle.SUCCESS,
+            compact = true,
+            modifier = modifier.width(100.dp)
+        )
+    }
 }
 
 @Composable
@@ -506,14 +543,16 @@ fun CreateClanDialog(
             value = name,
             onValueChange = { name = it.take(32) },
             label = localized(TextKey.ClanName),
-            leadingIcon = { Icon(Icons.Rounded.Shield, contentDescription = null) },
+            leadingIcon = { Icon(Icons.Rounded.Shield, contentDescription = null, tint = A1Palette.Muted) },
             singleLine = true,
+            supportingText = { Text(localized(TextKey.ClanNameLimit, "max" to 32)) },
             modifier = Modifier.fillMaxWidth().testTag("create_clan_name")
         )
         OutlinedTextField(
             value = description,
             onValueChange = { description = it.take(160) },
             label = localized(TextKey.ClanDescription),
+            leadingIcon = { Icon(Icons.AutoMirrored.Rounded.Notes, contentDescription = null, tint = A1Palette.Muted) },
             minLines = 3,
             maxLines = 4,
             modifier = Modifier.fillMaxWidth().testTag("create_clan_description")
@@ -522,28 +561,40 @@ fun CreateClanDialog(
             localized(TextKey.ClanCreationLevelRequirement,
                 "level" to CLAN_CREATION_MIN_LEVEL, "current" to playerLevel),
             modifier = Modifier.testTag("create_clan_level_requirement"),
-            color = if (playerLevel >= CLAN_CREATION_MIN_LEVEL) ArcadePalette.Mint400 else ArcadePalette.Coral400,
+            color = if (playerLevel >= CLAN_CREATION_MIN_LEVEL) A1Palette.GreenText else A1Palette.RedText,
+            fontWeight = FontWeight.SemiBold,
             style = MaterialTheme.typography.bodyMedium
         )
-        Text(
-            "${formatNumber(CLAN_CREATION_GOLD_COST)} ${localized(TextKey.Gold)} • " +
-                "${formatNumber(CLAN_CREATION_GEM_COST)} ${localized(TextKey.Gems)}",
-            modifier = Modifier.testTag("create_clan_cost"),
-            color = if (gold >= CLAN_CREATION_GOLD_COST && gems >= CLAN_CREATION_GEM_COST) {
-                ArcadePalette.Gold500
-            } else {
-                ArcadePalette.Coral400
-            },
-            style = MaterialTheme.typography.titleSmall,
-            fontWeight = FontWeight.Black
-        )
+        // Chi phí tạo bang: icon vàng + gem như các ô tiền tệ A1; đỏ khi không đủ.
+        val affordable = gold >= CLAN_CREATION_GOLD_COST && gems >= CLAN_CREATION_GEM_COST
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .background(if (affordable) A1Palette.Highlight else Color(0xFFFFE0E0), RoundedCornerShape(14.dp))
+                .border(2.dp, if (affordable) Color(0xFFE0A100) else Color(0xFFF08A8A), RoundedCornerShape(14.dp))
+                .padding(horizontal = 14.dp, vertical = 10.dp)
+                .semantics(mergeDescendants = true) {}
+                .testTag("create_clan_cost"),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            A1CoinIcon(size = 22.dp)
+            Text(
+                "${formatNumber(CLAN_CREATION_GOLD_COST)} ${localized(TextKey.Gold)} • " +
+                    "${formatNumber(CLAN_CREATION_GEM_COST)} ${localized(TextKey.Gems)}",
+                color = if (affordable) Color(0xFF7A4D00) else A1Palette.RedDeep,
+                style = MaterialTheme.typography.titleSmall
+            )
+            A1GemIcon(size = 22.dp)
+        }
         Column(
             modifier = Modifier.fillMaxWidth(),
             verticalArrangement = Arrangement.spacedBy(10.dp)
         ) {
             ArcadeActionButton(
-                label = localized(TextKey.CreateAction),
+                label = localized(TextKey.CreateClanCta),
                 onClick = { onCreate(name.trim(), description.trim()) },
+                large = true,
                 enabled = name.isNotBlank() &&
                     playerLevel >= CLAN_CREATION_MIN_LEVEL &&
                     gold >= CLAN_CREATION_GOLD_COST &&
@@ -598,12 +649,17 @@ fun ClanDetailView(
     onRemoveLogo: () -> Unit = {},
     onSetMemberRole: (memberId: String, role: ClanRole) -> Unit = { _, _ -> },
     isLogoUploading: Boolean = false,
+    /** Mở màn Đua bang (tab thứ ba); null khi đang xem bang khác. */
+    onOpenRace: (() -> Unit)? = null,
+    clanRank: Int? = null,
+    settingsRequest: Int = 0,
     chatNowMillis: Long? = null,
     /** Fixed zone for previews; null follows the device. */
     chatTimeZoneId: String? = null,
     initialChatTab: Boolean = false
 ) {
     var showLogoDialog by remember { mutableStateOf(false) }
+    var handledSettingsRequest by remember { mutableStateOf(settingsRequest) }
     var showLeaveConfirmation by remember { mutableStateOf(false) }
     var showDonationDialog by remember { mutableStateOf(false) }
     var kickTarget by remember { mutableStateOf<ClanMemberSnapshot?>(null) }
@@ -617,6 +673,12 @@ fun ClanDetailView(
     val currentMember = clan.members.firstOrNull { it.userId == currentUserId }
     // The leader and co-leaders manage the logo; the server re-checks every change.
     val canManageLogo = isOwner || currentMember?.role?.canModerateClan() == true
+    LaunchedEffect(settingsRequest) {
+        if (settingsRequest != handledSettingsRequest) {
+            handledSettingsRequest = settingsRequest
+            if (canManageLogo) showLogoDialog = true
+        }
+    }
     val chatAvailable = clanChat != null && currentMember != null
     var selectedTab by rememberSaveable(clan.id) { mutableStateOf(if (initialChatTab) 1 else 0) }
     val membersByElo = remember(clan.members) {
@@ -626,21 +688,47 @@ fun ClanDetailView(
     val canReportClan = canReportUgcTarget(UgcTargetType.CLAN, clan.id)
 
     val logoUrl = clanLogoImageUrl(clan.id, clan.logoRevision)
-    val overview: @Composable (Modifier) -> Unit = { listModifier -> LazyColumn(
+    val clanTabs: @Composable (Modifier) -> Unit = { tabModifier ->
+        val unread = clanChat?.unreadCount ?: 0
+        // Tab: Tổng quan · Chat (khi là thành viên) · Đua bang (mở màn đua tuần).
+        val tabs = buildList {
+            add("overview" to localized(TextKey.ClanTabOverviewShort))
+            if (chatAvailable) add(
+                "chat" to if (unread > 0 && selectedTab != 1) localized(TextKey.ClanTabChatUnread, "count" to unread)
+                else localized(TextKey.ClanTabChat)
+            )
+            if (onOpenRace != null) add("race" to localized(TextKey.ClanTabRace))
+        }
+        ArcadeSegmentedControl(
+            labels = tabs.map { it.second },
+            selectedIndex = selectedTab.coerceAtMost(if (chatAvailable) 1 else 0),
+            onSelected = { index ->
+                when (tabs[index].first) {
+                    "race" -> onOpenRace?.invoke()
+                    "chat" -> selectedTab = 1
+                    else -> selectedTab = 0
+                }
+            },
+            modifier = tabModifier,
+            itemTestTag = { index ->
+                when (tabs[index].first) {
+                    "chat" -> "clan_tab_chat"
+                    "race" -> "clan_weekly_race_entry"
+                    else -> "clan_tab_overview"
+                }
+            }
+        )
+    }
+    val overview: @Composable (Modifier, Boolean) -> Unit = { listModifier, withTabs -> LazyColumn(
         modifier = listModifier.testTag("clan_detail_list"),
         contentPadding = PaddingValues(top = 12.dp, bottom = 28.dp),
         verticalArrangement = Arrangement.spacedBy(14.dp)
     ) {
         item(key = "clan_detail_hero") {
-            ArcadeIconHero(
-                kicker = localized(TextKey.Clan),
-                title = clan.name,
-                subtitle = clan.description.ifBlank { localized(TextKey.DefaultClanDescription) },
-                icon = clanEmblemImageVector(clan.logoId),
-                accent = ArcadePalette.Violet600,
-                onIconClick = if (canManageLogo) ({ showLogoDialog = true }) else null,
-                iconContentDescription = localized(if (canManageLogo) TextKey.SelectClanLogo else TextKey.ClanLogo),
-                iconImageUrl = logoUrl
+            ClanDetailHero(
+                clan = clan,
+                logoUrl = logoUrl,
+                onEditLogo = if (canManageLogo) ({ showLogoDialog = true }) else null
             )
         }
 
@@ -653,7 +741,8 @@ fun ClanDetailView(
             }
         }
 
-        item(key = "clan_stats") { ClanStats(clan) }
+        item(key = "clan_stats") { ClanStats(clan, clanRank) }
+        if (withTabs) item(key = "clan_tabs") { clanTabs(Modifier) }
 
         item(key = "clan_progress") {
             ClanProgressCard(
@@ -670,12 +759,6 @@ fun ClanDetailView(
         }
 
         if (isOwner && clan.joinRequests.isNotEmpty()) {
-            item(key = "join_request_heading") {
-                ArcadeSectionHeading(
-                    title = localized(TextKey.JoinRequestsCount, "count" to clan.joinRequests.size),
-                    supporting = localized(TextKey.NewCount, "count" to clan.joinRequests.size)
-                )
-            }
             items(clan.joinRequests, key = { "request:${it.userId}" }) { request ->
                 ClanJoinRequestCard(
                     request = request,
@@ -685,21 +768,35 @@ fun ClanDetailView(
             }
         }
 
-        item(key = "member_heading") {
-            ArcadeSectionHeading(
-                title = localized(TextKey.ClanMembers),
-                supporting = "${clan.members.size}/${clan.maxMembers}"
-            )
-        }
-
-        items(visibleMembers, key = { "member:${it.userId}" }) { member ->
-            ClanMemberCard(
-                member = member,
-                isOwner = isOwner,
-                canRemove = clan.ownerId != member.userId,
-                onRemove = { kickTarget = member },
-                onViewProfile = { selectedMemberId = member.userId }
-            )
+        item(key = "member_list") {
+            Column(Modifier.fillMaxWidth().a1Card().padding(vertical = 4.dp)) {
+                Row(
+                    modifier = Modifier.fillMaxWidth().padding(start = 18.dp, end = 14.dp, top = 12.dp, bottom = 4.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    ClanSectionTitle(localized(TextKey.ClanMembers), Modifier.weight(1f))
+                    if (isOwner && clan.joinRequests.isNotEmpty()) {
+                        A1Tag(localized(TextKey.ClanRequestsShort, "count" to clan.joinRequests.size), A1TagTone.BLUE)
+                    } else {
+                        Text(
+                            "${clan.members.size}/${clan.maxMembers}",
+                            style = MaterialTheme.typography.titleSmall,
+                            color = A1Palette.Muted
+                        )
+                    }
+                }
+                visibleMembers.forEachIndexed { index, member ->
+                    ClanMemberCard(
+                        member = member,
+                        isSelf = member.userId == currentUserId,
+                        isOwner = isOwner,
+                        canRemove = clan.ownerId != member.userId,
+                        onRemove = { kickTarget = member },
+                        onViewProfile = { selectedMemberId = member.userId },
+                        showDivider = index < visibleMembers.lastIndex
+                    )
+                }
+            }
         }
 
         item(key = "clan_members_load_more") {
@@ -715,11 +812,16 @@ fun ClanDetailView(
 
         if (currentMember != null) item(key = "leave_clan") {
             ArcadeActionButton(
-                label = localized(TextKey.LeaveClan),
+                label = localized(TextKey.LeaveClanShort),
                 onClick = { showLeaveConfirmation = true },
-                style = ArcadeActionStyle.DANGER,
+                icon = Icons.AutoMirrored.Rounded.Logout,
+                style = ArcadeActionStyle.OUTLINE,
                 modifier = Modifier.fillMaxWidth().testTag("leave_clan")
-            )
+            ) {
+                Icon(Icons.AutoMirrored.Rounded.Logout, contentDescription = null, tint = A1Palette.RedText, modifier = Modifier.size(24.dp))
+                Spacer(Modifier.width(8.dp))
+                Text(localized(TextKey.LeaveClanShort), style = MaterialTheme.typography.titleMedium, color = A1Palette.RedText)
+            }
         }
         if (canReportClan) {
             item(key = "clan_report") {
@@ -742,26 +844,17 @@ fun ClanDetailView(
             )
         }
         when {
-            !chatAvailable -> overview(Modifier.fillMaxSize())
-            sideBySide -> Row(Modifier.fillMaxSize(), horizontalArrangement = Arrangement.spacedBy(16.dp)) {
-                overview(Modifier.weight(1f).fillMaxHeight())
+            !chatAvailable && onOpenRace == null -> overview(Modifier.fillMaxSize(), false)
+            sideBySide && onOpenRace == null -> Row(Modifier.fillMaxSize(), horizontalArrangement = Arrangement.spacedBy(16.dp)) {
+                overview(Modifier.weight(1f).fillMaxHeight(), false)
                 chatPanel(Modifier.width(400.dp).fillMaxHeight().padding(top = 12.dp, bottom = 16.dp))
             }
             else -> Column(Modifier.fillMaxSize()) {
-                val unread = clanChat?.unreadCount ?: 0
-                ArcadeSegmentedControl(
-                    labels = listOf(
-                        localized(TextKey.ClanTabOverview),
-                        if (unread > 0 && selectedTab != 1) localized(TextKey.ClanTabChatUnread, "count" to unread)
-                        else localized(TextKey.ClanTabChat)
-                    ),
-                    selectedIndex = selectedTab,
-                    onSelected = { selectedTab = it },
-                    modifier = Modifier.padding(top = 12.dp),
-                    itemTestTag = { if (it == 0) "clan_tab_overview" else "clan_tab_chat" }
-                )
-                if (selectedTab == 0) overview(Modifier.weight(1f).fillMaxWidth())
-                else chatPanel(Modifier.weight(1f).fillMaxWidth().padding(top = 12.dp, bottom = 12.dp))
+                if (selectedTab == 0) overview(Modifier.weight(1f).fillMaxWidth(), true)
+                else {
+                    clanTabs(Modifier.padding(top = 12.dp))
+                    chatPanel(Modifier.weight(1f).fillMaxWidth().padding(top = 12.dp, bottom = 12.dp))
+                }
             }
         }
     }
@@ -887,61 +980,51 @@ private fun ClanProgressCard(
     val progress = if (isMaxLevel) 1f else {
         clan.currentLevelExperience.toFloat() / clan.nextLevelExperience.coerceAtLeast(1)
     }.coerceIn(0f, 1f)
-    ArcadePanel(modifier = Modifier.fillMaxWidth(), accent = ArcadePalette.Violet600) {
-        Column(
-            modifier = Modifier.fillMaxWidth().padding(16.dp),
-            verticalArrangement = Arrangement.spacedBy(10.dp)
-        ) {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Text(
-                    localized(TextKey.ClanProgress),
-                    style = MaterialTheme.typography.labelMedium,
-                    color = ArcadePalette.Gold500,
-                    fontWeight = FontWeight.Black
-                )
-                Text(
-                    if (isMaxLevel) localized(TextKey.MaximumLevel) else localized(TextKey.Level, "level" to clan.level),
-                    style = MaterialTheme.typography.titleMedium,
-                    fontWeight = FontWeight.Black
-                )
-            }
-            LinearProgressIndicator(
-                progress = { progress },
-                modifier = Modifier.fillMaxWidth().height(9.dp),
-                color = ArcadePalette.Violet600,
-                trackColor = ArcadePalette.Navy700
-            )
+    Column(
+        modifier = Modifier.fillMaxWidth().a1Card().padding(horizontal = 18.dp, vertical = 16.dp),
+        verticalArrangement = Arrangement.spacedBy(10.dp)
+    ) {
+        Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+            ClanSectionTitle(localized(TextKey.ClanProgressTitle), Modifier.weight(1f))
             Text(
-                if (isMaxLevel) "${formatNumber(clan.experiencePoints)} XP" else
-                    "${formatNumber(clan.currentLevelExperience)}/${formatNumber(clan.nextLevelExperience)} XP",
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant
-            )
-            Text(
-                "${localized(TextKey.Gold)} ${formatNumber(clan.donatedGold)}  •  " +
-                    "${localized(TextKey.Gems)} ${formatNumber(clan.donatedGems)}",
-                style = MaterialTheme.typography.bodyMedium,
-                fontWeight = FontWeight.Bold
-            )
-            currentMember?.let { member ->
-                Text(
-                    "${localized(TextKey.YourContribution)}: ${formatNumber(member.donatedGold)} " +
-                        "${localized(TextKey.Gold)} • ${formatNumber(member.donatedGems)} ${localized(TextKey.Gems)}",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
-            }
-            ArcadeActionButton(
-                label = localized(TextKey.DonateToClan),
-                onClick = onDonate,
-                style = ArcadeActionStyle.GOLD,
-                modifier = Modifier.fillMaxWidth().testTag("open_clan_donation")
+                if (isMaxLevel) localized(TextKey.MaximumLevel)
+                else "${formatNumber(clan.currentLevelExperience)}/${formatNumber(clan.nextLevelExperience)} XP",
+                style = MaterialTheme.typography.titleSmall,
+                color = A1Palette.Muted
             )
         }
+        A1ProgressBar(progress, listOf(A1Palette.Purple1, A1Palette.Purple2))
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(6.dp)
+        ) {
+            A1CoinIcon(size = 22.dp)
+            Text(formatNumber(clan.donatedGold), style = MaterialTheme.typography.titleSmall, color = A1Palette.Ink)
+            Spacer(Modifier.width(4.dp))
+            A1GemIcon(size = 22.dp)
+            Text(formatNumber(clan.donatedGems), style = MaterialTheme.typography.titleSmall, color = A1Palette.Ink)
+            currentMember?.let { member ->
+                Spacer(Modifier.width(4.dp))
+                Text(
+                    localized(TextKey.ClanYouDonated, "amount" to formatNumber(member.donatedGold)),
+                    style = MaterialTheme.typography.bodyMedium,
+                    fontWeight = FontWeight.SemiBold,
+                    color = A1Palette.Muted,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.weight(1f)
+                )
+            }
+        }
+        ArcadeActionButton(
+            label = localized(TextKey.DonateToClan),
+            onClick = onDonate,
+            icon = Icons.Rounded.VolunteerActivism,
+            style = ArcadeActionStyle.GOLD,
+            large = true,
+            modifier = Modifier.fillMaxWidth().testTag("open_clan_donation")
+        )
     }
 }
 
@@ -1019,52 +1102,50 @@ private fun ClanDonationDialog(
 }
 
 @Composable
-private fun ClanStats(clan: ClanSnapshot) {
-    BoxWithConstraints(modifier = Modifier.fillMaxWidth()) {
-        val stack = maxWidth < 360.dp || LocalDensity.current.fontScale >= 1.35f
-        if (stack) {
-            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                ClanStatCard("${clan.members.size}", localized(TextKey.ClanMembers), Modifier.fillMaxWidth())
-                ClanStatCard(formatNumber(clan.trophies), localized(TextKey.ClanTrophies), Modifier.fillMaxWidth())
-                ClanStatCard(formatNumber(clan.members.sumOf { it.trophies }), localized(TextKey.TotalMemberElo), Modifier.fillMaxWidth())
-            }
+private fun ClanStats(clan: ClanSnapshot, clanRank: Int?) {
+    Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+        ClanStatTile("${clan.members.size}/${clan.maxMembers}", localized(TextKey.ClanMembers), Modifier.weight(1f))
+        ClanStatTile(formatNumber(clan.trophies), localized(TextKey.ClanPointsShort), Modifier.weight(1f))
+        if (clanRank != null) {
+            ClanStatTile("#$clanRank", localized(TextKey.ClanRankShort), Modifier.weight(1f))
         } else {
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                ClanStatCard("${clan.members.size}", localized(TextKey.ClanMembers), Modifier.weight(1f))
-                ClanStatCard(formatNumber(clan.trophies), localized(TextKey.ClanTrophies), Modifier.weight(1f))
-                ClanStatCard(formatNumber(clan.members.sumOf { it.trophies }), localized(TextKey.TotalMemberElo), Modifier.weight(1f))
-            }
+            ClanStatTile(formatNumber(clan.members.sumOf { it.trophies }), localized(TextKey.TotalMemberElo), Modifier.weight(1f))
         }
     }
 }
 
+/** Thẻ đầu màn chi tiết bang: khiên lớn, nhãn cấp tím, tên và mô tả. */
 @Composable
-private fun ClanStatCard(value: String, label: String, modifier: Modifier = Modifier) {
-    Surface(
-        modifier = modifier.heightIn(min = 84.dp),
-        shape = RoundedCornerShape(16.dp),
-        color = ArcadePalette.Navy800.copy(alpha = 0.94f),
-        border = BorderStroke(1.dp, ArcadePalette.OutlineDark)
+private fun ClanDetailHero(clan: ClanSnapshot, logoUrl: String, onEditLogo: (() -> Unit)?) {
+    val logoDescription = localized(if (onEditLogo != null) TextKey.SelectClanLogo else TextKey.ClanLogo)
+    Row(
+        modifier = Modifier.fillMaxWidth().a1Card().padding(horizontal = 16.dp, vertical = 16.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(16.dp)
     ) {
-        Column(
-            modifier = Modifier.padding(horizontal = 10.dp, vertical = 12.dp),
-            horizontalAlignment = Alignment.CenterHorizontally,
-            verticalArrangement = Arrangement.spacedBy(8.dp, Alignment.CenterVertically)
+        Box(
+            modifier = Modifier
+                .size(width = 96.dp, height = 110.dp)
+                .then(if (onEditLogo == null) Modifier else Modifier.clickable(role = Role.Button, onClick = onEditLogo))
+                .semantics { contentDescription = logoDescription }
+                .testTag("clan_detail_logo")
         ) {
+            ClanLogoMark(clan.logoId, Modifier.fillMaxSize(), clan.id, clan.logoRevision)
+        }
+        Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+            A1Tag(localized(TextKey.Level, "level" to clan.level), A1TagTone.PURPLE)
             Text(
-                value,
-                style = MaterialTheme.typography.titleLarge,
-                fontWeight = FontWeight.Black,
-                color = ArcadePalette.Gold500,
-                maxLines = 1,
+                clan.name,
+                style = MaterialTheme.typography.headlineSmall.copy(fontSize = 24.sp),
+                color = A1Palette.Ink,
+                maxLines = 2,
                 overflow = TextOverflow.Ellipsis
             )
             Text(
-                label,
-                style = MaterialTheme.typography.labelSmall,
-                color = ArcadePalette.Blue100,
-                textAlign = androidx.compose.ui.text.style.TextAlign.Center,
-                maxLines = 2
+                clan.description.ifBlank { localized(TextKey.DefaultClanDescription) },
+                style = MaterialTheme.typography.bodyMedium,
+                fontWeight = FontWeight.SemiBold,
+                color = A1Palette.Muted
             )
         }
     }
@@ -1076,87 +1157,118 @@ private fun ClanJoinRequestCard(
     onReject: () -> Unit,
     onApprove: () -> Unit
 ) {
-    ArcadePanel(modifier = Modifier.fillMaxWidth(), accent = ArcadePalette.Gold500) {
-        Column(
-            modifier = Modifier.fillMaxWidth().padding(14.dp),
-            verticalArrangement = Arrangement.spacedBy(12.dp)
-        ) {
-            Row(
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(12.dp)
-            ) {
-                ClanLogoMark(logoId = "shield", modifier = Modifier.size(48.dp))
-                Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                    Text(request.displayName, fontWeight = FontWeight.Black)
-                    Text(
-                        localized(TextKey.PlayerCodeShort, "code" to request.playerCode),
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                }
-            }
-            Column(
-                modifier = Modifier.fillMaxWidth(),
-                verticalArrangement = Arrangement.spacedBy(10.dp)
-            ) {
-                ArcadeActionButton(
-                    label = localized(TextKey.Approve),
-                    onClick = onApprove,
-                    style = ArcadeActionStyle.GOLD,
-                    modifier = Modifier.fillMaxWidth()
-                )
-                ArcadeActionButton(
-                    label = localized(TextKey.Decline),
-                    onClick = onReject,
-                    style = ArcadeActionStyle.OUTLINE,
-                    modifier = Modifier.fillMaxWidth()
+    // Thẻ vàng: người xin vào (tên đủ một dòng) và hai nút Từ chối / Duyệt bên dưới.
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .a1Card(background = A1Palette.Highlight, border = A1Palette.YellowBorder)
+            .padding(horizontal = 14.dp, vertical = 12.dp),
+        verticalArrangement = Arrangement.spacedBy(10.dp)
+    ) {
+        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+            PlayerAvatar(request.displayName, avatarId = null, userId = request.userId, size = 48.dp)
+            Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                Text(request.displayName, style = MaterialTheme.typography.titleMedium, color = A1Palette.Ink, maxLines = 2, overflow = TextOverflow.Ellipsis)
+                Text(
+                    localized(TextKey.PlayerCodeShort, "code" to request.playerCode),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = A1Palette.Muted
                 )
             }
+        }
+        Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+            ArcadeActionButton(
+                label = localized(TextKey.Decline),
+                onClick = onReject,
+                style = ArcadeActionStyle.OUTLINE,
+                compact = true,
+                modifier = Modifier.weight(1f)
+            )
+            ArcadeActionButton(
+                label = localized(TextKey.Approve),
+                onClick = onApprove,
+                style = ArcadeActionStyle.SUCCESS,
+                compact = true,
+                modifier = Modifier.weight(1f)
+            )
         }
     }
 }
 
+/** Dòng thành viên: avatar có chấm trạng thái, tên (bạn), Elo, nhãn chức vụ và menu ba chấm. */
 @Composable
 private fun ClanMemberCard(
     member: ClanMemberSnapshot,
+    isSelf: Boolean,
     isOwner: Boolean,
     canRemove: Boolean,
     onRemove: () -> Unit,
-    onViewProfile: () -> Unit
+    onViewProfile: () -> Unit,
+    showDivider: Boolean
 ) {
-    ArcadePanel(modifier = Modifier.fillMaxWidth(), accent = ArcadePalette.Blue500) {
-        Row(
-            modifier = Modifier.fillMaxWidth()
-                .clickable(role = Role.Button, onClickLabel = localized(TextKey.ViewClanMemberProfile, "player" to member.displayName), onClick = onViewProfile)
-                .testTag("clan_member:${member.userId}")
-                .padding(start = 14.dp, top = 12.dp, bottom = 12.dp, end = 8.dp),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(12.dp)
-        ) {
-            PlayerAvatar(member.displayName, member.avatarId, member.userId, member.frameId)
-            Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                Text(member.displayName, fontWeight = FontWeight.Black, maxLines = 2, overflow = TextOverflow.Ellipsis)
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable(role = Role.Button, onClickLabel = localized(TextKey.ViewClanMemberProfile, "player" to member.displayName), onClick = onViewProfile)
+            .then(
+                if (showDivider) Modifier.drawBehind {
+                    drawLine(
+                        A1Palette.SurfaceAlt2,
+                        androidx.compose.ui.geometry.Offset(0f, size.height - 1.dp.toPx()),
+                        androidx.compose.ui.geometry.Offset(size.width, size.height - 1.dp.toPx()),
+                        strokeWidth = 2.dp.toPx(),
+                        pathEffect = androidx.compose.ui.graphics.PathEffect.dashPathEffect(floatArrayOf(6.dp.toPx(), 4.dp.toPx()))
+                    )
+                } else Modifier
+            )
+            .testTag("clan_member:${member.userId}")
+            .padding(start = 14.dp, top = 10.dp, bottom = 10.dp, end = 2.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(12.dp)
+    ) {
+        Box {
+            PlayerAvatar(member.displayName, member.avatarId, member.userId, member.frameId, size = 52.dp)
+            if (member.presence != FriendPresence.OFFLINE) {
+                FriendPresenceIndicator(member.presence, Modifier.align(Alignment.BottomEnd))
+            }
+        }
+        Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
                 Text(
-                    localized(TextKey.ClanMemberSummary, "role" to member.role.localizedName(), "trophies" to formatNumber(member.trophies)),
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                    member.displayName,
+                    style = MaterialTheme.typography.titleMedium,
+                    color = A1Palette.Ink,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.weight(1f, fill = false)
+                )
+                if (isSelf) Text(localized(TextKey.ClanYouTag), style = MaterialTheme.typography.titleSmall, color = A1Palette.Muted)
+            }
+            Text(
+                "${member.trophies} Elo",
+                style = MaterialTheme.typography.bodyMedium,
+                fontWeight = FontWeight.SemiBold,
+                color = A1Palette.Muted
+            )
+        }
+        ClanRoleTag(member.role, member.role.localizedName())
+        if (isOwner && canRemove) {
+            ClanOverflowMenu(
+                localized(TextKey.RemoveClanMemberNamed, "player" to member.displayName),
+                buttonTag = "clan_member_menu:${member.userId}"
+            ) { dismiss ->
+                androidx.compose.material3.DropdownMenuItem(
+                    text = { Text(localized(TextKey.RemoveClanMemberNamed, "player" to member.displayName)) },
+                    leadingIcon = { Icon(Icons.Rounded.PersonRemove, contentDescription = null, tint = A1Palette.RedText) },
+                    onClick = {
+                        dismiss()
+                        onRemove()
+                    },
+                    modifier = Modifier.heightIn(min = 48.dp).testTag("clan_kick:${member.userId}")
                 )
             }
-            FriendPresenceIndicator(member.presence)
-            if (isOwner && canRemove) {
-                IconButton(
-                    onClick = onRemove,
-                    modifier = Modifier.size(48.dp).testTag("clan_kick:${member.userId}")
-                ) {
-                    Icon(
-                        Icons.Rounded.PersonRemove,
-                        contentDescription = localized(TextKey.RemoveClanMemberNamed, "player" to member.displayName),
-                        tint = ArcadePalette.Coral400
-                    )
-                }
-            } else {
-                Icon(Icons.Rounded.EmojiEvents, contentDescription = null, tint = ArcadePalette.Gold500)
-            }
+        } else {
+            Spacer(Modifier.width(10.dp))
         }
     }
 }
@@ -1195,26 +1307,26 @@ fun ClanLogoDialog(
         Text(
             localized(TextKey.ClanLogoUnlockDescription, "current" to clanLevel),
             style = MaterialTheme.typography.bodyMedium,
-            color = ArcadePalette.Blue100
+            fontWeight = FontWeight.SemiBold,
+            color = A1Palette.Muted
         )
         Row(
             modifier = Modifier.fillMaxWidth(),
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(12.dp)
         ) {
-            ClanLogoMark(currentLogoId, Modifier.size(48.dp))
+            ClanLogoMark(currentLogoId, Modifier.size(width = 44.dp, height = 50.dp))
             Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
                 Text(
                     "${localized(TextKey.ClanLogoCurrent)} · ${currentLogoId.clanLogoLabel()}",
                     style = MaterialTheme.typography.titleSmall,
-                    fontWeight = FontWeight.Bold,
-                    color = ArcadePalette.Gold100
+                    color = A1Palette.Ink
                 )
                 clanLogoRequiredLevel(currentLogoId)?.takeIf { it > clanLevel }?.let { level ->
                     Text(
                         localized(TextKey.ClanLogoUnlockAtLevel, "level" to level),
                         style = MaterialTheme.typography.bodySmall,
-                        color = ArcadePalette.Blue100
+                        color = A1Palette.Muted
                     )
                 }
             }
@@ -1276,24 +1388,32 @@ private fun ClanLogoChoice(
                 stateDescription = "$status. $requirement"
             },
         shape = RoundedCornerShape(16.dp),
-        color = if (isSelected) ArcadePalette.Blue900 else ArcadePalette.Navy900,
+        color = if (isSelected) A1Palette.Highlight else Color.White,
         border = BorderStroke(
-            if (isSelected) 2.dp else 1.dp,
-            if (isSelected) ArcadePalette.Gold500 else ArcadePalette.OutlineDark
+            if (isSelected) 3.dp else 2.dp,
+            if (isSelected) A1Palette.YellowBorder else A1Palette.SurfaceAlt2
         )
     ) {
         Column(
-            modifier = Modifier.fillMaxWidth().padding(12.dp).alpha(if (isUnlocked || isSelected) 1f else 0.38f),
+            modifier = Modifier.fillMaxWidth().padding(12.dp),
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.spacedBy(6.dp)
         ) {
-            ClanLogoMark(id, Modifier.size(48.dp))
-            Text(id.clanLogoLabel(), style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold)
+            // Biểu tượng chưa mở khoá: khiên xám nhạt kèm ổ khoá (như "Chọn logo" trong thiết kế).
+            Box(Modifier.size(width = 44.dp, height = 50.dp), contentAlignment = Alignment.Center) {
+                ClanLogoMark(id, Modifier.fillMaxSize().alpha(if (isUnlocked || isSelected) 1f else 0.35f))
+                if (!isUnlocked && !isSelected) {
+                    Icon(Icons.Rounded.Lock, contentDescription = null, tint = A1Palette.Ink, modifier = Modifier.size(20.dp))
+                }
+            }
+            Text(id.clanLogoLabel(), style = MaterialTheme.typography.titleSmall,
+                color = if (isUnlocked || isSelected) A1Palette.Ink else A1Palette.Muted, textAlign = androidx.compose.ui.text.style.TextAlign.Center)
             Text(
                 localized(TextKey.ClanLogoRequiredLevel, "level" to requiredLevel),
                 modifier = Modifier.testTag("clan_logo_requirement_$id"),
                 style = MaterialTheme.typography.bodySmall,
-                color = ArcadePalette.Blue100,
+                fontWeight = FontWeight.SemiBold,
+                color = A1Palette.Muted,
                 textAlign = androidx.compose.ui.text.style.TextAlign.Center
             )
         }
@@ -1310,11 +1430,10 @@ internal fun ClanLogoMark(
     val uploaded = clanLogoImageUrl(clanId, logoRevision)
     if (uploaded.isNotBlank()) {
         Box(
-            modifier = modifier.clip(CircleShape).background(ArcadePalette.Navy700, CircleShape)
-                .border(2.dp, ArcadePalette.Gold500, CircleShape),
+            modifier = modifier.clip(ClanShieldShape).background(A1Palette.SurfaceAlt2, ClanShieldShape),
             contentAlignment = Alignment.Center
         ) {
-            NetworkImage(uploaded, Modifier.fillMaxSize().clip(CircleShape), contentScale = ContentScale.Crop) {
+            NetworkImage(uploaded, Modifier.fillMaxSize().clip(ClanShieldShape), contentScale = ContentScale.Crop) {
                 ClanIconMark(logoId, Modifier.fillMaxSize())
             }
         }
@@ -1325,35 +1444,7 @@ internal fun ClanLogoMark(
 
 @Composable
 private fun ClanIconMark(logoId: String?, modifier: Modifier) {
-    val normalized = logoId.orEmpty().lowercase()
-    val accent = when (normalized) {
-        "sword" -> ArcadePalette.Coral400
-        "flag" -> ArcadePalette.Blue300
-        "dragon" -> ArcadePalette.Violet400
-        "wolf" -> Color(0xFFC8D4EA)
-        "eagle" -> ArcadePalette.Gold500
-        "crown" -> Color(0xFFFFE28B)
-        "lion" -> ClanEmblemAccents.LionGold
-        "phoenix" -> ClanEmblemAccents.PhoenixCoral
-        "kirin" -> ClanEmblemAccents.KirinMint
-        else -> ArcadePalette.Mint400
-    }
-    Box(
-        modifier = modifier
-            .background(
-                Brush.linearGradient(listOf(ArcadePalette.Navy700, ArcadePalette.Navy900)),
-                CircleShape
-            )
-            .border(2.dp, accent, CircleShape),
-        contentAlignment = Alignment.Center
-    ) {
-        Icon(
-            clanEmblemImageVector(normalized),
-            contentDescription = null,
-            tint = accent,
-            modifier = Modifier.fillMaxSize(0.64f)
-        )
-    }
+    ClanShieldEmblem(logoId, modifier)
 }
 
 @Composable
@@ -1375,18 +1466,17 @@ private fun ArcadeSectionHeading(title: String, supporting: String) {
 
 @Composable
 private fun ClanNotice(message: String) {
-    Surface(
-        modifier = Modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(14.dp),
-        color = ArcadePalette.Navy800,
-        border = BorderStroke(1.dp, ArcadePalette.Blue300.copy(alpha = 0.64f))
-    ) {
-        Text(
-            text = message,
-            modifier = Modifier.padding(13.dp),
-            color = ArcadePalette.Blue100
-        )
-    }
+    Text(
+        text = message,
+        modifier = Modifier
+            .fillMaxWidth()
+            .background(Color(0xFFDCEBFF), RoundedCornerShape(14.dp))
+            .border(2.dp, Color(0xFF6AA4F0), RoundedCornerShape(14.dp))
+            .padding(13.dp),
+        style = MaterialTheme.typography.bodyMedium,
+        fontWeight = FontWeight.SemiBold,
+        color = Color(0xFF0D3A7A)
+    )
 }
 
 @Composable
@@ -1409,7 +1499,7 @@ private fun String.clanLogoLabel(): String {
         "lion" -> TextKey.ClanLogoLion
         "phoenix" -> TextKey.ClanLogoPhoenix
         "kirin" -> TextKey.ClanLogoKirin
-        else -> return this
+        else -> TextKey.ClanLogoShield
     }
     return localized(key)
 }
@@ -1432,25 +1522,30 @@ private fun ClanLogoUploadSection(
     onUpload: (ByteArray) -> Unit,
     onRemoveUpload: () -> Unit
 ) {
-    ArcadePanel(modifier = Modifier.fillMaxWidth().testTag("clan_logo_upload_section"), accent = ArcadePalette.Gold500) {
-        Column(Modifier.fillMaxWidth().padding(14.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+    Column(
+        Modifier.fillMaxWidth().background(A1Palette.SurfaceAlt, RoundedCornerShape(18.dp))
+            .border(2.dp, A1Palette.SurfaceAlt2, RoundedCornerShape(18.dp))
+            .padding(14.dp)
+            .testTag("clan_logo_upload_section"),
+        verticalArrangement = Arrangement.spacedBy(10.dp)
+    ) {
+        Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(10.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                 Box(
-                    Modifier.size(64.dp).clip(CircleShape).background(ArcadePalette.Navy700, CircleShape)
-                        .border(2.dp, if (hasUploadedLogo) ArcadePalette.Gold500 else ArcadePalette.OutlineDark, CircleShape),
+                    Modifier.size(width = 56.dp, height = 64.dp).clip(ClanShieldShape).background(Color.White, ClanShieldShape),
                     contentAlignment = Alignment.Center
                 ) {
-                    if (isUploading) CircularProgressIndicator(color = ArcadePalette.Gold500, modifier = Modifier.size(28.dp))
+                    if (isUploading) CircularProgressIndicator(color = A1Palette.Blue2, modifier = Modifier.size(28.dp))
                     else if (hasUploadedLogo) NetworkImage(uploadedLogoUrl, Modifier.fillMaxSize(), contentScale = ContentScale.Crop) {
-                        Icon(Icons.Rounded.Shield, contentDescription = null, tint = ArcadePalette.Gold500)
-                    } else Icon(Icons.Rounded.Add, contentDescription = null, tint = ArcadePalette.Blue100)
+                        Icon(Icons.Rounded.Shield, contentDescription = null, tint = A1Palette.Blue2)
+                    } else Icon(Icons.Rounded.Add, contentDescription = null, tint = A1Palette.Blue2)
                 }
                 Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
                     Text(localized(if (isUploading) TextKey.ClanLogoUploading else TextKey.ClanLogoUploadedImage),
-                        style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold, color = ArcadePalette.Gold100,
+                        style = MaterialTheme.typography.titleSmall, color = A1Palette.Ink,
                         modifier = Modifier.semantics { liveRegion = LiveRegionMode.Polite })
                     Text(localized(TextKey.ClanLogoUploadHint, "count" to CLAN_LOGO_DAILY_CHANGE_LIMIT),
-                        style = MaterialTheme.typography.bodySmall, color = ArcadePalette.Blue100)
+                        style = MaterialTheme.typography.bodySmall, color = A1Palette.Muted)
                 }
             }
             com.hienthai.fastowin.platform.ImagePicker(onImageSelected = { bytes -> bytes?.let(onUpload) }) { pick ->
@@ -1458,7 +1553,8 @@ private fun ClanLogoUploadSection(
                     label = localized(TextKey.ClanLogoUpload),
                     onClick = pick,
                     enabled = !isUploading,
-                    style = ArcadeActionStyle.GOLD,
+                    style = ArcadeActionStyle.OUTLINE,
+                    compact = true,
                     modifier = Modifier.fillMaxWidth().testTag("clan_logo_upload")
                 )
             }

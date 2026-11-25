@@ -164,7 +164,7 @@ class ClanScreenTest {
         composeRule.onNodeWithTag("create_clan_dialog").assertIsDisplayed()
         composeRule.onNodeWithTag("create_clan_name").performTextInput("Tia Chớp")
         composeRule.onNodeWithTag("create_clan_description").performTextInput("Nhanh và chính xác")
-        composeRule.onNodeWithText("TẠO").performClick()
+        composeRule.onNodeWithTag("create_clan_submit").performClick()
 
         composeRule.runOnIdle {
             assertEquals("Tia Chớp" to "Nhanh và chính xác", createdClan)
@@ -198,7 +198,7 @@ class ClanScreenTest {
         composeRule.onNodeWithTag("open_create_clan").performClick()
         composeRule.onNodeWithTag("create_clan_cost").assertIsDisplayed()
         composeRule.onNodeWithTag("create_clan_name").performTextInput("Thiếu Gem")
-        composeRule.onNodeWithText("TẠO").assertIsNotEnabled()
+        composeRule.onNodeWithTag("create_clan_submit").assertIsNotEnabled()
     }
 
     @Test
@@ -306,9 +306,11 @@ class ClanScreenTest {
             }
         }
 
+        // Nút ba chấm của dòng thành viên mở menu có lệnh mời rời bang.
         composeRule.onNodeWithTag("clan_detail_list")
             .performScrollToNode(hasContentDescription("Mời Thành viên thử rời bang"))
         composeRule.onNodeWithContentDescription("Mời Thành viên thử rời bang").performClick()
+        composeRule.onNodeWithTag("clan_kick:member").performClick()
         composeRule.onNodeWithTag("kick_clan_member_dialog").assertIsDisplayed()
         composeRule.runOnIdle { assertEquals(null, kickedMember) }
 

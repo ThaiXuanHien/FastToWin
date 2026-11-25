@@ -660,7 +660,7 @@ private fun seedClan(connection: Connection, userId: UUID, memberId: UUID, now: 
             id, name, description, owner_id, trophies, created_at, logo_id,
             quest_progress, quest_target, quest_reward_gold, quest_reward_xp, quest_reward_gems
         ) VALUES (?, '[DEV] Toàn Năng', 'Bang hội đầy đủ dữ liệu để kiểm thử.', ?, 12500, ?,
-                  'crossed_swords', 500, 500, 1000, 100, 3)
+                  'sword', 500, 500, 1000, 100, 3)
         ON CONFLICT (id) DO UPDATE SET
             description = EXCLUDED.description, owner_id = EXCLUDED.owner_id,
             trophies = EXCLUDED.trophies, logo_id = EXCLUDED.logo_id,
