@@ -1,5 +1,10 @@
 package com.hienthai.fastowin.ui.screens
 
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.background
+import androidx.compose.ui.draw.clip
+import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
@@ -498,14 +503,15 @@ private fun LanguageDialog(
     onDismiss: () -> Unit
 ) {
     val selection = normalizeAppLanguageSelection(selectedCode)
-    ArcadeDialog(
-        title = localized(TextKey.ChooseLanguageTitle),
+    // Thiết kế A1: bảng trượt "Ngôn ngữ" với các lựa chọn dạng radio và nút XONG.
+    com.hienthai.fastowin.ui.components.A1BottomSheet(
+        title = localized(TextKey.LanguageSheetTitle),
         onDismissRequest = onDismiss,
         modifier = Modifier.testTag("language_dialog")
     ) {
         Column(
-            modifier = Modifier.fillMaxWidth().verticalScroll(rememberScrollState()).selectableGroup(),
-            verticalArrangement = Arrangement.spacedBy(8.dp)
+            modifier = Modifier.fillMaxWidth().selectableGroup(),
+            verticalArrangement = Arrangement.spacedBy(10.dp)
         ) {
             LanguageOption(
                 code = "system",
@@ -520,35 +526,43 @@ private fun LanguageDialog(
                     onSelected(language.code)
                 }
             }
-            ArcadeActionButton(
-                label = localized(TextKey.Close), onClick = onDismiss,
-                style = ArcadeActionStyle.OUTLINE,
-                modifier = Modifier.fillMaxWidth().testTag("language_close")
-            )
         }
+        ArcadeActionButton(
+            label = localized(TextKey.DoneAction), onClick = onDismiss,
+            style = ArcadeActionStyle.GOLD,
+            large = true,
+            modifier = Modifier.fillMaxWidth().testTag("language_close")
+        )
     }
 }
 
+/** Lựa chọn ngôn ngữ (".opt"): viền xám, chọn thì viền xanh + nền xanh nhạt, chấm radio bên trái. */
 @Composable
 private fun LanguageOption(code: String, title: String, subtitle: String, isSelected: Boolean, onClick: () -> Unit) {
-    Surface(
-        shape = MaterialTheme.shapes.medium,
-        color = if (isSelected) ArcadePalette.Navy700 else Color.Transparent,
-        modifier = Modifier.fillMaxWidth()
+    val shape = RoundedCornerShape(16.dp)
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .heightIn(min = 56.dp)
+            .background(if (isSelected) Color(0xFFEEF5FF) else Color.White, shape)
+            .border(2.dp, if (isSelected) com.hienthai.fastowin.ui.theme.A1Palette.Blue2 else com.hienthai.fastowin.ui.theme.A1Palette.SurfaceAlt2, shape)
+            .clip(shape)
+            .testTag("language_option_$code")
+            .selectable(selected = isSelected, role = Role.RadioButton, onClick = onClick)
+            .padding(horizontal = 16.dp, vertical = 10.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(12.dp)
     ) {
-        Row(
-            modifier = Modifier.fillMaxWidth().heightIn(min = 64.dp)
-                .testTag("language_option_$code")
-                .selectable(selected = isSelected, role = Role.RadioButton, onClick = onClick)
-                .padding(horizontal = 12.dp, vertical = 8.dp),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(8.dp)
-        ) {
-            Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                Text(title, color = ArcadePalette.White, fontWeight = FontWeight.SemiBold)
-                if (subtitle != title) Text(subtitle, color = ArcadePalette.White, style = MaterialTheme.typography.bodySmall)
-            }
-            RadioButton(selected = isSelected, onClick = null)
+        Box(
+            Modifier
+                .size(22.dp)
+                .border(3.dp, com.hienthai.fastowin.ui.theme.A1Palette.Line, CircleShape)
+                .padding(5.dp)
+                .background(if (isSelected) com.hienthai.fastowin.ui.theme.A1Palette.Blue2 else Color.Transparent, CircleShape)
+        )
+        Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+            Text(title, color = com.hienthai.fastowin.ui.theme.A1Palette.Ink, fontWeight = FontWeight.Bold)
+            if (subtitle != title) Text(subtitle, color = com.hienthai.fastowin.ui.theme.A1Palette.Muted, style = MaterialTheme.typography.bodySmall, fontWeight = FontWeight.SemiBold)
         }
     }
 }

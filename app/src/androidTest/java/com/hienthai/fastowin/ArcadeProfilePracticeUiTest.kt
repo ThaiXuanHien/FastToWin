@@ -210,8 +210,11 @@ class ArcadeProfilePracticeUiTest {
         composeRule.onNodeWithTag("profile_sessions")
             .performScrollTo()
             .performSemanticsAction(SemanticsActions.OnClick)
-        composeRule.onNodeWithText("Android • Thiết bị này").performScrollTo().assertIsDisplayed()
-        composeRule.onNodeWithTag("account_sessions_close").performClick()
+        composeRule.onNodeWithTag("account_sessions_screen").assertIsDisplayed()
+        composeRule.onNodeWithText("Android · thiết bị này").performScrollTo().assertIsDisplayed()
+        composeRule.onNodeWithText("Hiện tại").assertIsDisplayed()
+        androidx.test.espresso.Espresso.pressBack()
+        composeRule.onNodeWithTag("account_sessions_screen").assertDoesNotExist()
 
         composeRule.onNodeWithTag("profile_security")
             .performScrollTo()

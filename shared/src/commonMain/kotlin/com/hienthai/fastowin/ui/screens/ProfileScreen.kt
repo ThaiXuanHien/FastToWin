@@ -1,5 +1,6 @@
 package com.hienthai.fastowin.ui.screens
 
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.Image
@@ -34,6 +35,17 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.rounded.Info
+import androidx.compose.material.icons.rounded.Smartphone
+import androidx.compose.material.icons.rounded.Computer
+import androidx.compose.foundation.layout.imePadding
+import androidx.compose.foundation.layout.ColumnScope
+import com.hienthai.fastowin.ui.components.A1HeroTone
+import com.hienthai.fastowin.ui.components.A1SkyBackdrop
+import com.hienthai.fastowin.ui.components.A1FieldLabel
+import com.hienthai.fastowin.ui.components.NativeDialogInputScope
+import com.hienthai.fastowin.ui.components.arcadeDialogProperties
+import com.hienthai.fastowin.state.MIN_ACCOUNT_PASSWORD_LENGTH
 import androidx.compose.material.icons.rounded.Insights
 import androidx.compose.material.icons.rounded.History
 import androidx.compose.material.icons.rounded.MilitaryTech
@@ -324,30 +336,13 @@ fun ProfileScreen(
         )
     }
     if (!isExternalProfile && showLogoutConfirmation) {
-        ArcadeDialog(
-            title = localized(TextKey.LogoutTitle),
-            subtitle = localized(TextKey.LogoutDescription),
-            onDismissRequest = { showLogoutConfirmation = false },
-            modifier = Modifier.testTag("logout_confirmation_dialog")
-        ) {
-            Column(modifier = Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                ArcadeActionButton(
-                    label = localized(TextKey.LogoutAction),
-                    onClick = {
-                        showLogoutConfirmation = false
-                        onLogout()
-                    },
-                    style = ArcadeActionStyle.DANGER,
-                    modifier = Modifier.fillMaxWidth().testTag("confirm_logout")
-                )
-                ArcadeActionButton(
-                    label = localized(TextKey.Cancel).uppercase(),
-                    onClick = { showLogoutConfirmation = false },
-                    style = ArcadeActionStyle.OUTLINE,
-                    modifier = Modifier.fillMaxWidth()
-                )
-            }
-        }
+        LogoutConfirmDialog(
+            onConfirm = {
+                showLogoutConfirmation = false
+                onLogout()
+            },
+            onDismiss = { showLogoutConfirmation = false }
+        )
     }
     if (!isExternalProfile && (state.isMatchDetailLoading || state.matchDetail != null)) {
         MatchDetailDialog(
@@ -1841,6 +1836,36 @@ private fun formatSessionDuration(totalSeconds: Long): String {
     return "${hours.twoDigits()}:${minutes.twoDigits()}:${seconds.twoDigits()}"
 }
 
+/** "Đăng xuất?": ô icon xanh nổi, nút vàng ĐĂNG XUẤT và nút trắng Ở lại. */
+@Composable
+private fun LogoutConfirmDialog(onConfirm: () -> Unit, onDismiss: () -> Unit) {
+    ArcadeDialog(
+        title = localized(TextKey.LogoutTitle),
+        subtitle = localized(TextKey.LogoutDescription),
+        onDismissRequest = onDismiss,
+        heroIcon = Icons.AutoMirrored.Rounded.Logout,
+        heroTone = A1HeroTone.BLUE,
+        modifier = Modifier.testTag("logout_confirmation_dialog")
+    ) {
+        Column(modifier = Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+            ArcadeActionButton(
+                label = localized(TextKey.LogoutAction),
+                onClick = onConfirm,
+                style = ArcadeActionStyle.GOLD,
+                large = true,
+                modifier = Modifier.fillMaxWidth().testTag("confirm_logout")
+            )
+            ArcadeActionButton(
+                label = localized(TextKey.StayHere),
+                onClick = onDismiss,
+                style = ArcadeActionStyle.OUTLINE,
+                modifier = Modifier.fillMaxWidth()
+            )
+        }
+    }
+}
+
+/** "Xóa tài khoản?": ô icon đỏ, ghi chú viền đỏ, nút đỏ XÓA VĨNH VIỄN và Hủy (App Store 5.1.1(v)). */
 @Composable
 private fun DeleteAccountDialog(
     isLoading: Boolean,
@@ -1850,26 +1875,87 @@ private fun DeleteAccountDialog(
 ) {
     ArcadeDialog(
         title = localized(TextKey.DeleteAccountConfirmTitle),
-        subtitle = localized(TextKey.DeleteAccountWarning),
+        subtitle = localized(TextKey.DeleteAccountConfirmBody),
         onDismissRequest = onDismiss,
+        heroIcon = Icons.Rounded.DeleteForever,
+        heroTone = A1HeroTone.RED,
         modifier = Modifier.testTag("delete_account_dialog")
     ) {
-        Column(modifier = Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-            error?.let { Text(it, color = MaterialTheme.colorScheme.error) }
+        Column(modifier = Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+            Row(
+                Modifier
+                    .fillMaxWidth()
+                    .background(Color(0xFFFFF4F4), RoundedCornerShape(16.dp))
+                    .border(2.dp, Color(0xFFF08A8A), RoundedCornerShape(16.dp))
+                    .padding(horizontal = 12.dp, vertical = 10.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                Icon(Icons.Rounded.Info, contentDescription = null, tint = A1Palette.RedText, modifier = Modifier.size(20.dp))
+                Text(
+                    localized(TextKey.DeleteAccountNote),
+                    style = MaterialTheme.typography.bodyMedium,
+                    fontWeight = FontWeight.SemiBold,
+                    color = A1Palette.Ink
+                )
+            }
+            error?.let { Text(it, color = A1Palette.RedText, fontWeight = FontWeight.SemiBold) }
             ArcadeActionButton(
                 label = if (isLoading) localized(TextKey.DeletingAccount) else localized(TextKey.DeleteAccountConfirmAction),
                 onClick = onConfirm,
                 enabled = !isLoading,
                 style = ArcadeActionStyle.DANGER,
+                large = true,
                 modifier = Modifier.fillMaxWidth().testTag("confirm_delete_account")
             )
             ArcadeActionButton(
-                label = localized(TextKey.Cancel).uppercase(),
+                label = localized(TextKey.Cancel),
                 onClick = onDismiss,
                 enabled = !isLoading,
                 style = ArcadeActionStyle.OUTLINE,
                 modifier = Modifier.fillMaxWidth()
             )
+        }
+    }
+}
+
+/** Màn toàn trang trên nền trời (Thiết bị đăng nhập, Bảo mật tài khoản): nút quay lại + tiêu đề. */
+@Composable
+private fun AccountFullScreen(
+    title: String,
+    onBack: () -> Unit,
+    tag: String,
+    content: @Composable ColumnScope.() -> Unit
+) {
+    androidx.compose.ui.window.Dialog(onDismissRequest = onBack, properties = arcadeDialogProperties()) {
+        // Nền trời phủ cả thanh trạng thái/điều hướng; lớp nhập liệu bên trong mới trừ lề hệ thống và bàn phím.
+        A1SkyBackdrop(Modifier.fillMaxSize().testTag(tag), showHills = false) {
+            NativeDialogInputScope {
+                Column(Modifier.fillMaxSize().windowInsetsPadding(WindowInsets.safeDrawing)) {
+                    FastToWinHeader(
+                        title = title,
+                        gold = 0,
+                        gems = 0,
+                        unreadNotifications = 0,
+                        onNotifications = {},
+                        onBack = onBack,
+                        applySafeDrawingInset = false,
+                        showBalances = false,
+                        showNotifications = false
+                    )
+                    Box(Modifier.weight(1f).fillMaxWidth(), contentAlignment = Alignment.TopCenter) {
+                        Column(
+                            Modifier
+                                .widthIn(max = 560.dp)
+                                .fillMaxWidth()
+                                .verticalScroll(rememberScrollState())
+                                .padding(start = 16.dp, end = 16.dp, top = 8.dp, bottom = 24.dp),
+                            verticalArrangement = Arrangement.spacedBy(14.dp),
+                            content = content
+                        )
+                    }
+                }
+            }
         }
     }
 }
@@ -1887,49 +1973,46 @@ private fun AccountSecurityDialog(
     val passwordError = accountPasswordError(newPassword)
     val confirmationError = accountPasswordConfirmationError(newPassword, confirmPassword)
     val passwordUnchanged = currentPassword.isNotEmpty() && currentPassword == newPassword
-    ArcadeDialog(
+    AccountFullScreen(
         title = localized(TextKey.AccountSecurityTitle),
-        subtitle = localized(TextKey.AccountSecurityDescription),
-        onDismissRequest = onDismiss
+        onBack = onDismiss,
+        tag = "account_security_screen"
     ) {
         Column(
-            modifier = Modifier.heightIn(max = 560.dp).verticalScroll(rememberScrollState()),
+            Modifier.fillMaxWidth().a1Card().padding(18.dp),
             verticalArrangement = Arrangement.spacedBy(10.dp)
         ) {
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(10.dp)
-                ) {
-                    Icon(Icons.Default.Shield, contentDescription = null, tint = ArcadeGold)
-                    Text(localized(TextKey.ChangePassword), style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Black)
-                }
-                SecurePasswordField(currentPassword, localized(TextKey.CurrentPassword)) { currentPassword = it }
-                SecurePasswordField(newPassword, localized(TextKey.NewPasswordLabel)) { newPassword = it }
-                SecurePasswordField(confirmPassword, localized(TextKey.ConfirmNewPasswordLabel)) { confirmPassword = it }
-                if (newPassword.isNotEmpty() && passwordError != null) {
-                    Text(localized(passwordError), color = MaterialTheme.colorScheme.error)
-                }
-                confirmationError?.let { Text(localized(it), color = MaterialTheme.colorScheme.error) }
-                if (passwordUnchanged) {
-                    Text(localized(TextKey.NewPasswordMustDiffer), color = MaterialTheme.colorScheme.error)
-                }
-                ArcadeActionButton(
-                    label = if (isLoading) localized(TextKey.UpdatingPassword) else localized(TextKey.ChangePassword).uppercase(),
-                    onClick = { onChangePassword(currentPassword, newPassword) },
-                    enabled = !isLoading && currentPassword.isNotBlank() && passwordError == null &&
-                        confirmationError == null && confirmPassword.isNotEmpty() && !passwordUnchanged,
-                    modifier = Modifier.fillMaxWidth(),
-                    style = ArcadeActionStyle.GOLD
-                )
-                error?.let { Text(it, color = MaterialTheme.colorScheme.error) }
+            Text(
+                localized(TextKey.ChangePassword),
+                style = MaterialTheme.typography.titleMedium.copy(fontSize = 18.sp),
+                color = A1Palette.Ink,
+                modifier = Modifier.semantics { heading() }
+            )
+            SecurePasswordField(currentPassword, localized(TextKey.CurrentPassword)) { currentPassword = it }
+            SecurePasswordField(newPassword, localized(TextKey.NewPasswordLabel)) { newPassword = it }
+            Text(
+                if (newPassword.isNotEmpty() && passwordError != null) localized(passwordError)
+                else localized(TextKey.PasswordHint, "minimum" to MIN_ACCOUNT_PASSWORD_LENGTH),
+                style = MaterialTheme.typography.bodySmall,
+                fontWeight = FontWeight.SemiBold,
+                color = if (newPassword.isNotEmpty() && passwordError != null) A1Palette.RedText else A1Palette.Muted
+            )
+            SecurePasswordField(confirmPassword, localized(TextKey.ConfirmNewPasswordLabel)) { confirmPassword = it }
+            confirmationError?.let { Text(localized(it), color = A1Palette.RedText, fontWeight = FontWeight.SemiBold) }
+            if (passwordUnchanged) {
+                Text(localized(TextKey.NewPasswordMustDiffer), color = A1Palette.RedText, fontWeight = FontWeight.SemiBold)
+            }
+            error?.let { Text(it, color = A1Palette.RedText, fontWeight = FontWeight.SemiBold) }
+            ArcadeActionButton(
+                label = if (isLoading) localized(TextKey.UpdatingPassword) else localized(TextKey.UpdateAction),
+                onClick = { onChangePassword(currentPassword, newPassword) },
+                enabled = !isLoading && currentPassword.isNotBlank() && passwordError == null &&
+                    confirmationError == null && confirmPassword.isNotEmpty() && !passwordUnchanged,
+                modifier = Modifier.fillMaxWidth().padding(top = 4.dp).testTag("account_security_submit"),
+                style = ArcadeActionStyle.GOLD,
+                large = true
+            )
         }
-        ArcadeActionButton(
-            label = localized(TextKey.Close),
-            onClick = onDismiss,
-            enabled = !isLoading,
-            modifier = Modifier.fillMaxWidth(),
-            style = ArcadeActionStyle.OUTLINE
-        )
     }
 }
 
@@ -1946,6 +2029,53 @@ private fun AccountSessionsDialog(
     var sessionPendingRevoke by remember { mutableStateOf<AccountSessionSnapshot?>(null) }
     var confirmRevokeAll by remember { mutableStateOf(false) }
 
+    AccountFullScreen(
+        title = localized(TextKey.LoginDevicesTitle),
+        onBack = onDismiss,
+        tag = "account_sessions_screen"
+    ) {
+        A1OutlinedText(
+            localized(TextKey.LoginDevicesDescription),
+            style = MaterialTheme.typography.titleSmall.copy(fontSize = 15.sp),
+            outlineWidth = 2.5.dp
+        )
+        if (isLoading && sessions.isEmpty()) {
+            Box(Modifier.fillMaxWidth().padding(24.dp), contentAlignment = Alignment.Center) {
+                CircularProgressIndicator(color = Color.White)
+            }
+        } else if (sessions.isEmpty()) {
+            Text(
+                localized(TextKey.NoActiveSessions),
+                modifier = Modifier.fillMaxWidth().a1Card().padding(18.dp),
+                color = A1Palette.Ink,
+                fontWeight = FontWeight.SemiBold
+            )
+        } else {
+            Column(Modifier.fillMaxWidth().a1Card()) {
+                // Thiết bị hiện tại luôn đứng đầu.
+                val ordered = sessions.sortedByDescending { it.isCurrent }
+                ordered.forEachIndexed { index, session ->
+                    SessionRow(
+                        session = session,
+                        showDivider = index < ordered.lastIndex,
+                        enabled = !isLoading,
+                        onRevoke = { sessionPendingRevoke = session }
+                    )
+                }
+            }
+        }
+        notice?.let { ShopNotice(it, isError = false) }
+        error?.let { ShopNotice(it, isError = true) }
+        ArcadeActionButton(
+            label = localized(TextKey.LogoutAllDevices),
+            onClick = { confirmRevokeAll = true },
+            enabled = !isLoading && sessions.isNotEmpty(),
+            icon = Icons.AutoMirrored.Rounded.Logout,
+            modifier = Modifier.fillMaxWidth().testTag("account_sessions_revoke_all"),
+            style = ArcadeActionStyle.DANGER
+        )
+    }
+
     sessionPendingRevoke?.let { session ->
         ArcadeDialog(
             title = localized(if (session.isCurrent) TextKey.RevokeCurrentDeviceTitle else TextKey.RevokeDeviceTitle),
@@ -1954,128 +2084,133 @@ private fun AccountSessionsDialog(
             } else {
                 localized(TextKey.RevokeOtherDeviceDescription, "device" to sessionDeviceLabel(session.devicePlatform))
             },
-            onDismissRequest = { sessionPendingRevoke = null }
+            onDismissRequest = { sessionPendingRevoke = null },
+            heroIcon = Icons.AutoMirrored.Rounded.Logout,
+            heroTone = A1HeroTone.RED
         ) {
-            ArcadeActionButton(
-                label = localized(TextKey.Logout),
-                onClick = {
-                    sessionPendingRevoke = null
-                    onRevokeSession(session.sessionId)
-                },
-                modifier = Modifier.fillMaxWidth(),
-                style = ArcadeActionStyle.DANGER
-            )
-            ArcadeActionButton(
-                label = localized(TextKey.Cancel),
-                onClick = { sessionPendingRevoke = null },
-                modifier = Modifier.fillMaxWidth(),
-                style = ArcadeActionStyle.OUTLINE
-            )
+            Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                ArcadeActionButton(
+                    label = localized(TextKey.Logout),
+                    onClick = {
+                        sessionPendingRevoke = null
+                        onRevokeSession(session.sessionId)
+                    },
+                    modifier = Modifier.fillMaxWidth(),
+                    style = ArcadeActionStyle.DANGER
+                )
+                ArcadeActionButton(
+                    label = localized(TextKey.Cancel),
+                    onClick = { sessionPendingRevoke = null },
+                    modifier = Modifier.fillMaxWidth(),
+                    style = ArcadeActionStyle.OUTLINE
+                )
+            }
         }
     }
     if (confirmRevokeAll) {
         ArcadeDialog(
             title = localized(TextKey.LogoutAllDevicesTitle),
             subtitle = localized(TextKey.LogoutAllDevicesDescription),
-            onDismissRequest = { confirmRevokeAll = false }
+            onDismissRequest = { confirmRevokeAll = false },
+            heroIcon = Icons.AutoMirrored.Rounded.Logout,
+            heroTone = A1HeroTone.RED
         ) {
-            ArcadeActionButton(
-                label = localized(TextKey.LogoutAllDevices),
-                onClick = {
-                    confirmRevokeAll = false
-                    onRevokeAllSessions()
-                },
-                modifier = Modifier.fillMaxWidth(),
-                style = ArcadeActionStyle.DANGER
-            )
-            ArcadeActionButton(
-                label = localized(TextKey.Cancel),
-                onClick = { confirmRevokeAll = false },
-                modifier = Modifier.fillMaxWidth(),
-                style = ArcadeActionStyle.OUTLINE
-            )
+            Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                ArcadeActionButton(
+                    label = localized(TextKey.LogoutAllDevices),
+                    onClick = {
+                        confirmRevokeAll = false
+                        onRevokeAllSessions()
+                    },
+                    modifier = Modifier.fillMaxWidth(),
+                    style = ArcadeActionStyle.DANGER
+                )
+                ArcadeActionButton(
+                    label = localized(TextKey.Cancel),
+                    onClick = { confirmRevokeAll = false },
+                    modifier = Modifier.fillMaxWidth(),
+                    style = ArcadeActionStyle.OUTLINE
+                )
+            }
         }
     }
+}
 
-    ArcadeDialog(
-        title = localized(TextKey.LoginDevicesTitle),
-        subtitle = localized(TextKey.LoginDevicesDescription),
-        onDismissRequest = onDismiss
-    ) {
-        Column(
-            modifier = Modifier.heightIn(max = 520.dp).verticalScroll(rememberScrollState()),
-            verticalArrangement = Arrangement.spacedBy(10.dp)
-        ) {
-                Text(
-                    localized(TextKey.LoginDevicesDescription),
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
+/** Một phiên đăng nhập: ô icon theo nền tảng, tên + thời gian, nhãn "Hiện tại" hoặc nút Đăng xuất. */
+@Composable
+private fun SessionRow(session: AccountSessionSnapshot, showDivider: Boolean, enabled: Boolean, onRevoke: () -> Unit) {
+    val deviceLabel = sessionDeviceLabel(session.devicePlatform)
+    val (tileTop, tileBottom, tileEdge) = when {
+        session.isCurrent -> Triple(A1Palette.Green1, A1Palette.Green2, A1Palette.GreenDeep)
+        session.devicePlatform.equals("android", ignoreCase = true) -> Triple(A1Palette.Blue1, A1Palette.Blue2, A1Palette.BlueDeep)
+        else -> Triple(Color(0xFF24508A), A1Palette.Ink, A1Palette.BlueDeep)
+    }
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .testTag("account_session:${session.sessionId}")
+            .then(if (showDivider) Modifier.drawBehind {
+                val y = size.height - 1.dp.toPx()
+                drawLine(
+                    A1Palette.SurfaceAlt2, Offset(3.dp.toPx(), y), Offset(size.width - 3.dp.toPx(), y),
+                    strokeWidth = 2.dp.toPx(),
+                    pathEffect = PathEffect.dashPathEffect(floatArrayOf(6.dp.toPx(), 4.dp.toPx()))
                 )
-                if (isLoading && sessions.isEmpty()) {
-                    Box(Modifier.fillMaxWidth().padding(24.dp), contentAlignment = Alignment.Center) {
-                        CircularProgressIndicator()
-                    }
-                } else if (sessions.isEmpty()) {
-                    Text(localized(TextKey.NoActiveSessions))
-                } else {
-                    sessions.forEach { session ->
-                        val deviceLabel = sessionDeviceLabel(session.devicePlatform)
-                        val currentDeviceLabel = localized(TextKey.CurrentDevice)
-                        ArcadePanel(
-                            modifier = Modifier.fillMaxWidth(),
-                            accent = if (session.isCurrent) ArcadeSuccess else MaterialTheme.colorScheme.primary
-                        ) {
-                            Row(
-                                modifier = Modifier.fillMaxWidth().padding(12.dp),
-                                verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.spacedBy(10.dp)
-                            ) {
-                                Icon(Icons.Default.Devices, contentDescription = null)
-                                Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                                    Text(
-                                        buildString {
-                                            append(deviceLabel)
-                                            if (session.isCurrent) append(" • $currentDeviceLabel")
-                                        },
-                                        fontWeight = FontWeight.Bold,
-                                        color = if (session.isCurrent) MaterialTheme.colorScheme.primary
-                                            else MaterialTheme.colorScheme.onSurface
-                                    )
-                                    Text(
-                                        localized(TextKey.ActivityTime, "time" to relativeSessionTime(session.lastSeenAtEpochMillis)),
-                                        style = MaterialTheme.typography.bodySmall,
-                                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                                    )
-                                    Text(
-                                        sessionExpiryLabel(session.expiresAtEpochMillis),
-                                        style = MaterialTheme.typography.bodySmall,
-                                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                                    )
-                                }
-                                TextButton(
-                                    onClick = { sessionPendingRevoke = session },
-                                    enabled = !isLoading
-                                ) { Text(localized(TextKey.Logout)) }
-                            }
-                        }
-                    }
-                }
-                notice?.let { Text(it, color = MaterialTheme.colorScheme.primary) }
-                error?.let { Text(it, color = MaterialTheme.colorScheme.error) }
+            } else Modifier)
+            .padding(start = 16.dp, end = 14.dp, top = 12.dp, bottom = 12.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(12.dp)
+    ) {
+        Box(
+            Modifier
+                .size(40.dp)
+                .background(Brush.verticalGradient(listOf(tileTop, tileBottom)), RoundedCornerShape(12.dp))
+                .border(2.5.dp, tileEdge, RoundedCornerShape(12.dp)),
+            contentAlignment = Alignment.Center
+        ) {
+            Icon(
+                when (session.devicePlatform?.lowercase()) {
+                    "android", "ios" -> Icons.Rounded.Smartphone
+                    else -> Icons.Rounded.Computer
+                },
+                contentDescription = null,
+                tint = Color.White,
+                modifier = Modifier.size(22.dp)
+            )
         }
-        ArcadeActionButton(
-            label = localized(TextKey.LogoutAllDevices),
-            onClick = { confirmRevokeAll = true },
-            enabled = !isLoading && sessions.isNotEmpty(),
-            modifier = Modifier.fillMaxWidth(),
-            style = ArcadeActionStyle.DANGER
-        )
-        ArcadeActionButton(
-            label = localized(TextKey.Close).uppercase(),
-            onClick = onDismiss,
-            enabled = !isLoading,
-            modifier = Modifier.fillMaxWidth().testTag("account_sessions_close"),
-            style = ArcadeActionStyle.PRIMARY
-        )
+        Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+            Text(
+                if (session.isCurrent) localized(TextKey.SessionThisDevice, "device" to deviceLabel) else deviceLabel,
+                style = MaterialTheme.typography.titleSmall.copy(fontSize = 16.sp),
+                color = A1Palette.Ink
+            )
+            Text(
+                localized(TextKey.ActivityTime, "time" to relativeSessionTime(session.lastSeenAtEpochMillis)),
+                style = MaterialTheme.typography.bodyMedium,
+                fontWeight = FontWeight.SemiBold,
+                color = A1Palette.Muted
+            )
+        }
+        if (session.isCurrent) {
+            A1Tag(localized(TextKey.SessionCurrentTag), A1TagTone.GREEN)
+        } else {
+            ArcadeActionButton(
+                label = localized(TextKey.Logout),
+                onClick = onRevoke,
+                enabled = enabled,
+                style = ArcadeActionStyle.OUTLINE,
+                compact = true,
+                modifier = Modifier.widthIn(min = 96.dp, max = 124.dp).testTag("account_session_revoke:${session.sessionId}")
+            ) {
+                Text(
+                    localized(TextKey.Logout),
+                    style = MaterialTheme.typography.titleSmall,
+                    fontWeight = FontWeight.ExtraBold,
+                    color = A1Palette.RedText,
+                    maxLines = 1
+                )
+            }
+        }
     }
 }
 
@@ -2101,19 +2236,13 @@ private fun relativeSessionTime(timestampMillis: Long): String {
 }
 
 @Composable
-private fun sessionExpiryLabel(expiresAtMillis: Long): String {
-    val remainingDays = ((expiresAtMillis - epochMillis()).coerceAtLeast(0L) / 86_400_000L) + 1L
-    return localized(TextKey.SessionExpiresInDays, "count" to remainingDays)
-}
-
-@Composable
 private fun SecurePasswordField(value: String, label: String, onValueChange: (String) -> Unit) {
     var isVisible by remember { mutableStateOf(false) }
     OutlinedTextField(
         value = value,
         onValueChange = { if (it.length <= MAX_ACCOUNT_PASSWORD_LENGTH) onValueChange(it) },
         label = label,
-        leadingIcon = { Icon(Icons.Default.Lock, null) },
+        leadingIcon = { Icon(Icons.Rounded.Lock, null, tint = A1Palette.Ink) },
         visualTransformation = if (isVisible) VisualTransformation.None else PasswordVisualTransformation(),
         trailingIcon = {
             IconButton(onClick = { isVisible = !isVisible }) {
