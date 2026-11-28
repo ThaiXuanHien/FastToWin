@@ -112,7 +112,7 @@ class NavigationHeaderUiTest {
         composeRule.runOnIdle { assertTrue(!clearedAll) }
 
         composeRule.onNodeWithContentDescription("Xóa tất cả thông báo").performClick()
-        composeRule.onNodeWithText("Xóa tất cả").performClick()
+        composeRule.onNodeWithTag("confirm_clear_notifications").performClick()
         composeRule.runOnIdle { assertTrue(clearedAll) }
     }
 

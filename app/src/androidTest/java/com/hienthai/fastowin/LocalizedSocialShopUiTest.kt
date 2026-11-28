@@ -104,7 +104,8 @@ class LocalizedSocialShopUiTest {
             )
         }
         composeRule.onNodeWithText("Thông báo").assertIsDisplayed()
-        composeRule.onNodeWithText("Tin mới dành cho bạn").assertIsDisplayed()
+        composeRule.onNodeWithText("Đọc hết").assertIsDisplayed()
+        composeRule.onNodeWithText("Hệ thống").assertIsDisplayed()
     }
 
     @Test
