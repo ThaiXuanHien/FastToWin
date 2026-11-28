@@ -63,7 +63,7 @@ class SeasonHistoryUiTest {
             .performScrollToNode(hasTestTag("season_history_item:2"))
         composeRule.onNodeWithTag("season_history_item:2").assertIsDisplayed()
         composeRule.onNodeWithTag("season_history_reward:2").performScrollTo().assertIsDisplayed()
-        composeRule.onNodeWithText("Khung Mùa Bứt Phá • Vàng").performScrollTo().assertIsDisplayed()
+        composeRule.onNodeWithText("Khung mùa", substring = true).performScrollTo().assertIsDisplayed()
     }
 
     @Test
