@@ -198,7 +198,6 @@ fun PracticeScreen(
                         selectedNumbers = game.selectedNumbers,
                         wrongNumber = wrongNumber,
                         enabled = true,
-                        boardStyle = preferences.boardStyle,
                         onNumberClick = { number ->
                             val correct = number == game.currentTarget
                             val effect = if (correct) GameFeedbackEffect.CORRECT else GameFeedbackEffect.WRONG
@@ -211,8 +210,8 @@ fun PracticeScreen(
                             } else {
                                 localization.text(TextKey.WrongNeedTarget, mapOf("target" to game.currentTarget))
                             }
-                            wrongNumber = if (!correct && preferences.visualEffectsEnabled) number else null
-                            if (!correct && preferences.visualEffectsEnabled) wrongFeedbackToken += 1
+                            wrongNumber = if (!correct) number else null
+                            if (!correct) wrongFeedbackToken += 1
                             if (preferences.soundEnabled) playFeedbackSound(effect)
                             if (preferences.vibrationEnabled) {
                                 hapticFeedback.performHapticFeedback(HapticFeedbackType.LongPress)

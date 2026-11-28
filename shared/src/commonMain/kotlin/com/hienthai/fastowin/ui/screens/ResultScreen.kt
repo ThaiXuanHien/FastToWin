@@ -302,7 +302,7 @@ fun ResultScreen(
             .fillMaxSize()
             .testTag("result_screen")
     ) {
-        ResultBackdrop(outcome = outcome, animate = preferences.visualEffectsEnabled)
+        ResultBackdrop(outcome = outcome, animate = true)
         Column(
             modifier = Modifier
                 .fillMaxSize()

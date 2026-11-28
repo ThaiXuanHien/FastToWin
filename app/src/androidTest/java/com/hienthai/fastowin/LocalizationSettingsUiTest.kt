@@ -23,7 +23,7 @@ class LocalizationSettingsUiTest {
     @Test
     fun appearanceHasNoThemeSelectorAndKeepsBoardAndFontSettings() {
         renderSettings()
-        composeRule.onNodeWithText("Màu bàn số").performScrollTo().assertIsDisplayed()
+        composeRule.onNodeWithText("Màu bàn số").assertDoesNotExist()
         composeRule.onNodeWithText("Chủ đề ứng dụng").assertDoesNotExist()
         composeRule.onNodeWithText("Sáng").assertDoesNotExist()
         composeRule.onNodeWithText("Cỡ chữ").performScrollTo().assertIsDisplayed()

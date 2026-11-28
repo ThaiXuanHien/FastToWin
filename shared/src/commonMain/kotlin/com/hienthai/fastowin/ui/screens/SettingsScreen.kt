@@ -25,7 +25,6 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.rounded.KeyboardArrowRight
 import androidx.compose.material.icons.automirrored.rounded.OpenInNew
 import androidx.compose.material.icons.automirrored.rounded.VolumeUp
-import androidx.compose.material.icons.rounded.AutoAwesome
 import androidx.compose.material.icons.rounded.CalendarMonth
 import androidx.compose.material.icons.rounded.CardGiftcard
 import androidx.compose.material.icons.rounded.Campaign
@@ -38,7 +37,6 @@ import androidx.compose.material.icons.rounded.InstallMobile
 import androidx.compose.material.icons.rounded.MeetingRoom
 import androidx.compose.material.icons.rounded.MilitaryTech
 import androidx.compose.material.icons.rounded.NotificationsActive
-import androidx.compose.material.icons.rounded.Palette
 import androidx.compose.material.icons.rounded.PersonAdd
 import androidx.compose.material.icons.rounded.PrivacyTip
 import androidx.compose.material.icons.rounded.RestartAlt
@@ -78,7 +76,6 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.hienthai.fastowin.data.preferences.AppFontScale
 import com.hienthai.fastowin.data.preferences.AppPreferences
-import com.hienthai.fastowin.data.preferences.BoardStyle
 import com.hienthai.fastowin.localization.AppLanguage
 import com.hienthai.fastowin.localization.LocalLocalization
 import com.hienthai.fastowin.localization.TextKey
@@ -227,7 +224,8 @@ fun SettingsScreen(
                         SettingsChoiceRow(
                             icon = Icons.Rounded.FormatSize,
                             tile = SettingsTile.PURPLE,
-                            title = localized(TextKey.SettingsFontSizeTitle)
+                            title = localized(TextKey.SettingsFontSizeTitle),
+                            showDivider = false
                         ) {
                             val entries = AppFontScale.entries
                             ArcadeSegmentedControl(
@@ -244,46 +242,6 @@ fun SettingsScreen(
                                 onSelected = { index -> entries.getOrNull(index)?.let { onPreferencesChange(preferences.copy(fontScale = it)) } },
                                 labelFontSizes = listOf(13.sp, 15.sp, 17.sp),
                                 modifier = Modifier.testTag("settings_font_scale")
-                            )
-                        }
-                        SettingsChoiceRow(
-                            icon = Icons.Rounded.Palette,
-                            tile = SettingsTile.GREEN,
-                            title = localized(TextKey.SettingsBoardStyleTitle),
-                            showDivider = false
-                        ) {
-                            val entries = BoardStyle.entries
-                            val boardLabels = entries.map {
-                                localized(
-                                    when (it) {
-                                        BoardStyle.CLASSIC -> TextKey.BoardClassic
-                                        BoardStyle.OCEAN -> TextKey.BoardOcean
-                                        BoardStyle.HIGH_CONTRAST -> TextKey.BoardHighContrast
-                                    }
-                                )
-                            }
-                            // Chữ lớn: ba nhãn không vừa một hàng nên cho cuộn ngang thay vì cắt chữ.
-                            if (androidx.compose.ui.platform.LocalDensity.current.fontScale >= 1.3f) {
-                                com.hienthai.fastowin.ui.components.ArcadeScrollableSegmentedControl(
-                                    labels = boardLabels,
-                                    selectedIndex = entries.indexOf(preferences.boardStyle).coerceAtLeast(0),
-                                    onSelected = { index -> entries.getOrNull(index)?.let { onPreferencesChange(preferences.copy(boardStyle = it)) } },
-                                    minItemWidth = 120.dp,
-                                    modifier = Modifier.testTag("settings_board_style")
-                                )
-                            } else ArcadeSegmentedControl(
-                                labels = entries.map {
-                                    localized(
-                                        when (it) {
-                                            BoardStyle.CLASSIC -> TextKey.BoardClassic
-                                            BoardStyle.OCEAN -> TextKey.BoardOcean
-                                            BoardStyle.HIGH_CONTRAST -> TextKey.BoardHighContrast
-                                        }
-                                    )
-                                },
-                                selectedIndex = entries.indexOf(preferences.boardStyle).coerceAtLeast(0),
-                                onSelected = { index -> entries.getOrNull(index)?.let { onPreferencesChange(preferences.copy(boardStyle = it)) } },
-                                modifier = Modifier.testTag("settings_board_style")
                             )
                         }
                     }
@@ -306,16 +264,8 @@ fun SettingsScreen(
                             tile = SettingsTile.RED,
                             title = localized(TextKey.SettingsVibrationTitle),
                             checked = preferences.vibrationEnabled,
-                            onCheckedChange = { onPreferencesChange(preferences.copy(vibrationEnabled = it)) }
-                        )
-                        SettingsSwitchRow(
-                            icon = Icons.Rounded.AutoAwesome,
-                            tile = SettingsTile.INK,
-                            title = localized(TextKey.SettingsVisualEffectsTitle),
-                            subtitle = localized(TextKey.SettingsVisualEffectsSubtitle),
-                            checked = preferences.visualEffectsEnabled,
                             showDivider = false,
-                            onCheckedChange = { onPreferencesChange(preferences.copy(visualEffectsEnabled = it)) }
+                            onCheckedChange = { onPreferencesChange(preferences.copy(vibrationEnabled = it)) }
                         )
                     }
 
