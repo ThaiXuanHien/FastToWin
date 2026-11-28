@@ -423,7 +423,9 @@ fun ArcadeSegmentedControl(
     onSelected: (Int) -> Unit,
     modifier: Modifier = Modifier,
     enabled: (Int) -> Boolean = { true },
-    itemTestTag: (Int) -> String? = { null }
+    itemTestTag: (Int) -> String? = { null },
+    /** Cỡ chữ riêng từng nhãn (vd. lựa chọn Cỡ chữ: Nhỏ/Vừa/Lớn to dần). */
+    labelFontSizes: List<androidx.compose.ui.unit.TextUnit>? = null
 ) {
     Row(
         modifier = modifier
@@ -463,7 +465,8 @@ fun ArcadeSegmentedControl(
                 ) {
                     Text(
                         label,
-                        style = MaterialTheme.typography.labelMedium,
+                        style = labelFontSizes?.getOrNull(index)?.let { MaterialTheme.typography.labelMedium.copy(fontSize = it) }
+                            ?: MaterialTheme.typography.labelMedium,
                         fontWeight = FontWeight.Black,
                         textAlign = TextAlign.Center,
                         maxLines = 1

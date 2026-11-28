@@ -264,7 +264,6 @@ fun GameScreen(
                         wrongNumber = wrongNumber,
                         hitNumber = hitNumber,
                         enabled = state.connectionStatus == ConnectionStatus.CONNECTED && !state.player.isFinished,
-                        boardStyle = preferences.boardStyle,
                         onNumberClick = { number ->
                             if (number !in state.player.selectedNumbers) tileOwners.onTap(number)
                             val effect = if (number == state.currentTarget) {

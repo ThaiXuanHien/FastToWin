@@ -33,3 +33,34 @@ fun darkOnlySettings() {
         }
     }
 }
+
+/** Kích thước bảng thiết kế A1 (390dp), thông báo đẩy đang bật để đối chiếu với bảng "Cài đặt". */
+@PreviewTest
+@Preview(name = "design_390", widthDp = 390, heightDp = 1180, showSystemUi = false)
+@Preview(name = "small_large_text", widthDp = 360, heightDp = 1800, fontScale = 1.6f, showSystemUi = false)
+@Composable
+fun settingsA1Design() {
+    val preferences = AppPreferences(languageCode = "vi")
+    ProvideLocalization(AppLanguage.VIETNAMESE) {
+        FastToWinTheme(preferences) {
+            SettingsScreen(
+                preferences, {}, {}, {}, {},
+                pushStatus = com.hienthai.fastowin.platform.AppPushStatus.ENABLED,
+                systemLanguageTags = listOf("vi-VN")
+            )
+        }
+    }
+}
+
+@PreviewTest
+@Preview(name = "design_390", widthDp = 390, heightDp = 844, showSystemUi = false)
+@Composable
+fun pushOptInA1Design() {
+    ProvideLocalization(AppLanguage.VIETNAMESE) {
+        FastToWinTheme {
+            androidx.compose.foundation.layout.Box(Modifier.fillMaxSize()) {
+                com.hienthai.fastowin.ui.components.PushOptInDialog(onEnable = {}, onLater = {})
+            }
+        }
+    }
+}

@@ -302,7 +302,7 @@ fun ResultScreen(
             .fillMaxSize()
             .testTag("result_screen")
     ) {
-        ResultBackdrop(outcome = outcome, animate = preferences.visualEffectsEnabled)
+        ResultBackdrop(outcome = outcome, animate = true)
         Column(
             modifier = Modifier
                 .fillMaxSize()
@@ -502,7 +502,7 @@ private fun ResultStar(filled: Boolean, size: Dp) {
         val path = Path()
         for (i in 0 until 10) {
             val radius = if (i % 2 == 0) r * 0.74f else r * 0.36f
-            val angle = Math.toRadians(-90.0 + i * 36.0)
+            val angle = (-90.0 + i * 36.0) * kotlin.math.PI / 180.0
             val p = Offset(c.x + (radius * kotlin.math.cos(angle)).toFloat(), c.y + (radius * kotlin.math.sin(angle)).toFloat())
             if (i == 0) path.moveTo(p.x, p.y) else path.lineTo(p.x, p.y)
         }
