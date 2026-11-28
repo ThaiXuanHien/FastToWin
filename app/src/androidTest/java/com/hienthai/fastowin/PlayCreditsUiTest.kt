@@ -51,10 +51,11 @@ class PlayCreditsUiTest {
             )
         }
 
-        val claim = composeRule.onNodeWithTag("gift_claim_admin-gift")
-        claim.performScrollTo().assertIsEnabled().performClick()
-        claim.assertIsNotEnabled()
-        composeRule.onNodeWithText("Đã nhận").assertIsDisplayed()
+        composeRule.onNodeWithTag("gift_claim_admin-gift").performScrollTo().assertIsEnabled().performClick()
+        // Quà đã nhận rời tab "Chưa nhận" và nằm ở tab "Đã nhận" với nút bị khóa.
+        composeRule.onNodeWithTag("gift_claim_admin-gift").assertDoesNotExist()
+        composeRule.onNodeWithTag("gift_tab_claimed").performClick()
+        composeRule.onNodeWithTag("gift_claim_admin-gift").performScrollTo().assertIsNotEnabled()
     }
 
     @Test

@@ -1054,10 +1054,10 @@ fun ProfileSectionScreen(
         )
     }
 
-    // Các màn con A1 (Thống kê, Lịch sử thi đấu, Bộ sưu tập): chỉ có nút quay lại + tiêu đề như thiết kế;
+    // Các màn con A1 (Thống kê, Lịch sử thi đấu, Bộ sưu tập, Lịch sử tài sản): chỉ có nút quay lại + tiêu đề như thiết kế;
     // tải lại bằng cách kéo xuống.
     val a1Section = section == ProfileSection.STATISTICS || section == ProfileSection.RECENT_MATCHES ||
-        section == ProfileSection.COLLECTION
+        section == ProfileSection.COLLECTION || section == ProfileSection.WALLET
     Column(modifier = Modifier.fillMaxSize().testTag("profile_section_screen:${section.name}")) {
         FastToWinHeader(
             title = when (section) {
@@ -1112,16 +1112,7 @@ fun ProfileSectionScreen(
                     if (section != ProfileSection.DAILY_CHECK_IN && !a1Section) ProfileSectionHero(section)
                     when (section) {
                         ProfileSection.STATISTICS -> A1StatisticsContent(profile)
-                        ProfileSection.WALLET -> {
-                            ArcadeStatGrid(
-                                stats = listOf(
-                                    localized(TextKey.Gold) to profile.progression.gold.toString(),
-                                    localized(TextKey.Gems) to profile.progression.gems.toString(),
-                                    "XP" to profile.progression.currentLevelExperience.toString()
-                                )
-                            )
-                            WalletHistorySectionContent(state.walletTransactions)
-                        }
+                        ProfileSection.WALLET -> A1WalletHistoryContent(state.walletTransactions)
                         ProfileSection.DAILY_CHECK_IN -> DailyCheckInDetailsContent(
                             checkIn = profile.progression.dailyCheckIn,
                             initialMonth = checkInMonth
@@ -1199,120 +1190,6 @@ private fun ProfileSectionHero(section: ProfileSection) {
 }
 
 @Composable
-private fun WalletHistorySectionContent(transactions: List<WalletTransactionSnapshot>) {
-    var selectedFilter by remember { mutableStateOf(0) }
-    var visibleTransactionCount by remember(selectedFilter) { mutableStateOf(DEFAULT_ARCADE_PAGE_SIZE) }
-    val filteredTransactions = remember(transactions, selectedFilter) {
-        transactions.filter { transaction ->
-            when (selectedFilter) {
-                1 -> transaction.goldDelta > 0 || transaction.gemsDelta > 0 ||
-                    transaction.xpDelta > 0 || transaction.playCreditDelta > 0
-                2 -> transaction.goldDelta < 0 || transaction.gemsDelta < 0 || transaction.xpDelta < 0
-                else -> true
-            }
-        }
-    }
-    val visibleTransactions = filteredTransactions.take(visibleTransactionCount)
-    Column(
-        modifier = Modifier.fillMaxWidth().testTag("wallet_history_content"),
-        verticalArrangement = Arrangement.spacedBy(10.dp)
-    ) {
-        ArcadeSegmentedControl(
-            labels = listOf(localized(TextKey.RecentFilterAll), localized(TextKey.Received), localized(TextKey.Used)),
-            selectedIndex = selectedFilter,
-            onSelected = { selectedFilter = it },
-            modifier = Modifier.testTag("wallet_history_tabs")
-        )
-        if (visibleTransactions.isEmpty()) {
-            ArcadePanel(modifier = Modifier.fillMaxWidth(), accent = ArcadeGold) {
-                Column(
-                    modifier = Modifier.fillMaxWidth().padding(20.dp),
-                    horizontalAlignment = Alignment.CenterHorizontally,
-                    verticalArrangement = Arrangement.spacedBy(6.dp)
-                ) {
-                    Icon(Icons.Default.AccountBalanceWallet, contentDescription = null)
-                    Text(localized(TextKey.NoWalletActivity), fontWeight = FontWeight.Bold)
-                    Text(
-                        if (transactions.isEmpty()) {
-                            localized(TextKey.WalletRewardsAppear)
-                        } else {
-                            localized(TextKey.WalletNoActivityInFilter)
-                        },
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                }
-            }
-        } else {
-            visibleTransactions.forEach { transaction ->
-                val isSpending = transaction.goldDelta < 0 || transaction.gemsDelta < 0 || transaction.xpDelta < 0
-                val accent = if (isSpending) ArcadeOpponent else ArcadeSuccess
-                ArcadePanel(
-                    modifier = Modifier.fillMaxWidth().testTag("wallet_transaction:${transaction.id}"),
-                    accent = accent
-                ) {
-                    Row(
-                        modifier = Modifier.fillMaxWidth().padding(14.dp),
-                        horizontalArrangement = Arrangement.spacedBy(12.dp),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Surface(
-                            shape = CircleShape,
-                            color = accent.copy(alpha = 0.16f)
-                        ) {
-                            Icon(
-                                walletSourceIcon(transaction.sourceType),
-                                contentDescription = null,
-                                modifier = Modifier.padding(10.dp),
-                                tint = accent
-                            )
-                        }
-                        Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                            Text(walletSourceLabel(transaction.sourceType), fontWeight = FontWeight.Bold)
-                            Text(
-                                walletRelativeTime(transaction.createdAtEpochMillis),
-                                style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant
-                            )
-                            if (transaction.goldDelta != 0 || transaction.xpDelta != 0 || transaction.gemsDelta != 0) {
-                                WalletDeltaAmounts(
-                                    gold = transaction.goldDelta,
-                                    xp = transaction.xpDelta,
-                                    gems = transaction.gemsDelta
-                                )
-                            }
-                            if (transaction.playCreditDelta > 0) {
-                                val plays = localized(TextKey.PlayCreditOffer, "plays" to transaction.playCreditDelta)
-                                Text("+$plays")
-                            }
-                        }
-                    }
-                }
-            }
-            ArcadeLoadMoreButton(
-                visibleItemCount = visibleTransactions.size,
-                totalItemCount = filteredTransactions.size,
-                onLoadMore = {
-                    visibleTransactionCount = nextArcadePageItemCount(
-                        visibleTransactionCount,
-                        filteredTransactions.size
-                    )
-                },
-                testTag = "wallet_history_load_more"
-            )
-        }
-    }
-}
-
-private fun walletSourceIcon(sourceType: String): ImageVector = when (sourceType) {
-    "DAILY_CHECK_IN" -> Icons.Default.DateRange
-    "MISSION", "CLAN_QUEST" -> Icons.AutoMirrored.Filled.Assignment
-    "MATCH", "TOURNAMENT_PRIZE", "SEASON_REWARD", "CLAN_WEEKLY_RACE" -> Icons.Default.EmojiEvents
-    "COSMETIC_PURCHASE", "STORE_PURCHASE" -> Icons.Default.ShoppingBag
-    else -> Icons.Default.AccountBalanceWallet
-}
-
-@Composable
 private fun walletSourceLabel(sourceType: String): String = localized(walletSourceTextKey(sourceType))
 
 internal fun walletSourceTextKey(sourceType: String): TextKey = when (sourceType) {
@@ -1332,7 +1209,7 @@ internal fun walletSourceTextKey(sourceType: String): TextKey = when (sourceType
     "ADMIN_GIFT" -> TextKey.AdminGiftSource
     "COMPENSATION" -> TextKey.CompensationSource
     "GOLD_EXCHANGE" -> TextKey.GoldExchangeSource
-    "PLAY_CREDIT_EXCHANGE" -> TextKey.PlayCredits
+    "PLAY_CREDIT_EXCHANGE" -> TextKey.PlayCreditExchangeSource
     "GIFT_CODE" -> TextKey.GiftCode
     "ACHIEVEMENT" -> TextKey.AchievementRewardSource
     "TOURNAMENT_ENTRY_REFUND" -> TextKey.TournamentEntryRefundSource

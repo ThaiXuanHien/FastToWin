@@ -59,8 +59,9 @@ class LocalizedProfileUiTest {
         }
 
         composeRule.onNodeWithText("Tất cả").assertIsDisplayed()
-        composeRule.onNodeWithText("Nhận").assertIsDisplayed()
-        composeRule.onNodeWithText("Đã dùng").assertIsDisplayed()
+        composeRule.onNodeWithTag("wallet_filter_gold").assertIsDisplayed()
+        composeRule.onNodeWithText("Gem").assertIsDisplayed()
+        composeRule.onNodeWithText("XP").assertIsDisplayed()
     }
 
     @Test
@@ -144,7 +145,6 @@ class LocalizedProfileUiTest {
         }
 
         composeRule.onNodeWithText("Season history").assertIsDisplayed()
-        composeRule.onNodeWithText("Achievements by season").assertIsDisplayed()
         composeRule.onNodeWithText("Opening Season").performScrollTo().assertIsDisplayed()
         composeRule.onNodeWithText("Creator Cup").performScrollTo().assertIsDisplayed()
         composeRule.onNodeWithText("Mùa Khởi Đầu").assertDoesNotExist()

@@ -186,7 +186,7 @@ private fun rewardDescription(localization: LocalizationService, gold: Int, xp: 
     if (gems > 0) add(localization.text(TextKey.RewardGemsDescription, mapOf("count" to gems)))
 }.joinToString()
 
-private fun walletDeltaDescription(localization: LocalizationService, gold: Int, xp: Int, gems: Int): String = buildList {
+internal fun walletDeltaDescription(localization: LocalizationService, gold: Int, xp: Int, gems: Int): String = buildList {
     if (gold != 0) add(localization.text(if (gold > 0) TextKey.WalletReceivedGold else TextKey.WalletUsedGold, mapOf("count" to kotlin.math.abs(gold))))
     if (xp != 0) add(localization.text(if (xp > 0) TextKey.WalletReceivedXp else TextKey.WalletUsedXp, mapOf("count" to kotlin.math.abs(xp))))
     if (gems != 0) add(localization.text(if (gems > 0) TextKey.WalletReceivedGems else TextKey.WalletUsedGems, mapOf("count" to kotlin.math.abs(gems))))

@@ -467,4 +467,4 @@ internal fun localizedSeasonTimeRemaining(endsAtEpochMillis: Long, nowMillis: Lo
     else localized(TextKey.MinutesRemaining, "minutes" to minutes)
 }
 
-private const val SEASON_TIMER_REFRESH_MILLIS = 60_000L
+internal const val SEASON_TIMER_REFRESH_MILLIS = 60_000L

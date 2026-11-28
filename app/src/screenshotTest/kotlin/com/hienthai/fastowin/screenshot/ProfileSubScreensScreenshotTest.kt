@@ -23,6 +23,18 @@ import com.hienthai.fastowin.ui.components.LocalAvatarFramePreview
 import com.hienthai.fastowin.ui.screens.ProfileSection
 import com.hienthai.fastowin.ui.screens.ProfileSectionScreen
 import com.hienthai.fastowin.ui.theme.FastToWinTheme
+import com.hienthai.fastowin.protocol.GiftState
+import com.hienthai.fastowin.protocol.MailboxGift
+import com.hienthai.fastowin.protocol.RankedTier
+import com.hienthai.fastowin.protocol.STANDARD_SEASON_TIER_REWARDS
+import com.hienthai.fastowin.protocol.SeasonCosmeticRewardSnapshot
+import com.hienthai.fastowin.protocol.SeasonHistoryEntrySnapshot
+import com.hienthai.fastowin.protocol.SeasonRewardReceiptSnapshot
+import com.hienthai.fastowin.protocol.SeasonSnapshot
+import com.hienthai.fastowin.protocol.WalletTransactionSnapshot
+import com.hienthai.fastowin.state.GiftMailboxState
+import com.hienthai.fastowin.ui.screens.GiftMailboxScreen
+import com.hienthai.fastowin.ui.screens.SeasonHistoryScreen
 
 /** Dữ liệu giống bảng thiết kế "Tài khoản – màn con 1" để đối chiếu từng chi tiết. */
 private fun designProfile(): PlayerProfileSnapshot {
@@ -105,3 +117,85 @@ fun profileMatchHistoryA1() = SubScreenFrame(ProfileSection.RECENT_MATCHES)
 @Preview(name = "tablet", widthDp = 840, heightDp = 900)
 @Composable
 fun profileCollectionA1() = SubScreenFrame(ProfileSection.COLLECTION)
+
+private val designNow = System.currentTimeMillis()
+
+private fun designWallet() = listOf(
+    WalletTransactionSnapshot("w1", "MATCH", "m", goldDelta = 250, createdAtEpochMillis = designNow - 60_000L),
+    WalletTransactionSnapshot("w2", "DAILY_CHECK_IN", "c", goldDelta = 200, createdAtEpochMillis = designNow - 120_000L),
+    WalletTransactionSnapshot("w3", "CLAN_DONATION", "d", goldDelta = -20_000, createdAtEpochMillis = designNow - 86_400_000L),
+    WalletTransactionSnapshot("w4", "STORE_PURCHASE", "s", gemsDelta = 330, createdAtEpochMillis = designNow - 6 * 86_400_000L),
+    WalletTransactionSnapshot("w5", "PLAY_CREDIT_EXCHANGE", "p", gemsDelta = -10, playCreditDelta = 5, createdAtEpochMillis = designNow - 7 * 86_400_000L)
+)
+
+private fun seasonProfile() = designProfile().let { base ->
+    base.copy(
+        progression = base.progression.copy(
+            season = SeasonSnapshot(
+                name = "Mùa 7", tier = "GOLD", rating = 1742, endsAtEpochMillis = designNow + 12 * 86_400_000L,
+                rewardDescription = "", placementMatchesPlayed = 10, placementMatchesRequired = 10, peakRating = 1742,
+                tierRewards = STANDARD_SEASON_TIER_REWARDS, seasonNumber = 7
+            ),
+            seasonHistory = listOf(
+                SeasonHistoryEntrySnapshot(6, "Mùa 6", designNow - 30 * 86_400_000L, 1790, 1810, 96, 120, 10, 10,
+                    SeasonRewardReceiptSnapshot(6, "Mùa 6", RankedTier.DIAMOND, 1810, 0, 40, designNow,
+                        SeasonCosmeticRewardSnapshot("season_6_diamond", "Khung Mùa 6", com.hienthai.fastowin.protocol.CosmeticType.FRAME))),
+                SeasonHistoryEntrySnapshot(5, "Mùa 5", designNow - 60 * 86_400_000L, 1500, 1544, 402, 80, 10, 10,
+                    SeasonRewardReceiptSnapshot(5, "Mùa 5", RankedTier.PLATINUM, 1544, 3000, 0, designNow))
+            )
+        )
+    )
+}
+
+@Composable
+private fun DesignFrame(content: @Composable () -> Unit) {
+    ProvideLocalization(AppLanguage.VIETNAMESE) {
+        FastToWinTheme {
+            CompositionLocalProvider(LocalAvatarFramePreview provides screenshotFramePainter) {
+                A1SkyBackdrop(Modifier.fillMaxSize(), showHills = false) { content() }
+            }
+        }
+    }
+}
+
+@PreviewTest
+@Preview(name = "design_390", widthDp = 390, heightDp = 844)
+@Preview(name = "small_large_text", widthDp = 360, heightDp = 740, fontScale = 1.6f)
+@Composable
+fun profileWalletA1() = DesignFrame {
+    val profile = designProfile()
+    ProfileSectionScreen(
+        state = ArcadeScreenshotFixtures.homeState().copy(profile = profile, walletTransactions = designWallet()),
+        profile = profile, section = ProfileSection.WALLET, isExternalProfile = false,
+        canEdit = true, onBack = {}, onRefresh = {}, onOpenMatchDetail = {},
+        onCloseMatchDetail = {}, onEquipCosmetics = { _, _ -> }, onClaimMissionReward = {},
+        onSave = { _, _ -> }, onOpenNotifications = {},
+    )
+}
+
+@PreviewTest
+@Preview(name = "design_390", widthDp = 390, heightDp = 844)
+@Preview(name = "small_large_text", widthDp = 360, heightDp = 740, fontScale = 1.6f)
+@Composable
+fun seasonHistoryA1() = DesignFrame {
+    val profile = seasonProfile()
+    SeasonHistoryScreen(state = ArcadeScreenshotFixtures.homeState().copy(profile = profile), onBack = {}, onRefresh = {}, onOpenNotifications = {})
+}
+
+@PreviewTest
+@Preview(name = "design_390", widthDp = 390, heightDp = 844)
+@Preview(name = "small_large_text", widthDp = 360, heightDp = 740, fontScale = 1.6f)
+@Composable
+fun giftMailboxA1() = DesignFrame {
+    val gifts = listOf(
+        MailboxGift("g1", "Quà bù bảo trì", "Maintenance gift", "Từ Fast To Win", "From Fast To Win", 300, 0,
+            designNow - 1_000L, designNow + 6 * 86_400_000L, GiftState.AVAILABLE),
+        MailboxGift("g2", "Thưởng mùa 6", "Season 6 reward", "Vàng I", "Gold I", 0, 0,
+            designNow - 1_000L, designNow + 13 * 86_400_000L, GiftState.AVAILABLE, gems = 20)
+    )
+    GiftMailboxScreen(
+        state = GiftMailboxState(isOpen = true, items = gifts, total = 2, availableCount = 2),
+        isGuest = false, onBack = {}, onRefresh = {}, onLoadMore = {}, onClaim = {}, onClaimAll = {},
+        nowMillis = designNow
+    )
+}

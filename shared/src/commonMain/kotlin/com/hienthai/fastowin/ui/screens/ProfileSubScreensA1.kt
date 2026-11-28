@@ -94,6 +94,19 @@ import com.hienthai.fastowin.ui.components.a1Card
 import com.hienthai.fastowin.ui.components.nextArcadePageItemCount
 import com.hienthai.fastowin.ui.format.fullNumber
 import com.hienthai.fastowin.ui.theme.A1Palette
+import androidx.compose.material.icons.rounded.ConfirmationNumber
+import androidx.compose.material.icons.rounded.Redeem
+import androidx.compose.material.icons.rounded.Replay
+import androidx.compose.material.icons.rounded.Storefront
+import androidx.compose.material.icons.rounded.TaskAlt
+import androidx.compose.material.icons.rounded.VolunteerActivism
+import com.hienthai.fastowin.localization.LocalLocalization
+import com.hienthai.fastowin.protocol.WalletTransactionSnapshot
+import com.hienthai.fastowin.ui.components.walletDeltaDescription
+import kotlinx.datetime.TimeZone
+import kotlinx.datetime.number
+import kotlinx.datetime.toLocalDateTime
+import kotlin.time.Instant
 
 /*
  * Các màn con của tab Tôi theo thiết kế A1 (bảng "Tài khoản – màn con 1"):
@@ -185,7 +198,7 @@ private fun RowTitle(text: String, modifier: Modifier = Modifier) {
         style = MaterialTheme.typography.titleSmall.copy(fontSize = 15.sp, lineHeight = 19.sp),
         fontWeight = FontWeight.ExtraBold,
         color = A1Palette.Ink,
-        maxLines = 2,
+        maxLines = 3,
         overflow = TextOverflow.Ellipsis
     )
 }
@@ -720,5 +733,143 @@ private fun TitleRow(
             if (!cosmetic.equipped) SmallMuted(status)
         }
         if (cosmetic.equipped) A1Tag(localized(TextKey.CollectionInUse), A1TagTone.YELLOW)
+    }
+}
+
+// ---------------------------------------------------------------- Lịch sử tài sản
+
+private enum class WalletFilter { ALL, GOLD, GEMS, XP }
+
+/** Màn "Lịch sử tài sản": chip lọc theo loại tiền và một thẻ các dòng giao dịch. */
+@Composable
+internal fun A1WalletHistoryContent(transactions: List<WalletTransactionSnapshot>) {
+    var filter by rememberSaveable { mutableStateOf(WalletFilter.ALL) }
+    var visibleCount by remember(filter) { mutableStateOf(DEFAULT_ARCADE_PAGE_SIZE) }
+    val filtered = remember(transactions, filter) {
+        transactions.filter {
+            when (filter) {
+                WalletFilter.ALL -> true
+                WalletFilter.GOLD -> it.goldDelta != 0
+                WalletFilter.GEMS -> it.gemsDelta != 0
+                WalletFilter.XP -> it.xpDelta != 0
+            }
+        }
+    }
+    val visible = filtered.take(visibleCount)
+    Column(Modifier.fillMaxWidth().testTag("wallet_history_content"), verticalArrangement = Arrangement.spacedBy(18.dp)) {
+        FlowRow(
+            modifier = Modifier.fillMaxWidth().testTag("wallet_history_tabs"),
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            listOf(
+                WalletFilter.ALL to TextKey.RecentFilterAll,
+                WalletFilter.GOLD to TextKey.Gold,
+                WalletFilter.GEMS to TextKey.WalletFilterGems,
+                WalletFilter.XP to TextKey.WalletFilterXp
+            ).forEach { (value, label) ->
+                ArcadeChoiceChip(
+                    label = localized(label),
+                    selected = filter == value,
+                    onClick = { filter = value },
+                    modifier = Modifier.testTag("wallet_filter_${value.name.lowercase()}")
+                )
+            }
+        }
+        if (visible.isEmpty()) {
+            EmptyCard(localized(if (transactions.isEmpty()) TextKey.WalletRewardsAppear else TextKey.WalletNoActivityInFilter))
+        } else {
+            Column(Modifier.fillMaxWidth().a1Card().padding(vertical = 4.dp)) {
+                visible.forEachIndexed { index, transaction ->
+                    WalletRow(transaction, showDivider = index < visible.lastIndex)
+                }
+            }
+            ArcadeLoadMoreButton(
+                visibleItemCount = visible.size,
+                totalItemCount = filtered.size,
+                onLoadMore = { visibleCount = nextArcadePageItemCount(visibleCount, filtered.size) },
+                testTag = "wallet_history_load_more"
+            )
+        }
+    }
+}
+
+/** Ô icon theo nguồn giao dịch (thưởng trận xanh lá, điểm danh vàng, bang tím, cửa hàng xanh, lượt chơi đen). */
+private fun walletTile(sourceType: String): Triple<ImageVector, Color, Color> = when (sourceType) {
+    "MATCH", "TOURNAMENT_PRIZE", "SEASON_REWARD" -> Triple(Icons.Rounded.MilitaryTech, A1Palette.Green2, Color.White)
+    "MISSION", "CLAN_QUEST" -> Triple(Icons.Rounded.TaskAlt, A1Palette.Green2, Color.White)
+    "ACHIEVEMENT" -> Triple(Icons.Rounded.EmojiEvents, A1Palette.Yellow2, A1YellowIconInk)
+    "DAILY_CHECK_IN" -> Triple(Icons.Rounded.CalendarMonth, A1Palette.Yellow2, A1YellowIconInk)
+    "CLAN_DONATION" -> Triple(Icons.Rounded.VolunteerActivism, A1Palette.Purple2, Color.White)
+    "CLAN_CREATION", "CLAN_WEEKLY_RACE" -> Triple(Icons.Rounded.Groups, A1Palette.Purple2, Color.White)
+    "STORE_PURCHASE", "COSMETIC_PURCHASE", "GOLD_EXCHANGE" -> Triple(Icons.Rounded.Storefront, A1Palette.Blue2, Color.White)
+    "PLAY_CREDIT_EXCHANGE", "TOURNAMENT_ENTRY" -> Triple(Icons.Rounded.ConfirmationNumber, A1Palette.Ink, Color.White)
+    "ADMIN_GIFT", "COMPENSATION", "GIFT_CODE" -> Triple(Icons.Rounded.Redeem, A1Palette.Purple2, Color.White)
+    else -> Triple(Icons.Rounded.Replay, A1Palette.Blue2, Color.White)
+}
+
+@Composable
+private fun WalletRow(transaction: WalletTransactionSnapshot, showDivider: Boolean) {
+    val localization = LocalLocalization.current
+    val (icon, color, tint) = walletTile(transaction.sourceType)
+    val deltas = buildList {
+        if (transaction.goldDelta != 0) add(transaction.goldDelta to localized(TextKey.Gold))
+        if (transaction.gemsDelta != 0) add(transaction.gemsDelta to localized(TextKey.Gems))
+        if (transaction.xpDelta != 0) add(transaction.xpDelta to localized(TextKey.WalletFilterXp))
+    }
+    val description = walletDeltaDescription(localization, transaction.goldDelta, transaction.xpDelta, transaction.gemsDelta)
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .heightIn(min = 64.dp)
+            .testTag("wallet_transaction:${transaction.id}")
+            .a1DashedDivider(showDivider)
+            .padding(horizontal = 16.dp, vertical = 12.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(12.dp)
+    ) {
+        A1IconTile(icon, color, tint)
+        Column(Modifier.weight(1f)) {
+            RowTitle(localized(walletSourceTextKey(transaction.sourceType)))
+            SmallMuted(walletClockTime(transaction.createdAtEpochMillis))
+        }
+        Column(
+            horizontalAlignment = Alignment.End,
+            modifier = if (deltas.isNotEmpty()) Modifier.clearAndSetSemantics { contentDescription = description } else Modifier
+        ) {
+            deltas.forEach { (amount, unit) ->
+                Text(
+                    (if (amount > 0) "+" else "−") + fullNumber(kotlin.math.abs(amount).toLong()) + " " + unit,
+                    style = MaterialTheme.typography.titleMedium.copy(fontSize = 16.sp, lineHeight = 21.sp),
+                    fontWeight = FontWeight.ExtraBold,
+                    color = if (amount > 0) A1Palette.GreenText else A1Palette.RedText,
+                    maxLines = 1
+                )
+            }
+            if (transaction.playCreditDelta != 0) {
+                Text(
+                    (if (transaction.playCreditDelta > 0) "+" else "−") +
+                        localized(TextKey.PlayCreditOffer, "plays" to kotlin.math.abs(transaction.playCreditDelta)),
+                    style = MaterialTheme.typography.titleMedium.copy(fontSize = 16.sp, lineHeight = 21.sp),
+                    fontWeight = FontWeight.ExtraBold,
+                    color = if (transaction.playCreditDelta > 0) A1Palette.GreenText else A1Palette.RedText,
+                    maxLines = 1
+                )
+            }
+        }
+    }
+}
+
+/** "10:42 hôm nay", "hôm qua", "22/11" theo giờ máy. */
+@Composable
+internal fun walletClockTime(timestampMillis: Long, nowMillis: Long = epochMillis()): String {
+    val zone = TimeZone.currentSystemDefault()
+    val local = Instant.fromEpochMilliseconds(timestampMillis).toLocalDateTime(zone)
+    val today = Instant.fromEpochMilliseconds(nowMillis).toLocalDateTime(zone).date
+    fun Int.two() = toString().padStart(2, '0')
+    return when (today.toEpochDays() - local.date.toEpochDays()) {
+        0L -> localized(TextKey.WalletTimeToday, "time" to "${local.hour.two()}:${local.minute.two()}")
+        1L -> localized(TextKey.YesterdayShort)
+        else -> "${local.day.two()}/${local.month.number.two()}"
     }
 }
