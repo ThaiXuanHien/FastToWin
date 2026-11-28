@@ -70,7 +70,7 @@ fun A1Tag(
             .border(2.dp, tone.border, RoundedCornerShape(if (large) 14.dp else 11.dp))
             .padding(horizontal = if (large) 14.dp else 10.dp, vertical = if (large) 5.dp else 2.dp),
         verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(4.dp)
+        horizontalArrangement = Arrangement.spacedBy(4.dp, Alignment.CenterHorizontally)
     ) {
         icon?.let { Icon(it, contentDescription = null, tint = tone.content, modifier = Modifier.size(14.dp)) }
         Text(

@@ -577,7 +577,7 @@ private fun ResultStatsCard(
             PlayerColumn(state.player, myName)
             ScoreText(myScore, A1Palette.Ink, TextAlign.Start, Modifier.weight(1f).padding(start = 10.dp))
             Text(
-                "VS",
+                text = "VS",
                 style = MaterialTheme.typography.titleLarge.copy(fontSize = 18.sp),
                 color = A1Palette.Muted,
                 modifier = Modifier.padding(horizontal = 4.dp)

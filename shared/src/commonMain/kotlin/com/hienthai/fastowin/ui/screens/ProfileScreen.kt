@@ -1054,27 +1054,34 @@ fun ProfileSectionScreen(
         )
     }
 
+    // Các màn con A1 (Thống kê, Lịch sử thi đấu, Bộ sưu tập): chỉ có nút quay lại + tiêu đề như thiết kế;
+    // tải lại bằng cách kéo xuống.
+    val a1Section = section == ProfileSection.STATISTICS || section == ProfileSection.RECENT_MATCHES ||
+        section == ProfileSection.COLLECTION
     Column(modifier = Modifier.fillMaxSize().testTag("profile_section_screen:${section.name}")) {
         FastToWinHeader(
             title = when (section) {
-                ProfileSection.STATISTICS -> localized(TextKey.StatisticsAchievements)
+                ProfileSection.STATISTICS -> localized(TextKey.StatisticsShort)
                 ProfileSection.WALLET -> localized(TextKey.WalletHistory)
                 ProfileSection.DAILY_CHECK_IN -> localized(TextKey.CheckIn)
                 ProfileSection.MISSIONS -> localized(TextKey.MissionsTitle)
                 ProfileSection.COLLECTION -> localized(TextKey.CollectionTitle)
-                ProfileSection.RECENT_MATCHES -> localized(TextKey.RecentMatches)
+                ProfileSection.RECENT_MATCHES -> localized(TextKey.MatchHistory)
             },
             gold = state.profile?.progression?.gold ?: 0,
             gems = state.profile?.progression?.gems ?: 0,
             unreadNotifications = state.unreadNotificationCount,
             onNotifications = onOpenNotifications,
             onBack = onBack,
-            showBalances = section != ProfileSection.DAILY_CHECK_IN && section != ProfileSection.MISSIONS,
+            showBalances = !a1Section && section != ProfileSection.DAILY_CHECK_IN && section != ProfileSection.MISSIONS,
+            showNotifications = !a1Section,
             actions = {
-                HeaderRefreshAction(
-                    isRefreshing = isLoading && state.equippingCosmeticId == null,
-                    onRefresh = onRefresh
-                )
+                if (!a1Section) {
+                    HeaderRefreshAction(
+                        isRefreshing = isLoading && state.equippingCosmeticId == null,
+                        onRefresh = onRefresh
+                    )
+                }
             }
         )
         ResponsiveScreen(
@@ -1097,12 +1104,14 @@ fun ProfileSectionScreen(
                         .windowInsetsPadding(
                             WindowInsets.safeDrawing.only(WindowInsetsSides.Bottom + WindowInsetsSides.Horizontal)
                         )
+                        // Thiết kế A1 cách mép 20dp trên điện thoại (ResponsiveScreen đã chừa 16dp).
+                        .padding(horizontal = if (a1Section) 4.dp else 0.dp)
                         .padding(vertical = 16.dp),
                     verticalArrangement = Arrangement.spacedBy(14.dp)
                 ) {
-                    if (section != ProfileSection.DAILY_CHECK_IN) ProfileSectionHero(section)
+                    if (section != ProfileSection.DAILY_CHECK_IN && !a1Section) ProfileSectionHero(section)
                     when (section) {
-                        ProfileSection.STATISTICS -> StatisticsAchievementsSectionContent(profile)
+                        ProfileSection.STATISTICS -> A1StatisticsContent(profile)
                         ProfileSection.WALLET -> {
                             ArcadeStatGrid(
                                 stats = listOf(
@@ -1123,15 +1132,14 @@ fun ProfileSectionScreen(
                             onClaim = onClaimMissionInstance,
                             onDismissReward = onDismissMissionReward
                         )
-                        ProfileSection.COLLECTION -> CollectionSectionContent(
+                        ProfileSection.COLLECTION -> A1CollectionContent(
                             state = state,
                             profile = profile,
                             canEdit = canEdit,
                             isLoading = isLoading,
-                            onEquipCosmetics = onEquipCosmetics,
-                            onSave = onSave
+                            onEquipCosmetics = onEquipCosmetics
                         )
-                        ProfileSection.RECENT_MATCHES -> RecentMatchesSectionContent(
+                        ProfileSection.RECENT_MATCHES -> A1MatchHistoryContent(
                             profile = profile,
                             isExternalProfile = isExternalProfile,
                             historyFilter = historyFilter,
@@ -1345,126 +1353,7 @@ private fun walletRelativeTime(createdAtEpochMillis: Long, nowMillis: Long = epo
 }
 
 @Composable
-private fun StatisticsAchievementsSectionContent(profile: PlayerProfileSnapshot) {
-    val localization = LocalLocalization.current
-    val stats = profile.statistics
-    val totalSelections = stats.correctSelections + stats.wrongSelections
-    val accuracy = if (totalSelections == 0) 0 else stats.correctSelections * 100 / totalSelections
-    val winRate = if (stats.totalMatches == 0) 0 else stats.wins * 100 / stats.totalMatches
-    Column(
-        modifier = Modifier.fillMaxWidth().testTag("profile_statistics_content"),
-        verticalArrangement = Arrangement.spacedBy(14.dp)
-    ) {
-        ArcadeStatGrid(
-            stats = listOf(
-                localized(TextKey.WinRate) to "$winRate%",
-                localized(TextKey.AverageReactionShort) to "${stats.averageReactionMillis} ms",
-                localized(TextKey.AccuracyLabel) to "$accuracy%"
-            )
-        )
-
-        if (profile.recentMatches.isNotEmpty()) {
-            val scores = profile.recentMatches.take(10).asReversed().map { it.playerScore }
-            val eloTrend = remember(stats.eloRating, profile.recentMatches) {
-                buildEloTrend(stats.eloRating, profile.recentMatches.take(10))
-            }
-            TrendChart(localized(TextKey.RecentFormTen), scores) {
-                localization.text(TextKey.PointsCount, mapOf("count" to it))
-            }
-            TrendChart(localized(TextKey.EloChange), eloTrend) { "Elo $it" }
-        }
-
-        Text(localized(TextKey.Overview), style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Black)
-        ArcadeStatGrid(
-            stats = listOf(
-                localized(TextKey.Matches) to stats.totalMatches.toString(),
-                localized(TextKey.Wins) to stats.wins.toString(),
-                localized(TextKey.Losses) to stats.losses.toString(),
-                localized(TextKey.DrawsLabel) to stats.draws.toString(),
-                localized(TextKey.HighScore) to stats.highestScore.toString(),
-                localized(TextKey.BestStreak) to stats.bestWinStreak.toString(),
-                localized(TextKey.CorrectWrongLabel) to "${stats.correctSelections} / ${stats.wrongSelections}"
-            )
-        )
-
-        if (profile.modeStatistics.isNotEmpty()) {
-            Text(localized(TextKey.ModeStatistics), style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
-            Column(
-                modifier = Modifier.fillMaxWidth().testTag("mode_statistics"),
-                verticalArrangement = Arrangement.spacedBy(10.dp)
-            ) {
-                profile.modeStatistics
-                    .sortedWith(compareBy<GameModeStatisticsSnapshot> { it.gameMode.unlockLevel }.thenBy { it.gameMode.name })
-                    .forEach { ModeStatisticsCard(it) }
-            }
-        }
-
-        Text(localized(TextKey.AchievementsTitle), style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Black)
-        if (profile.achievements.isEmpty()) {
-            ArcadePanel(modifier = Modifier.fillMaxWidth(), accent = ArcadeGold) {
-                Text(
-                    localized(TextKey.NoAchievements),
-                    modifier = Modifier.padding(20.dp),
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
-            }
-        } else {
-            BoxWithConstraints(modifier = Modifier.fillMaxWidth()) {
-                val columns = if (maxWidth >= 640.dp) 2 else 1
-                Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                    profile.achievements.chunked(columns).forEach { achievements ->
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.spacedBy(10.dp)
-                        ) {
-                            achievements.forEach { achievement ->
-                                ArcadePanel(
-                                    modifier = Modifier
-                                        .weight(1f)
-                                        .testTag("profile_achievement:${achievement.code}"),
-                                    accent = ArcadeGold
-                                ) {
-                                    Row(
-                                        modifier = Modifier.fillMaxWidth().padding(14.dp),
-                                        verticalAlignment = Alignment.CenterVertically,
-                                        horizontalArrangement = Arrangement.spacedBy(12.dp)
-                                    ) {
-                                        Surface(
-                                            shape = CircleShape,
-                                            color = ArcadeGold.copy(alpha = 0.18f),
-                                            modifier = Modifier.size(44.dp)
-                                        ) {
-                                            Box(contentAlignment = Alignment.Center) {
-                                                Icon(
-                                                    Icons.Default.EmojiEvents,
-                                                    contentDescription = null,
-                                                    tint = ArcadeGold,
-                                                    modifier = Modifier.size(26.dp)
-                                                )
-                                            }
-                                        }
-                                        Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                                            Text(localizedAchievementTitle(achievement), fontWeight = FontWeight.Black)
-                                            Text(
-                                                localizedAchievementDescription(achievement),
-                                                style = MaterialTheme.typography.bodySmall,
-                                                color = MaterialTheme.colorScheme.onSurfaceVariant
-                                            )
-                                        }
-                                    }
-                                }
-                            }
-                            repeat(columns - achievements.size) { Spacer(Modifier.weight(1f)) }
-                        }
-                    }
-                }
-            }
-        }
-    }
-}
-
-@Composable
-private fun localizedAchievementTitle(achievement: com.hienthai.fastowin.protocol.AchievementSnapshot): String =
+internal fun localizedAchievementTitle(achievement: com.hienthai.fastowin.protocol.AchievementSnapshot): String =
     localizedNetworkText(
         achievement.titleKey ?: legacyAchievementTitleKey(achievement.code)?.name,
         emptyMap(),
@@ -1481,7 +1370,7 @@ private fun legacyAchievementTitleKey(code: String): TextKey? = when (code) {
 }
 
 @Composable
-private fun localizedAchievementDescription(achievement: com.hienthai.fastowin.protocol.AchievementSnapshot): String =
+internal fun localizedAchievementDescription(achievement: com.hienthai.fastowin.protocol.AchievementSnapshot): String =
     localizedNetworkText(
         achievement.descriptionKey ?: legacyAchievementDescriptionKey(achievement.code)?.name,
         emptyMap(),
@@ -1495,309 +1384,6 @@ private fun legacyAchievementDescriptionKey(code: String): TextKey? = when (code
     "SPEED_50" -> TextKey.AchievementSpeedDescription
     "DAILY_STREAK_7" -> TextKey.AchievementCheckInDescription
     else -> null
-}
-
-@Composable
-private fun CollectionSectionContent(
-    state: GameState,
-    profile: PlayerProfileSnapshot,
-    canEdit: Boolean,
-    isLoading: Boolean,
-    onEquipCosmetics: (String, String) -> Unit,
-    onSave: (String, String?) -> Unit
-) {
-    val cosmetics = profile.progression.cosmetics
-    if (cosmetics.isEmpty()) {
-        Text(localized(TextKey.EmptyCollection), color = MaterialTheme.colorScheme.onSurfaceVariant)
-        return
-    }
-    val equippedFrame = cosmetics.firstOrNull { it.type == CosmeticType.FRAME && it.equipped }?.id
-        ?: "frame_default"
-    val equippedTitle = cosmetics.firstOrNull { it.type == CosmeticType.TITLE && it.equipped }?.id
-        ?: "title_rookie"
-    val equippingCosmeticId = state.equippingCosmeticId
-    Text(localized(TextKey.Frames), style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Black)
-    val frames = cosmetics.filter { it.type == CosmeticType.FRAME }
-    val frameCardHeight = if (LocalDensity.current.fontScale >= 1.5f) 244.dp else 208.dp
-    val frameGridHeight = frameCardHeight * 3 + 20.dp
-    val frameScrollState = rememberScrollState()
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .height(frameGridHeight)
-            .horizontalScroll(frameScrollState)
-            .pointerInput(frameScrollState) {
-                detectHorizontalDragGestures { change, dragAmount ->
-                    change.consumePositionChange()
-                    frameScrollState.dispatchRawDelta(-dragAmount)
-                }
-            }
-            .testTag("collection_frames"),
-        horizontalArrangement = Arrangement.spacedBy(10.dp)
-    ) {
-        frames.chunked(3).forEach { columnFrames ->
-            Column(
-                modifier = Modifier.height(frameGridHeight),
-                verticalArrangement = Arrangement.spacedBy(10.dp)
-            ) {
-                columnFrames.forEach { cosmetic ->
-                    val isEquipping = equippingCosmeticId == cosmetic.id
-                    val canEquip = canEdit && cosmetic.unlocked && !cosmetic.equipped &&
-                        !isLoading && equippingCosmeticId == null
-                    CollectionFrameCard(
-                        cosmetic = cosmetic,
-                        profile = profile,
-                        isEquipping = isEquipping,
-                        canEquip = canEquip,
-                        onClick = { onEquipCosmetics(cosmetic.id, equippedTitle) },
-                        modifier = Modifier.width(180.dp).height(frameCardHeight)
-                    )
-                }
-            }
-        }
-    }
-    Text(localized(TextKey.Titles), style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Black)
-    val titles = cosmetics.filter { it.type == CosmeticType.TITLE }
-    BoxWithConstraints(modifier = Modifier.fillMaxWidth().testTag("collection_titles")) {
-        val columns = if (maxWidth >= 680.dp) 2 else 1
-        Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-            titles.chunked(columns).forEach { titleRow ->
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(10.dp)
-                ) {
-                    titleRow.forEach { cosmetic ->
-                        val isEquipping = equippingCosmeticId == cosmetic.id
-                        val canEquip = canEdit && cosmetic.unlocked && !cosmetic.equipped &&
-                            !isLoading && equippingCosmeticId == null
-                        CollectionTitleCard(
-                            cosmetic = cosmetic,
-                            isEquipping = isEquipping,
-                            canEquip = canEquip,
-                            onClick = { onEquipCosmetics(equippedFrame, cosmetic.id) },
-                            modifier = Modifier.weight(1f)
-                        )
-                    }
-                    repeat(columns - titleRow.size) { Spacer(Modifier.weight(1f)) }
-                }
-            }
-        }
-    }
-}
-
-@Composable
-private fun CollectionTitleCard(
-    cosmetic: CosmeticSnapshot,
-    isEquipping: Boolean,
-    canEquip: Boolean,
-    onClick: () -> Unit,
-    modifier: Modifier = Modifier
-) {
-    val accent = if (cosmetic.equipped) ArcadeGold else ArcadePalette.Violet600
-    Surface(
-        onClick = onClick,
-        enabled = canEquip,
-        modifier = modifier.heightIn(min = 92.dp).testTag("collection_title:${cosmetic.id}"),
-        shape = RoundedCornerShape(18.dp),
-        color = if (cosmetic.equipped) ArcadeGold.copy(alpha = 0.13f)
-            else MaterialTheme.colorScheme.surface,
-        border = BorderStroke(if (cosmetic.equipped) 2.dp else 1.dp, accent.copy(alpha = 0.62f))
-    ) {
-        Row(
-            modifier = Modifier.fillMaxWidth().padding(14.dp),
-            horizontalArrangement = Arrangement.spacedBy(12.dp),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Surface(
-                modifier = Modifier.size(44.dp),
-                shape = CircleShape,
-                color = accent.copy(alpha = 0.16f)
-            ) {
-                Box(contentAlignment = Alignment.Center) {
-                    if (isEquipping) {
-                        CircularProgressIndicator(
-                            modifier = Modifier.size(28.dp).testTag("collection_equipping:${cosmetic.id}"),
-                            strokeWidth = 2.dp
-                        )
-                    } else {
-                        Icon(
-                            Icons.Default.MilitaryTech,
-                            contentDescription = null,
-                            modifier = Modifier.size(26.dp),
-                            tint = accent
-                        )
-                    }
-                }
-            }
-            Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                Text(cosmetic.localizedName(), fontWeight = FontWeight.Black)
-                Text(
-                    when {
-                        isEquipping -> localized(TextKey.Equipping)
-                        cosmetic.equipped -> localized(TextKey.Equipped)
-                        cosmetic.unlocked && canEquip -> localized(TextKey.TapToEquip)
-                        cosmetic.unlocked -> localized(TextKey.Unlocked)
-                        else -> cosmetic.localizedUnlockRequirement()?.let {
-                            localized(TextKey.UnlockRequirement, "requirement" to it)
-                        }
-                            ?: localized(TextKey.Locked)
-                    },
-                    style = MaterialTheme.typography.bodySmall,
-                    color = if (cosmetic.equipped) accent else MaterialTheme.colorScheme.onSurfaceVariant
-                )
-            }
-        }
-    }
-}
-
-@Composable
-private fun CollectionFrameCard(
-    cosmetic: CosmeticSnapshot,
-    profile: PlayerProfileSnapshot,
-    isEquipping: Boolean,
-    canEquip: Boolean,
-    onClick: () -> Unit,
-    modifier: Modifier = Modifier
-) {
-    val accent = if (cosmetic.equipped) ArcadeGold else MaterialTheme.colorScheme.primary
-    Surface(
-        onClick = onClick,
-        modifier = modifier
-            .heightIn(min = 198.dp)
-            .testTag("collection_frame:${cosmetic.id}"),
-        enabled = canEquip,
-        shape = RoundedCornerShape(20.dp),
-        color = if (cosmetic.equipped) {
-            ArcadeGold.copy(alpha = 0.13f)
-        } else {
-            MaterialTheme.colorScheme.surface
-        },
-        border = BorderStroke(if (cosmetic.equipped) 2.dp else 1.dp, accent.copy(alpha = 0.62f))
-    ) {
-        Column(
-            modifier = Modifier.fillMaxWidth().padding(horizontal = 10.dp, vertical = 14.dp),
-            horizontalAlignment = Alignment.CenterHorizontally,
-            verticalArrangement = Arrangement.spacedBy(8.dp)
-        ) {
-            Box(modifier = Modifier.size(78.dp), contentAlignment = Alignment.Center) {
-                PlayerAvatar(
-                    displayName = profile.displayName,
-                    avatarId = profile.avatarId,
-                    userId = profile.userId,
-                    frameId = cosmetic.id,
-                    size = 74.dp
-                )
-                if (isEquipping) {
-                    Surface(
-                        modifier = Modifier.fillMaxSize(),
-                        shape = CircleShape,
-                        color = MaterialTheme.colorScheme.surface.copy(alpha = 0.78f)
-                    ) {
-                        Box(contentAlignment = Alignment.Center) {
-                            CircularProgressIndicator(
-                                modifier = Modifier.size(38.dp).testTag("collection_equipping:${cosmetic.id}"),
-                                strokeWidth = 3.dp
-                            )
-                        }
-                    }
-                }
-            }
-            Text(
-                cosmetic.localizedName(),
-                fontWeight = FontWeight.Black,
-                textAlign = TextAlign.Center,
-                maxLines = 3,
-                overflow = TextOverflow.Ellipsis
-            )
-            Surface(
-                shape = RoundedCornerShape(999.dp),
-                color = accent.copy(alpha = 0.14f)
-            ) {
-                Text(
-                    text = when {
-                        isEquipping -> localized(TextKey.Equipping)
-                        cosmetic.equipped -> localized(TextKey.Equipped)
-                        cosmetic.unlocked && canEquip -> localized(TextKey.TapToEquip).uppercase()
-                        cosmetic.unlocked -> localized(TextKey.Unlocked)
-                        else -> cosmetic.localizedUnlockRequirement()?.let {
-                            localized(TextKey.UnlockRequirement, "requirement" to it)
-                        }
-                            ?: localized(TextKey.Locked)
-                    },
-                    modifier = Modifier.padding(horizontal = 9.dp, vertical = 5.dp),
-                    style = MaterialTheme.typography.labelSmall,
-                    color = if (cosmetic.unlocked) accent else MaterialTheme.colorScheme.onSurfaceVariant,
-                    fontWeight = FontWeight.Black,
-                    textAlign = TextAlign.Center
-                )
-            }
-        }
-    }
-}
-
-@Composable
-private fun RecentMatchesSectionContent(
-    profile: PlayerProfileSnapshot,
-    isExternalProfile: Boolean,
-    historyFilter: MatchHistoryOutcome?,
-    onFilterChange: (MatchHistoryOutcome?) -> Unit,
-    onOpenMatchDetail: (String) -> Unit
-) {
-    var visibleMatchCount by remember(historyFilter) { mutableStateOf(DEFAULT_ARCADE_PAGE_SIZE) }
-    ArcadeSegmentedControl(
-        labels = listOf(localized(TextKey.RecentFilterAll), localized(TextKey.RecentFilterWins), localized(TextKey.RecentFilterLosses)),
-        selectedIndex = when (historyFilter) {
-            null -> 0
-            MatchHistoryOutcome.WIN -> 1
-            MatchHistoryOutcome.LOSS -> 2
-            MatchHistoryOutcome.DRAW -> 0
-        },
-        onSelected = { index ->
-            onFilterChange(
-                when (index) {
-                    1 -> MatchHistoryOutcome.WIN
-                    2 -> MatchHistoryOutcome.LOSS
-                    else -> null
-                }
-            )
-        },
-        modifier = Modifier.fillMaxWidth().testTag("recent_match_tabs"),
-        itemTestTag = { index ->
-            when (index) {
-                1 -> "history_filter_win"
-                2 -> "history_filter_loss"
-                else -> "history_filter_all"
-            }
-        }
-    )
-    val filteredMatches = profile.recentMatches.filter { historyFilter == null || it.outcome == historyFilter }
-    val visibleMatches = filteredMatches.take(visibleMatchCount)
-    when {
-        profile.recentMatches.isEmpty() -> Text(
-            localized(TextKey.NoCompletedMatches),
-            color = MaterialTheme.colorScheme.onSurfaceVariant
-        )
-        filteredMatches.isEmpty() -> Text(
-            localized(TextKey.NoMatchesForFilter),
-            color = MaterialTheme.colorScheme.onSurfaceVariant
-        )
-        else -> {
-            visibleMatches.forEach { match ->
-                MatchHistoryCard(
-                    match,
-                    onClick = if (isExternalProfile) null else ({ onOpenMatchDetail(match.matchId) })
-                )
-            }
-            ArcadeLoadMoreButton(
-                visibleItemCount = visibleMatches.size,
-                totalItemCount = filteredMatches.size,
-                onLoadMore = {
-                    visibleMatchCount = nextArcadePageItemCount(visibleMatchCount, filteredMatches.size)
-                },
-                testTag = "recent_matches_load_more"
-            )
-        }
-    }
 }
 
 @Composable
@@ -2772,54 +2358,7 @@ private fun StatCard(label: String, value: String, modifier: Modifier = Modifier
 }
 
 @Composable
-private fun ModeStatisticsCard(statistics: GameModeStatisticsSnapshot) {
-    val winRate = if (statistics.totalMatches == 0) 0 else statistics.wins * 100 / statistics.totalMatches
-    ArcadePanel(
-        modifier = Modifier.fillMaxWidth().testTag("mode_statistics:${statistics.gameMode.name}"),
-        accent = MaterialTheme.colorScheme.primary
-    ) {
-        Column(
-            modifier = Modifier.fillMaxWidth().padding(16.dp),
-            verticalArrangement = Arrangement.spacedBy(8.dp)
-        ) {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Text(statistics.gameMode.localizedDisplayName(), fontWeight = FontWeight.Bold)
-                Text(
-                    localized(TextKey.ModeWinRate, "rate" to winRate),
-                    color = MaterialTheme.colorScheme.primary,
-                    fontWeight = FontWeight.Bold
-                )
-            }
-            Text(
-                localized(
-                    TextKey.ModeMatchSummary,
-                    "matches" to statistics.totalMatches,
-                    "wins" to statistics.wins,
-                    "losses" to statistics.losses,
-                    "draws" to statistics.draws
-                ),
-                style = MaterialTheme.typography.bodyMedium
-            )
-            LinearProgressIndicator(
-                progress = { winRate / 100f },
-                modifier = Modifier.fillMaxWidth().height(7.dp),
-                color = if (winRate >= 50) ArcadeSuccess else MaterialTheme.colorScheme.primary
-            )
-            Text(
-                localized(TextKey.ScoreAverage, "high" to statistics.highestScore, "average" to statistics.averageScore),
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant
-            )
-        }
-    }
-}
-
-@Composable
-private fun ProtocolGameMode.localizedDisplayName(): String = localized(when (this) {
+internal fun ProtocolGameMode.localizedDisplayName(): String = localized(when (this) {
     ProtocolGameMode.ORDER -> TextKey.ModeClassicTitle
     ProtocolGameMode.RANDOM_TARGET -> TextKey.ModeRandomTitle
     ProtocolGameMode.TIME_BONUS -> TextKey.ModeTimeBonusTitle
@@ -2829,51 +2368,6 @@ private fun ProtocolGameMode.localizedDisplayName(): String = localized(when (th
     ProtocolGameMode.TIME_ATTACK -> TextKey.ModeTimeAttackTitle
     ProtocolGameMode.TEAM_2V2 -> TextKey.ModeTeamTitle
 })
-
-@Composable
-private fun TrendChart(title: String, values: List<Int>, valueLabel: (Int) -> String) {
-    if (values.isEmpty()) return
-    val lineColor = MaterialTheme.colorScheme.primary
-    val gridColor = MaterialTheme.colorScheme.outlineVariant
-    ArcadePanel(modifier = Modifier.fillMaxWidth(), accent = lineColor) {
-        Column(Modifier.fillMaxWidth().padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                Text(title, fontWeight = FontWeight.Bold)
-                Text(valueLabel(values.last()), color = lineColor, fontWeight = FontWeight.Black)
-            }
-            Canvas(Modifier.fillMaxWidth().height(112.dp)) {
-                repeat(3) { index ->
-                    val y = size.height * index / 2f
-                    drawLine(gridColor, Offset(0f, y), Offset(size.width, y), strokeWidth = 1f)
-                }
-                val minValue = values.minOrNull() ?: 0
-                val maxValue = values.maxOrNull() ?: minValue
-                val range = (maxValue - minValue).coerceAtLeast(1)
-                val stepX = if (values.size == 1) 0f else size.width / (values.size - 1)
-                val points = values.mapIndexed { index, value ->
-                    Offset(
-                        x = if (values.size == 1) size.width / 2f else index * stepX,
-                        y = size.height - (value - minValue).toFloat() / range * size.height
-                    )
-                }
-                points.zipWithNext().forEach { (start, end) ->
-                    drawLine(lineColor, start, end, strokeWidth = 6f, cap = StrokeCap.Round)
-                }
-                points.forEach { drawCircle(lineColor, radius = 7f, center = it) }
-            }
-        }
-    }
-}
-
-private fun buildEloTrend(currentElo: Int, recentMatches: List<MatchHistorySnapshot>): List<Int> {
-    var rating = currentElo
-    val newestToOldest = mutableListOf(rating)
-    recentMatches.forEach { match ->
-        rating -= match.eloChange
-        newestToOldest += rating
-    }
-    return newestToOldest.asReversed()
-}
 
 @Composable
 private fun MatchDetailDialog(
@@ -3021,12 +2515,12 @@ private fun formatMatchDuration(millis: Long): String {
 }
 
 @Composable
-private fun CosmeticSnapshot.localizedName(): String =
+internal fun CosmeticSnapshot.localizedName(): String =
     (if (type == CosmeticType.FRAME) catalogAvatarFrameName(id) else null)
         ?: localizedNetworkText(nameKey, emptyMap(), name)
 
 @Composable
-private fun CosmeticSnapshot.localizedUnlockRequirement(): String? =
+internal fun CosmeticSnapshot.localizedUnlockRequirement(): String? =
     unlockDescriptionKey?.let { localizedNetworkText(it, emptyMap(), "") }.takeUnless { it.isNullOrBlank() }
         ?: legacyUnlockRequirement()
 
@@ -3042,101 +2536,4 @@ private fun CosmeticSnapshot.legacyUnlockRequirement(): String? = when (id) {
     "title_diligent" -> localized(TextKey.UnlockDiligentTitle)
     DAILY_CHECK_IN_AVATAR_ID -> localized(TextKey.UnlockCheckInAvatar)
     else -> null
-}
-
-@Composable
-private fun MatchHistoryCard(match: MatchHistorySnapshot, onClick: (() -> Unit)?) {
-    val (result, accent) = when (match.outcome) {
-        MatchHistoryOutcome.WIN -> localized(TextKey.Win).uppercase() to ArcadeSuccess
-        MatchHistoryOutcome.LOSS -> localized(TextKey.Loss).uppercase() to ArcadeOpponent
-        MatchHistoryOutcome.DRAW -> localized(TextKey.Draw).uppercase() to ArcadeGold
-    }
-    Surface(
-        modifier = Modifier.fillMaxWidth().testTag("match_history:${match.matchId}").then(
-            if (onClick == null) Modifier else Modifier.clickable(onClick = onClick)
-        ),
-        shape = RoundedCornerShape(18.dp),
-        color = MaterialTheme.colorScheme.surface,
-        border = BorderStroke(1.dp, accent.copy(alpha = 0.48f)),
-        shadowElevation = 2.dp
-    ) {
-        BoxWithConstraints(modifier = Modifier.fillMaxWidth()) {
-            val compact = maxWidth < 390.dp
-            val eloText = if (match.eloChange >= 0) "+${match.eloChange}" else match.eloChange.toString()
-            val details: @Composable () -> Unit = {
-                Column(modifier = Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(3.dp)) {
-                    Text(
-                        "${localized(TextKey.Versus)} ${match.opponentName} · ${match.playerScore} – ${match.opponentScore}",
-                        fontWeight = FontWeight.Black,
-                        maxLines = 2,
-                        overflow = TextOverflow.Ellipsis
-                    )
-                    Text(
-                        "${match.gameMode.localizedDisplayName()} · ${localized(if (match.matchType == MatchType.RANKED) TextKey.Ranked else TextKey.Casual)}",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                    match.rewardBreakdown?.let { reward ->
-                        com.hienthai.fastowin.ui.components.RewardEventValues(reward.totalGold, reward.totalXp)
-                    }
-                }
-            }
-            val resultBadge: @Composable () -> Unit = {
-                Surface(
-                    shape = RoundedCornerShape(12.dp),
-                    color = accent.copy(alpha = 0.16f),
-                    border = BorderStroke(1.dp, accent.copy(alpha = 0.48f))
-                ) {
-                    Text(
-                        result,
-                        modifier = Modifier.padding(horizontal = 10.dp, vertical = 8.dp),
-                        color = accent,
-                        style = MaterialTheme.typography.labelMedium,
-                        fontWeight = FontWeight.Black
-                    )
-                }
-            }
-            val elo: @Composable () -> Unit = {
-                Text(
-                    if (match.matchType == MatchType.RANKED) "$eloText Elo" else localized(TextKey.Casual),
-                    color = when {
-                        match.matchType != MatchType.RANKED -> MaterialTheme.colorScheme.onSurfaceVariant
-                        match.eloChange >= 0 -> ArcadeSuccess
-                        else -> ArcadeOpponent
-                    },
-                    fontWeight = FontWeight.Black,
-                    style = MaterialTheme.typography.labelMedium
-                )
-            }
-            if (compact) {
-                Column(
-                    modifier = Modifier.fillMaxWidth().padding(14.dp),
-                    verticalArrangement = Arrangement.spacedBy(10.dp)
-                ) {
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(10.dp)
-                    ) {
-                        resultBadge()
-                        Box(modifier = Modifier.weight(1f)) { details() }
-                    }
-                    Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) { elo() }
-                }
-            } else {
-                Row(
-                    modifier = Modifier.fillMaxWidth().padding(14.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(12.dp)
-                ) {
-                    resultBadge()
-                    Box(modifier = Modifier.weight(1f)) { details() }
-                    elo()
-                    if (onClick != null) {
-                        Icon(Icons.Default.ChevronRight, contentDescription = null)
-                    }
-                }
-            }
-        }
-    }
 }
