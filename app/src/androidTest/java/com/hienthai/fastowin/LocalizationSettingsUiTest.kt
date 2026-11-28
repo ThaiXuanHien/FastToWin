@@ -26,7 +26,7 @@ class LocalizationSettingsUiTest {
         composeRule.onNodeWithText("Màu bàn số").performScrollTo().assertIsDisplayed()
         composeRule.onNodeWithText("Chủ đề ứng dụng").assertDoesNotExist()
         composeRule.onNodeWithText("Sáng").assertDoesNotExist()
-        composeRule.onNodeWithText("Kích thước chữ").performScrollTo().assertIsDisplayed()
+        composeRule.onNodeWithText("Cỡ chữ").performScrollTo().assertIsDisplayed()
     }
 
     @Test

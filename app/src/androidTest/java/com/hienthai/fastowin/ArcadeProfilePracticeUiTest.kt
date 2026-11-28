@@ -171,8 +171,8 @@ class ArcadeProfilePracticeUiTest {
             )
         }
 
-        composeRule.onNodeWithText("Âm thanh hiệu ứng").performScrollTo().assertIsDisplayed()
-        composeRule.onNodeWithText("Xem lại hướng dẫn chơi").performScrollTo().performClick()
+        composeRule.onNodeWithText("Hiệu ứng âm thanh").performScrollTo().assertIsDisplayed()
+        composeRule.onNodeWithText("Xem lại hướng dẫn").performScrollTo().performClick()
         composeRule.runOnIdle { assertTrue(openedTutorial) }
         composeRule.onNodeWithText("Khôi phục cài đặt mặc định").performScrollTo().assertIsDisplayed()
     }
