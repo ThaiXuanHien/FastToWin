@@ -320,7 +320,7 @@ class ProfileSectionsUiTest {
 
         composeRule.onNodeWithTag("profile_section_screen:STATISTICS").assertIsDisplayed()
         composeRule.onNodeWithTag("profile_statistics_content").assertExists()
-        composeRule.onNodeWithText("Thống kê theo chế độ").performScrollTo().assertIsDisplayed()
+        composeRule.onNodeWithText("Theo chế độ").performScrollTo().assertIsDisplayed()
         composeRule.onNodeWithTag("profile_achievement:FIRST_WIN").performScrollTo().assertIsDisplayed()
     }
 
@@ -444,16 +444,9 @@ class ProfileSectionsUiTest {
         }
 
         composeRule.onNodeWithTag("profile_section_screen:COLLECTION").assertIsDisplayed()
-        composeRule.onNodeWithText("Khung").assertIsDisplayed()
-        val middleFrameRowOffset = with(composeRule.density) { 380.dp.toPx() }
-        composeRule.onNodeWithTag("profile_section_scroll")
-            .performSemanticsAction(SemanticsActions.ScrollBy) { scrollBy ->
-                scrollBy(0f, middleFrameRowOffset)
-            }
-        composeRule.onNodeWithTag("collection_frames").performScrollTo()
-        composeRule.onNodeWithTag("collection_frame:frame_silver").assertIsDisplayed()
+        composeRule.onNodeWithTag("collection_tab_frames").assertIsDisplayed()
+        composeRule.onNodeWithTag("collection_frame:frame_silver").performScrollTo().assertIsDisplayed()
         composeRule.onNodeWithText("Khung Bạc").assertIsDisplayed()
-        composeRule.onNodeWithText("Danh hiệu").performScrollTo()
         composeRule.onNodeWithTag("collection_frame:frame_persistent")
             .performScrollTo()
             .assertIsDisplayed()
@@ -461,7 +454,6 @@ class ProfileSectionsUiTest {
         composeRule.runOnIdle {
             assertEquals("frame_persistent" to "title_rookie", equippedFrame)
         }
-        composeRule.onNodeWithText("Khung").performScrollTo()
         composeRule.onNodeWithTag("collection_frame:season_1_gold")
             .performScrollTo()
             .assertIsDisplayed()
@@ -469,7 +461,7 @@ class ProfileSectionsUiTest {
         composeRule.runOnIdle {
             assertEquals("season_1_gold" to "title_rookie", equippedFrame)
         }
-        composeRule.onNodeWithText("Danh hiệu").performScrollTo().assertIsDisplayed()
+        composeRule.onNodeWithTag("collection_tab_titles").performScrollTo().performClick()
         composeRule.onNodeWithText("Chinh phục • Mùa Khởi Đầu")
             .performScrollTo()
             .assertIsDisplayed()
@@ -511,7 +503,7 @@ class ProfileSectionsUiTest {
             .performScrollTo()
             .assertIsDisplayed()
             .assertIsNotEnabled()
-        composeRule.onNodeWithText("Mở khóa: Cấp 6").assertIsDisplayed()
+        composeRule.onNodeWithText("Cấp 6").assertIsDisplayed()
     }
 
     @Test
@@ -550,10 +542,10 @@ class ProfileSectionsUiTest {
     }
 
     @Test
-    fun collectionFramesUseThreeHorizontalRows() {
+    fun collectionFramesUseThreeColumnGridOnPhone() {
         val profile = profileFixture()
 
-        setAdaptiveContent(840.dp, 1_180.dp) {
+        setAdaptiveContent(390.dp, 844.dp) {
             ProfileSectionScreen(
                 state = GameState(profile = profile),
                 profile = profile,
@@ -581,39 +573,12 @@ class ProfileSectionsUiTest {
                 .fetchSemanticsNode().boundsInRoot
         }
 
-        assertTrue(kotlin.math.abs(bounds[0].left - bounds[1].left) <= 1f)
-        assertTrue(kotlin.math.abs(bounds[1].left - bounds[2].left) <= 1f)
-        assertTrue(bounds[0].top < bounds[1].top && bounds[1].top < bounds[2].top)
-        assertTrue(bounds[3].left > bounds[0].left)
-        assertTrue(kotlin.math.abs(bounds[3].top - bounds[0].top) <= 1f)
-    }
-
-    @Test
-    fun collectionFramesAcceptHorizontalScroll() {
-        val profile = profileFixture()
-
-        setAdaptiveContent(360.dp, 640.dp) {
-            ProfileSectionScreen(
-                state = GameState(profile = profile),
-                profile = profile,
-                section = ProfileSection.COLLECTION,
-                isExternalProfile = false,
-                canEdit = true,
-                onBack = {},
-                onRefresh = {},
-                onOpenMatchDetail = {},
-                onCloseMatchDetail = {},
-                onEquipCosmetics = { _, _ -> },
-                onClaimMissionReward = {},
-                onSave = { _, _ -> },
-                onOpenNotifications = {}
-            )
-        }
-
-        composeRule.onNodeWithTag("collection_frames")
-            .performSemanticsAction(SemanticsActions.ScrollBy) { scrollBy ->
-                scrollBy(240f, 0f)
-            }
+        // Ba thẻ đầu cùng một hàng, thẻ thứ tư xuống hàng dưới, thẳng cột với thẻ đầu.
+        assertTrue(kotlin.math.abs(bounds[0].top - bounds[1].top) <= 1f)
+        assertTrue(kotlin.math.abs(bounds[1].top - bounds[2].top) <= 1f)
+        assertTrue(bounds[0].left < bounds[1].left && bounds[1].left < bounds[2].left)
+        assertTrue(bounds[3].top > bounds[0].bottom)
+        assertTrue(kotlin.math.abs(bounds[3].left - bounds[0].left) <= 1f)
     }
 
     @Test
